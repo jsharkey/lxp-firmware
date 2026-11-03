@@ -1,0 +1,130 @@
+# Firmware analysis — ARM "com" processor
+
+This is the reverse-engineering baseline for the **communications / HMI / supervisor**
+MCU (the file named `..._com_vE_250325.bin`). Everything here was derived
+directly from the shipped binary; nothing is guessed from a datasheet alone.
+Where a fact is an inference rather than a direct read, it is marked *(inferred)*.
+
+## Image facts (direct reads)
+
+| Property | Value | How we know |
+|---|---|---|
+| Size | 244,080 bytes (0x3B970) | file length |
+| Load / base address | `0x08000000` | STM32 flash alias; `SystemInit` writes `SCB->VTOR = 0x08000000` |
+| RAM base | `0x20000000` | initial SP + data pointers |
+| Initial SP | `0x200008D0` | vector[0] |
+| Reset handler | `0x08002980` | vector[1] |
+| Encryption / compression | **None** | entropy ≈ 6.6 across the whole image, no high-entropy blocks |
+| Vector table | at `0x08000000`, 16 system + 60 external = 76 entries | parsed |
+
+The "no encryption" result is the important one: **every byte is readable and
+disassemblable**, so a reimplementation is technically feasible.
+
+## Product identification: EG4 12000XP
+
+**The firmware binary is the EG4 12000XP** com MCU (per the maintainer). The
+supplied Modbus document is the **EG4 18kPV-12LV** spec, which uses the **same
+protocol** — the 12000XP is a closely related, **non-hybrid** variant, so some
+registers/features are present in the map but unused on this device:
+
+- **2 MPPTs only** → `Vpv3`/`Ppv3`/`Epv3*` registers are unused.
+- Hybrid grid-tie features (e.g. export-to-grid, AC-couple) are not applicable.
+
+The firmware appears to be a **shared com-MCU codebase** across EG4 models
+(hybrid-related HMI strings are present in the binary), with the active variant
+selected at runtime by the **`Model`/`Com Addr` settings** — so the presence of
+a string or register does not imply the feature is enabled on the 12000XP.
+Treat the 18kPV map as a **superset**.
+
+The system has **three processors**:
+
+| Modbus version reg | Role | This project? |
+|---|---|---|
+| `Cntl Ver` | Control CPU — TI C2000 DSP (power stage, MPPT, PWM, grid sync) | no |
+| `Com Ver` | **Communication/HMI MCU — this STM32F103** | **yes** |
+| `Slave Ver` | Redundant/safety CPU (cross-checks sampling; fault E027) | no |
+
+## MCU identification: STM32F103 high-density (Cortex-M3)
+
+Evidence, in decreasing strength:
+
+1. **Peripheral bases in literal pools**: `RCC @ 0x40021000` and
+   `FLASH_ACR @ 0x40022000`. These addresses exist **only on STM32F1**
+   (on F2/F4 they are `0x40023800` / `0x40023C00`).
+2. **Fault vectors present**: MemManage / BusFault / UsageFault are populated,
+   which rules out Cortex-M0/M0+ — this is an M3/M4. Combined with (1) → M3.
+3. **60 external IRQs** — matches the STM32F1 high-density interrupt map exactly.
+4. **`SystemInit`** is textbook CMSIS-F1: enable HSION, clear `RCC->CFGR`,
+   disable HSE/CSS/PLL, set `RCC->CIR`, call `SetSysClock` (HSE+PLL), set VTOR.
+
+Filename hint `vE` is consistent with an STM32F103**VE** (512 KB flash,
+LQFP100). **To confirm the exact part (flash/RAM size, package), please supply
+the real part number — you are the maintainer and already know it.** The used
+image (238 KB) fits a 256 KB part but the `V`/`E` hint points to 512 KB.
+
+## Original build toolchain: Keil MDK (ARM Compiler / armcc) *(inferred, high confidence)*
+
+The C startup uses ARM-Compiler **scatter-loading** (`__scatterload`, the
+`nop.w; nop.w; bl __scatterload; … ; b.w .` idiom), not the GCC
+`_sdata/_edata/_sbss/_ebss` copy loop. This matters:
+
+- The original `.data`/`.bss` layout is driven by a **scatter file**, not a
+  GCC linker script.
+- Our reimplementation will use **`arm-none-eabi-gcc`** with our own linker
+  script. The result will be **functionally** equivalent, **not** byte-identical.
+  (Byte-identical would require reproducing armcc + its scatter file — possible
+  but not worth it for a project whose goal is contributable features.)
+
+## Peripherals actually used
+
+Interrupt usage is sparse — the board is mostly **polled**:
+
+| Vector | Handler | Meaning |
+|---|---|---|
+| SysTick | `0x080018A5` | system timebase |
+| PVD (IRQ1) | `0x080028A0` | programmable voltage detector (brown-out / power-fail save) |
+| USART3 (IRQ39) | `0x08002898` | serial comms (RX) — almost certainly the link to the DSP and/or RS485 |
+| all other 58 IRQs | `0x080029A8` | shared default handler (`b.w .`) |
+
+Peripheral literal references (USART1/2/3, GPIO ports, ADC, timers, etc.) also
+appear but gated behind polling. A full, verified peripheral map is tracked in
+`docs/03-peripheral-map.md` (TODO — recursive disassembly pass).
+
+## Role of this processor
+
+The strings make the division of labor unambiguous. This ARM MCU is **not** the
+power-electronics controller — that's the TI C2000 DSP. This chip is the
+**system supervisor + human interface + communications**:
+
+- **LCD + keypad HMI** (ENTER/ESC/UP/DOWN; "LCD Ageing Test", "KEY Ageing Test";
+  bitmap font tables occupy a large part of flash — the repeated `III…` runs).
+- **Settings store & menu** (battery setup, charge/discharge limits, AC-charge
+  windows, AC-couple, generator charge, grid/CT config, EPS V/F, model, time).
+- **Operating-mode state machine** (PVGridOn, PVCharge, BatGridOn, ACCharge,
+  Bypass, …, all the `*GridOn/*GridOff` combinations).
+- **Fault aggregation & display** (see `include/inv/faults.h`).
+- **Grid metering** (CT ratio 1000/2000/3000:1, import today/total, L1N/L2N).
+- **Parallel operation** over CAN (`ParaCANFault`, "Parallel Setting").
+- **Firmware update** ("Update" menu — likely an IAP path).
+
+The real-time control loop (PWM, current regulation, MPPT algorithm, grid sync)
+lives in the DSP and is explicitly out of scope.
+
+## System topology *(inferred)*
+
+```
+        PV1 ─┐                                   ┌─ Grid L1/L2/N  (metered via CT)
+        PV2 ─┤      ┌───────────────┐            │
+             ├─────▶│  TI C2000 DSP │◀── CAN/UART ─┐
+     Battery ─┤      │ (power stage, │            │ │
+             │      │  MPPT, PWM,   │            │ │   ┌──────────────┐
+    EPS out ─┘      │  grid sync)   │            └─┼──▶│ STM32F103 ARM│──▶ LCD + keys
+                    └───────────────┘    this file → │ (HMI/comms/   │──▶ RS485/CAN
+                                                      │  supervisor)  │    (Modbus? parallel)
+                                                      └──────────────┘
+```
+
+The exact ARM↔DSP link (USART3? CAN? both?) and its message format are the
+**single most valuable thing to document next** — it is the hard interface our
+reimplementation must honor, and it cannot be fully recovered from the ARM
+binary alone without either (a) the protocol spec, or (b) a bus capture.

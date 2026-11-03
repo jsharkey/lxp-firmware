@@ -1,0 +1,2 @@
+str_addr,n_refs,referenced_by,text
+0x0800299c,4,0x08000158 0x08000306 0x0800038e 0x08000e44,SNECNOTBSNFC
