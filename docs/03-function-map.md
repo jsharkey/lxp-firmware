@@ -45,12 +45,38 @@ scanning. This is the top next tooling task because those same tables encode the
 **menu tree** — recovering them names a large fraction of HMI functions at once.
 
 ### Next tooling steps
-1. **Pointer-table resolver**: scan flash data for runs of ≥2 words that each
-   point to a string start → recover `char*` arrays (menus, unit labels, fault
-   text) and the functions that index them.
-2. **Jump-table (TBB/TBH) decoding** to resolve switch targets the sweep stops at.
-3. Emit a Ghidra import script (`.py`) that applies `symbols.csv` so the
-   interactive workspace starts pre-labeled.
+1. ~~Pointer-table resolver~~ → **done, with a twist** (see below).
+2. **Jump-table (TBB/TBH) decoding** to resolve switch targets the sweep stops
+   at — this is also how menu *handlers* are dispatched here (see below).
+3. Emit a Ghidra import script (`.py`) that applies `symbols.csv`.
+
+## How strings are stored (measured, not assumed)
+
+A pointer-table resolver (`tools/strtab.py`) was written — and the measurement
+it produced is itself the key finding:
+
+- The absolute address of a menu string (e.g. `"Battery Type: "` @ `0x080399b8`)
+  appears **nowhere** in the image as a 32-bit absolute word, a 32-bit offset,
+  or a 16-bit offset. **There are no `char*` pointer tables for HMI text.**
+- Instead the strings live in **packed, NUL-separated blobs in enum order**, and
+  the code indexes them **by ordinal**. The tail region `0x08039xxx`
+  (the low-entropy block flagged back in the entropy map) is one such blob —
+  the full settings menu, in order.
+- The real 32-bit pointer tables in the image point into **code** (the vector
+  table, and small switch/dispatch tables), not into strings.
+
+### What `tools/strtab.py` now recovers
+- **`reference/string_catalog.txt`** — 20 ordered string blobs, 442 strings. The
+  order is the firmware's ordinal order, so this **reconstructs the menu tree**.
+  Largest blobs: 95 (settings menu), 85/83 (fault & status/telemetry labels), 34.
+- **`reference/dispatch_tables.txt`** — runs of function pointers (the vector
+  table shows up here, confirming detection; menu handlers are dispatched by
+  ordinal/switch, so TBB/TBH decoding is the way to bind label→handler).
+- **`include/inv/hmi_menu.h`** — the 95-item settings menu as an ordinal enum,
+  generated directly from the blob (reproducible, compiles clean).
+
+Consequence for the rebuild: our HMI should mirror this — one ordered string
+table indexed by a menu enum (`inv_menu_item_t`), not scattered `char*`s.
 
 ## Using it as the shared workspace (optional Ghidra recipe)
 

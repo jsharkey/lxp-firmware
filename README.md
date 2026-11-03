@@ -33,7 +33,8 @@ Honest picture of where things stand:
 - [x] Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
 - [x] Reverse-engineering tooling (`tools/`)
 - [ ] Confirm exact part number / flash+RAM size (from the schematic you're providing)
-- [ ] Pointer-table resolver → recover the HMI **menu tree** and auto-name functions
+- [x] Recover the HMI **menu tree** → `include/inv/hmi_menu.h` (95-item ordered enum) + `reference/string_catalog.txt` (442 strings). Finding: text is packed NUL-separated blobs indexed by ordinal, not `char*` tables
+- [ ] Bind menu items → handler functions (needs TBB/TBH switch-table decoding)
 - [ ] Document the **ARM↔DSP internal protocol** (the remaining hard interface)
 - [ ] Buildable skeleton: linker script + startup + CMSIS that compiles to a `.bin` for the real chip
 - [ ] Reimplement modules (Modbus slave, HMI, settings store, metering, mode state machine, faults)
@@ -68,7 +69,7 @@ explicit non-goal.
 
 ```
 docs/        analysis + recovered specification (start here)
-include/inv/ recovered data model as C headers (states, faults, settings, modbus_map)
+include/inv/ recovered data model as C headers (states, faults, settings, modbus_map, hmi_menu)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)
 src/         reimplementation source (skeleton — TBD)
 ldscripts/   linker script(s) for the rebuild (TBD)
