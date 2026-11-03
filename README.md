@@ -120,6 +120,5 @@ and (c) a config dump + Modbus map from a real unit.
 
 ## License
 
-TBD by the maintainer. An open reimplementation intended for community
-contribution typically uses a permissive (MIT/Apache-2.0) or copyleft (GPLv3)
-license — pick before the first external contribution.
+**GNU GPL v3.0** — see [`LICENSE`](LICENSE). Contributions are accepted under
+the same license.
