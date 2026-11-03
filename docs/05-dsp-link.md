@@ -88,6 +88,35 @@ main thing still to decode.
   properly needs a C28x disassembler (Ghidra has a C28x/`TMS320C28x` processor
   module; TI's own tools also work).
 
+## Comms stack & write-path (RE on the corrected image)
+
+Traced from the USART3 frame-ready flag (`0x200004b8`) and the dispatchers:
+
+- **Frames are validated, not blindly applied.** `sub_08001482` recomputes the
+  CRC-16 (`sub_08000de4`) over the received bytes and compares it to the trailing
+  CRC (`sub_08000d98`); only on match does it dispatch (`sub_08001420`). The
+  byte parser also enforces **address ∈ {0,1}** and a **function-code whitelist**
+  (`0x03/0x04/0x06/0x10` + undocumented `0x21/0x22/0x23`); anything else resyncs.
+- **Tagged protocol, shared with the DSP.** `sub_08000896` selects a protocol
+  mode by comparing a build-config word at flash `0x08031800` (`"NOTB"`) against
+  `"UARB"` (`0x42524155`); handlers reference 4-char tags `SNEC`/`NOTB`/`SNFC`
+  (`0x0800299c`). The DSP image contains `EDSN` — the same tagged family, a
+  cross-reference that the two CPUs speak this protocol.
+- **Firmware-update path found.** `sub_08000818` reprograms flash from
+  `0x08005000` to `0x0807F800` in 0x100-byte pages and streams a `'P'` (0x50)
+  progress byte — i.e. the "Programming" state / "Update" menu (IAP).
+- **ARM owns the clock.** STM32 battery-backed RTC; validated calendar struct at
+  RAM `0x2000a718` (`sec,min,hour,day,mon,year,dow`). "Set Time" sets this RTC.
+
+**Open (needs schematic or a bus capture):** per-register *value-range*
+validation on dongle writes was not found in the traced paths (frame-level
+checks are present; value bounds may be delegated to the DSP / enforced by the
+HMI's per-item min/max). And a byte-exact *DSP command frame* couldn't be pinned
+by static RE alone — which physical UART is the DSP vs the dongle is the missing
+anchor. Best evidence still says: **ARM = timekeeper + config/HMI + bridge; the
+DSP evaluates the real-time time-window rules** (the protocol's `0x10` = "SN +
+time only" means time is explicitly pushed to whoever evaluates).
+
 ## How to finish (ranked)
 
 1. **Schematic** (you're providing): label which MCU UART → DSP, BMS, meter,
