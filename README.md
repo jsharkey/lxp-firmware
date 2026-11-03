@@ -38,7 +38,9 @@ Honest picture of where things stand:
 - [ ] Document the **ARM↔DSP internal protocol** (the remaining hard interface)
 - [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
-- [ ] Reimplement modules (Modbus slave, HMI, settings store, metering, mode state machine, faults)
+- [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
+- [ ] Reimplement remaining modules (HMI, settings store, metering, mode state machine, faults)
+- [ ] DSP link (the internal ARM↔DSP protocol) to populate live telemetry
 - [ ] Verify on hardware
 
 ## The honest scope
@@ -70,12 +72,14 @@ explicit non-goal.
 
 ```bash
 make            # -> build/firmware.{elf,bin,hex} + size report
+make test       # host-side unit tests (no hardware) — currently the Modbus engine
 ```
 
-Requires `gcc-arm-none-eabi`. The skeleton boots, runs the 72 MHz clock init,
-starts a 1 ms SysTick, and spins — it is the foundation the subsystems grow into,
-not yet a functional replacement. Flashing helpers (ST-Link / OpenOCD) are
-commented in the `Makefile`; flash to `0x08000000`.
+Requires `gcc-arm-none-eabi` (build) and a host `cc` (tests). The firmware boots,
+runs the 72 MHz clock init, starts a 1 ms SysTick, and services a Modbus-RTU
+slave over USART3 against a shared register model — the foundation the remaining
+subsystems grow into, not yet a functional replacement. Flashing helpers
+(ST-Link / OpenOCD) are commented in the `Makefile`; flash to `0x08000000`.
 
 ## Repository layout
 
@@ -84,10 +88,12 @@ docs/        analysis + recovered specification (start here)
 include/     stm32f103.h (minimal device header) + inv/ recovered data model
 include/inv/ states, faults, settings, modbus_map, hmi_menu
 src/         startup_stm32f103.c, system_stm32f103.c, main.c (skeleton)
+src/modbus/  Modbus-RTU slave engine + USART3 port
 ldscripts/   stm32f103ve.ld linker script
+tests/       host unit tests (make test)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)
 reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
-Makefile     build -> flashable .bin
+Makefile     build -> flashable .bin ; make test
 ```
 
 ## The original binaries are not committed
