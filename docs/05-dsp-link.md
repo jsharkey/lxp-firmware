@@ -6,6 +6,14 @@ this environment can disassemble, and its strings don't extract cleanly — so t
 protocol was recovered from the ARM (fully disassemblable) and the DSP image
 used only for corroboration.
 
+> **Address note:** this doc was written before the `.hex` revealed the
+> non-contiguous layout (see `docs/01`). Addresses in **segment 1**
+> (`< 0x08002A00`) are correct as written — the comms parser `sub_080010ac`, the
+> USART3 ISR `sub_08001316`, and RAM `0x20000028` are all here. Addresses quoted
+> for **segment-2** functions (the per-UART handlers `0x0801a5ec`, `0x0801ac7c`,
+> …) came from the raw `.bin`; add **`+0x2400`** for the true flash address.
+> The *findings* (framing, field layout) are unaffected.
+
 ## Comms inventory (ARM side)
 
 The ARM drives **five UARTs + SPI1 + CAN1**, through a shared stack:

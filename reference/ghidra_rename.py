@@ -19,6 +19,19 @@ names=[
   (0x08002980,'Reset_Handler'),
   (0x08002990,'__main'),
   (0x080029a8,'Default_Handler'),
+  (0x080076ce,'fn_ceaa'),
+  (0x0800b884,'fn_download'),
+  (0x0800c9a0,'fn_Hybrid_Setting'),
+  (0x0800caa6,'fn_Parallel_Setting'),
+  (0x0800cf88,'fn_Smart_Load'),
+  (0x0800d0c8,'fn_AC_Couple'),
+  (0x0800e3f0,'fn_NO_Fault'),
+  (0x0800e51c,'fn_NO_Alarm'),
+  (0x0801b6b2,'fn_ceaa'),
+  (0x0801f1a0,'fn_FreedWON'),
+  (0x08020330,'fn_eTower'),
+  (0x08032000,'fn_ceaa'),
+  (0x0803cbf8,'fn_Meter'),
 ]
 from ghidra.program.model.symbol import SourceType
 for a,n in names:

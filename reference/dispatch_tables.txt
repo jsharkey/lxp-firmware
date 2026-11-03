@@ -65,6 +65,17 @@
   [ 60] -> 0x080029a8  IRQ0_Handler
   [ 61] -> 0x080029a8  IRQ0_Handler
 
+=== table 0x0803e5d4  (9 entries) ===
+  [  0] -> 0x0801c11c  sub_0801c11c
+  [  1] -> 0x080259d8  sub_080259d8
+  [  2] -> 0x0802afe2  sub_0802afe2
+  [  3] -> 0x0802a760  sub_0802a760
+  [  4] -> 0x08015094  sub_08015094
+  [  5] -> 0x0803cbf8  sub_0803cbf8
+  [  6] -> 0x08016078  fn_SNECSNEDEDSNDPOTLAA1SA22
+  [  7] -> 0x08037f1a  sub_08037f1a
+  [  8] -> 0x0800edcc  sub_0800edcc
+
 === table 0x08000004  (6 entries) ===
   [  0] -> 0x08002980  Reset_Handler
   [  1] -> 0x08002888  NMI_Handler
@@ -73,15 +84,8 @@
   [  4] -> 0x0800288e  BusFault_Handler
   [  5] -> 0x08002890  UsageFault_Handler
 
-=== table 0x0803afd4  (5 entries) ===
-  [  0] -> 0x0801c11c  sub_0801c11c
-  [  1] -> 0x080259d8  sub_080259d8
-  [  2] -> 0x0802afe2  sub_0802afe2
-  [  3] -> 0x0802a760  sub_0802a760
-  [  4] -> 0x08015094  sub_08015094
-
-=== table 0x0803afec  (3 entries) ===
-  [  0] -> 0x08016078  sub_08016078
-  [  1] -> 0x08037f1a  sub_08037f1a
-  [  2] -> 0x0800edcc  sub_0800edcc
+=== table 0x080050d8  (3 entries) ===
+  [  0] -> 0x0801ca94  sub_0801ca94
+  [  1] -> 0x0801c774  sub_0801c774
+  [  2] -> 0x080149f4  sub_080149f4
 

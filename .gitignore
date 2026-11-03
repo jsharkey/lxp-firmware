@@ -11,3 +11,8 @@ build/
 # tooling cruft
 __pycache__/
 *.pyc
+
+# Proprietary firmware (hex + reconstructed flat image)
+reference/*.hex
+reference/com_flat.bin
+*.hex

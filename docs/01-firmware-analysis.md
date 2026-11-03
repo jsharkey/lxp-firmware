@@ -20,6 +20,31 @@ Where a fact is an inference rather than a direct read, it is marked *(inferred)
 The "no encryption" result is the important one: **every byte is readable and
 disassemblable**, so a reimplementation is technically feasible.
 
+## CRITICAL: the `.bin` is non-contiguous — use the `.hex`
+
+The raw `.bin` dump is a **concatenation of non-contiguous flash regions with
+the gaps removed**, so a byte offset in the `.bin` does **not** equal
+`flash_addr - 0x08000000`. The Intel-HEX of the same firmware gives the true
+addresses. Real flash layout (512 KB part, `0x08000000`–`0x08080000`):
+
+| true flash range | size | contents |
+|---|---|---|
+| `0x08000000`–`0x080029FF` | 10.7 KB | vector table + early code/startup |
+| *gap* `0x08002A00`–`0x08004DFF` | ~9 KB | unused/reserved (0xFF) |
+| `0x08004E00`–`0x0803031D` | 173 KB | main code |
+| *gap* `0x0803031E`–`0x0803151D` | ~4.5 KB | unused/reserved (0xFF) |
+| `0x0803151E`–`0x0803EF67` | 55 KB | code + **HMI string tables** |
+| `0x08040000` (4 B), `0x0807F7FC` (4 B) | — | markers (`SNEC` sits at the top) |
+
+Consequence: everything past `.bin` offset `0x2A00` was mis-addressed by
+`+0x2400` (after gap 1) or `+0x3600` (after gap 2). This is why HMI strings
+appeared "unreferenced" earlier — the code's pointer/literal references use the
+*true* addresses, which didn't match the shifted ones. **All RE must run against
+the correctly-addressed flat image**: `tools/hex2bin.py firmware.hex flat.bin`
+(fills gaps with 0xFF, every byte at its true address). Segment-1 analysis
+(vectors, `SystemInit` @0x0800231c, the comms parser @0x080010ac) was already
+correct because it lives below the first gap.
+
 ## Product identification: EG4 12000XP
 
 **The firmware binary is the EG4 12000XP** com MCU (per the maintainer). The
