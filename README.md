@@ -40,7 +40,9 @@ Honest picture of where things stand:
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
 - [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
 - [ ] Reimplement remaining modules (HMI, settings store, metering, mode state machine, faults)
-- [ ] DSP link (the internal ARM↔DSP protocol) to populate live telemetry
+- [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
+- [ ] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — needs schematic or data-flow trace
+- [ ] Decode the `0x21/0x22/0x23` payloads; populate live telemetry from the DSP link
 - [ ] Verify on hardware
 
 ## The honest scope

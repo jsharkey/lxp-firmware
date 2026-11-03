@@ -3,9 +3,13 @@
  * real comms interrupt in the stock firmware). This is the hardware glue around
  * the transport-agnostic engine in modbus.c.
  *
- * TODO(schematic): confirm USART3 is the RS-485 Modbus port (vs the DSP link),
- * its pins (PB10/PB11 default), and the RS-485 driver-enable (DE/RE) GPIO.
- * Override mb_port_set_tx() for your board's DE pin.
+ * CONFIRMED by RE (docs/05-dsp-link.md): the stock firmware runs this exact
+ * EG4 Modbus-family protocol on USART3 — byte parser sub_080010ac, RX buffer at
+ * RAM 0x20000028 (800-byte window), address 0/1, funcs 0x03/0x04/0x06/0x10 plus
+ * undocumented 0x21/0x22/0x23. USART3 is the only NVIC-vectored UART.
+ * TODO(schematic): confirm whether USART3 is the external RS-485 dongle port or
+ * the internal DSP link, the pins (PB10/PB11 default), and the RS-485 DE/RE GPIO
+ * (override mb_port_set_tx()).
  */
 #include "stm32f103.h"
 #include "inv/modbus.h"
