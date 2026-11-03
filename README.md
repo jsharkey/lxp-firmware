@@ -39,7 +39,8 @@ Honest picture of where things stand:
 - [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
 - [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
-- [ ] Reimplement remaining modules (HMI, settings store, metering, mode state machine, faults)
+- [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
+- [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
 - [ ] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — needs schematic or data-flow trace
 - [ ] Decode the `0x21/0x22/0x23` payloads; populate live telemetry from the DSP link
@@ -91,6 +92,7 @@ include/     stm32f103.h (minimal device header) + inv/ recovered data model
 include/inv/ states, faults, settings, modbus_map, hmi_menu
 src/         startup_stm32f103.c, system_stm32f103.c, main.c (skeleton)
 src/modbus/  Modbus-RTU slave engine + USART3 port
+src/hmi/     LCD/keypad menu engine + menu model + port
 ldscripts/   stm32f103ve.ld linker script
 tests/       host unit tests (make test)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)

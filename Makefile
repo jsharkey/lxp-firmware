@@ -45,11 +45,13 @@ clean:
 
 # Host-side unit tests (no hardware). Uses the system gcc, not the cross tool.
 HOSTCC ?= cc
+HOSTFLAGS := -std=c11 -Wall -Wextra -Iinclude
 test:
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -std=c11 -Wall -Wextra -Iinclude \
-	  src/modbus/modbus.c tests/test_modbus.c -o $(BUILD)/test_modbus
+	$(HOSTCC) $(HOSTFLAGS) src/modbus/modbus.c tests/test_modbus.c -o $(BUILD)/test_modbus
 	@./$(BUILD)/test_modbus
+	$(HOSTCC) $(HOSTFLAGS) src/hmi/hmi.c src/hmi/hmi_model.c tests/test_hmi.c -o $(BUILD)/test_hmi
+	@./$(BUILD)/test_hmi
 
 # Flashing helpers (uncomment the one matching your tooling):
 # flash-stlink: $(BUILD)/$(TARGET).bin

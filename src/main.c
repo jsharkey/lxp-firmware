@@ -10,6 +10,7 @@
 #include "inv/faults.h"
 #include "inv/modbus.h"
 #include "inv/modbus_map.h"
+#include "inv/hmi.h"
 #include "inv/hmi_menu.h"
 
 /* Shared system snapshot the subsystems read/write. */
@@ -50,6 +51,21 @@ static mb_config_t g_mb = {
     .regs     = { mb_rd_input, mb_rd_hold, mb_wr_hold, 0 }
 };
 
+/* ---- HMI wiring over the same register model ---- */
+static bool hmi_read(hmi_regspace_t sp, uint16_t r, uint16_t *o) {
+    if (sp == HMI_REG_INPUT   && r < 160) { *o = g_rt.input_reg[r];   return true; }
+    if (sp == HMI_REG_HOLDING && r < 256) { *o = g_rt.holding_reg[r]; return true; }
+    return false;
+}
+static bool hmi_write(uint16_t r, uint16_t v) {
+    if (r < 256) { g_rt.holding_reg[r] = v; return true; }  /* TODO: validate + persist */
+    return false;
+}
+static const hmi_io_t g_hmi_io = {
+    hmi_read, hmi_write, hmi_lcd_draw_row, hmi_lcd_clear, 4
+};
+static hmi_t g_hmi;
+
 static void systick_init_1ms(void) {
     SysTick->LOAD = (SystemCoreClock / 1000U) - 1U;
     SysTick->VAL  = 0;
@@ -66,8 +82,21 @@ int main(void) {
     systick_init_1ms();
     mb_port_init(&g_mb);
 
+    hmi_lcd_init();
+    hmi_keypad_init();
+    hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
+    hmi_render(&g_hmi);
+
+    uint32_t last_render = 0;
     for (;;) {
         mb_port_poll(g_ticks);
-        /* TODO: HMI, fault/state machine, DSP link, settings persistence */
+
+        int key = hmi_keypad_poll();
+        if (key >= 0) { hmi_key(&g_hmi, (hmi_key_t)key); hmi_render(&g_hmi); }
+        else if ((uint32_t)(g_ticks - last_render) >= 250) {  /* refresh live values */
+            last_render = g_ticks;
+            hmi_render(&g_hmi);
+        }
+        /* TODO: fault/state machine, DSP link, settings persistence */
     }
 }
