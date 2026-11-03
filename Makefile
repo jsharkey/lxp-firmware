@@ -1,0 +1,52 @@
+# Build the open EG4 12000XP com-MCU firmware -> build/firmware.{elf,bin,hex}
+# Requires: arm-none-eabi-gcc (gcc-arm-none-eabi)
+
+TARGET   := firmware
+BUILD    := build
+LDSCRIPT := ldscripts/stm32f103ve.ld
+
+CROSS    := arm-none-eabi-
+CC       := $(CROSS)gcc
+OBJCOPY  := $(CROSS)objcopy
+SIZE     := $(CROSS)size
+
+SRCS := $(wildcard src/*.c)
+OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
+
+CPU     := -mcpu=cortex-m3 -mthumb
+CFLAGS  := $(CPU) -std=c11 -Og -g3 -ffunction-sections -fdata-sections \
+           -Wall -Wextra -Iinclude
+LDFLAGS := $(CPU) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections \
+           -Wl,-Map=$(BUILD)/$(TARGET).map --specs=nano.specs --specs=nosys.specs
+
+all: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).hex size
+
+$(BUILD)/%.o: src/%.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/$(TARGET).elf: $(OBJS)
+	$(CC) $(OBJS) $(LDFLAGS) -o $@
+
+$(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
+	$(OBJCOPY) -O binary $< $@
+
+$(BUILD)/$(TARGET).hex: $(BUILD)/$(TARGET).elf
+	$(OBJCOPY) -O ihex $< $@
+
+size: $(BUILD)/$(TARGET).elf
+	$(SIZE) $<
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
+clean:
+	rm -rf $(BUILD)
+
+# Flashing helpers (uncomment the one matching your tooling):
+# flash-stlink: $(BUILD)/$(TARGET).bin
+#	st-flash write $< 0x08000000
+# flash-openocd: $(BUILD)/$(TARGET).bin
+#	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
+#	  -c "program $< 0x08000000 verify reset exit"
+
+.PHONY: all size clean

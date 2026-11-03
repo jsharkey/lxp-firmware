@@ -78,6 +78,32 @@ it produced is itself the key finding:
 Consequence for the rebuild: our HMI should mirror this — one ordered string
 table indexed by a menu enum (`inv_menu_item_t`), not scattered `char*`s.
 
+## Symbol naming (`tools/xref.py`) — what worked and what didn't
+
+Goal: name functions by the HMI strings they use. Outcome below; outputs are
+`reference/symbols_named.csv`, `reference/func_string_xref.csv`, and
+`reference/ghidra_rename.py` (apply names in Ghidra).
+
+**HMI-string → function binding does NOT work by static analysis here.** The
+strings are not referenced by any address-forming mechanism we can see. We
+checked, across the whole image, for the string/menu-blob addresses appearing as:
+absolute 32-bit words, 32-bit offsets, 16-bit offsets, `MOVW`/`MOVT` immediate
+pairs, PC-relative `LDR` literals, `ADR`, and scatter-relocated RAM copies
+(`Region$$Table`). **All negative.** The menu renderer reaches text by some
+computed/indexed scheme that leaves no static reference — so associating a
+menu label with its handler requires **dynamic analysis** (run the image in an
+emulator such as Unicorn/QEMU, or on hardware, and trace the LCD-draw calls).
+That is the recommended way to get HMI-level function names.
+
+**What we did name (17 functions, high-confidence, from disassembly not guesses):**
+`SystemInit`, `SetSysClock`, `__scatterload`, `__main`, `Reset_Handler`,
+`Default_Handler`, `SysTick_Handler`, `USART3_IRQHandler`, `PVD_IRQHandler`, and
+the Cortex-M fault/system handlers. These are the curated list in `xref.py`.
+
+Note: data-model naming *from* the HMI strings already happened at the right
+layer — `hmi_menu.h`, `faults.h`, `states.h` are all named from the recovered
+text. It's only the *function*↔string binding that needs dynamic tracing.
+
 ## Using it as the shared workspace (optional Ghidra recipe)
 
 Import the raw binary as: **ARM Cortex, little-endian**, load address

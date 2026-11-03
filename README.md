@@ -36,7 +36,8 @@ Honest picture of where things stand:
 - [x] Recover the HMI **menu tree** → `include/inv/hmi_menu.h` (95-item ordered enum) + `reference/string_catalog.txt` (442 strings). Finding: text is packed NUL-separated blobs indexed by ordinal, not `char*` tables
 - [ ] Bind menu items → handler functions (needs TBB/TBH switch-table decoding)
 - [ ] Document the **ARM↔DSP internal protocol** (the remaining hard interface)
-- [ ] Buildable skeleton: linker script + startup + CMSIS that compiles to a `.bin` for the real chip
+- [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
+- [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
 - [ ] Reimplement modules (Modbus slave, HMI, settings store, metering, mode state machine, faults)
 - [ ] Verify on hardware
 
@@ -65,15 +66,28 @@ Output is **functionally** equivalent, not byte-identical (the original was
 built with Keil armcc + scatter-loading; we use GCC). Byte-matching is an
 explicit non-goal.
 
+## Building
+
+```bash
+make            # -> build/firmware.{elf,bin,hex} + size report
+```
+
+Requires `gcc-arm-none-eabi`. The skeleton boots, runs the 72 MHz clock init,
+starts a 1 ms SysTick, and spins — it is the foundation the subsystems grow into,
+not yet a functional replacement. Flashing helpers (ST-Link / OpenOCD) are
+commented in the `Makefile`; flash to `0x08000000`.
+
 ## Repository layout
 
 ```
 docs/        analysis + recovered specification (start here)
-include/inv/ recovered data model as C headers (states, faults, settings, modbus_map, hmi_menu)
+include/     stm32f103.h (minimal device header) + inv/ recovered data model
+include/inv/ states, faults, settings, modbus_map, hmi_menu
+src/         startup_stm32f103.c, system_stm32f103.c, main.c (skeleton)
+ldscripts/   stm32f103ve.ld linker script
 tools/       reverse-engineering scripts (read-only, operate on the .bin)
-src/         reimplementation source (skeleton — TBD)
-ldscripts/   linker script(s) for the rebuild (TBD)
-reference/   original .bin (gitignored) + generated RE outputs (symbols.csv, …)
+reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
+Makefile     build -> flashable .bin
 ```
 
 ## The original binaries are not committed
