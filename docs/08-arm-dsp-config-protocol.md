@@ -691,3 +691,42 @@ is described as "a charge/discharge schedule window set", not labelled to one of
 the three. The proven claim is narrow and solid: **the ARM evaluates these
 schedule windows against its RTC, and the verdict flows to an ARM-side schedule
 controller (`sub_0801e608`) + app telemetry, not into the DSP config frame.**
+
+## CORRECTION — the earlier "DSP link is standard Modbus" reading was the *dongle* path
+
+[`docs/10`](10-dsp-config-field-map.md) ("Is this a standard Modbus read
+response? — no") pushed back on the reading above, from the DSP side: the DSP's
+config frame is **big-endian, SN-less**, with a **9-way block discriminator at
+`0x14`** (never a bytecount), and the DSP's own uplink uses the same symmetric
+block-tagged framing — i.e. a custom **type-1 block** protocol, not the LE /
+SN-stamped EG4-Modbus the ARM trace followed. **That cross-check is correct, and
+I found the concrete ARM-side mechanism that proves it.**
+
+**The serializer `sub_0803373c` is dual-mode, switched by `0x2000aa0b` bit 0:**
+
+| `0x2000aa0b & 1` | SN? | 16-bit byte order | this is the… |
+|---|---|---|---|
+| **0** | `SN[10]` copied from `settings+0x01` | **little-endian** (`strb val`, then `strb val>>8`) | **dongle** path |
+| **1** | **skipped** (no SN) | **big-endian** (`strb val>>8`, then `strb val`) | **DSP** path |
+
+Both the SN-copy loop (gated `[sp]==0` at `0x080337e0`) and the value byte order
+(the two branches at `0x08033ab8`/`0x08033ade`) key off the same flag; the
+request-field reader likewise switches LE `sub_08014dc6` ↔ BE `sub_08014db8`.
+Emulating the **BE path** (`0x2000aa0b=1`) confirms it: **no SN** (the
+`settings[1..10]` markers do not appear at `frame+0x02`), big-endian values.
+
+**So my earlier emulation forced `0x2000aa0b=0` — the LE+SN path — and therefore
+characterised the *dongle* framing, not the DSP.** Concretely, the claim that
+"regs 64-89 reach the DSP as LE register values at `frame 0x10 + (reg-start)*2`"
+describes the **dongle** read response. The **DSP** receives the **big-endian,
+SN-less, block-tagged** frame docs/10 documents (block id at `0x14`, payload at
+`0x15`). The ARM is the **bridge** (docs/05's model): one shared serializer,
+flag-selected, LE+SN to the external dongle and BE+block-tagged to the DSP.
+
+**What stands, and what is retracted.** Retracted: "the ARM↔DSP link is standard
+Modbus" and the LE `0x10 + (reg-start)*2` *DSP* offsets (those are the dongle's).
+Still solid and DSP-independent: the **register definitions for 64-89**
+(`modbus_map.h`), the **hour|minute encoding**, and the **ARM-side RTC window
+evaluators** (`sub_0801eb4c` / `sub_0801e1dc`) with their results flowing to
+ARM scheduling + telemetry. The exact BE DSP frame offsets for regs 64-89 should
+be taken from docs/10 (the DSP side), not from the LE emulation here.
