@@ -205,13 +205,14 @@ black-box file.
 
 `tests/test_arm_sim.py` holds only tests that run **identically against either
 firmware image**: no symbols, no addresses, no sniffing which firmware is loaded.
-The image is passed on the command line, and the Makefile runs the file twice —
-once per image — so the two firmwares are compared by each independently
-satisfying one shared spec, not by a test that inspects both at once.
+The image is passed on the command line as a **flat `.bin`** (a `.hex` is
+rejected — convert it first, below), and the Makefile runs the file twice, once
+per image, so the two firmwares are compared by each independently satisfying one
+shared spec, not by a test that inspects both at once.
 
 ```bash
 python3 tests/test_arm_sim.py build/firmware.bin     # our firmware
-python3 tests/test_arm_sim.py path/to/factory.hex    # the factory oracle
+python3 tests/test_arm_sim.py reference/com_flat.bin # the factory oracle (flat .bin)
 ```
 
 There are two common tests today:
@@ -243,24 +244,31 @@ through its init, not just isolated functions) and a shared-behaviour check.
 ## Running the tests
 
 ```bash
-make test-sim                                    # builds our fw, runs the harness tests
-LXP_FACTORY_HEX=/path/App.hex     make test-sim  # also run the factory oracle (vendor .hex)
-LXP_FACTORY_BIN=/path/com_flat.bin make test-sim # ...or a pre-converted flat image
+make test-sim                                    # test-sim-ours + test-sim-factory
+make test-sim-ours                               # build our fw; common + self-only tests
+make factory LXP_FACTORY_HEX=/path/App.hex       # vendor .hex -> reference/com_flat.bin
+make test-sim-factory                            # common + factory-only tests on that .bin
+make test-sim LXP_FACTORY_HEX=/path/App.hex      # convert + run everything, end to end
 ```
 
-`make test-sim` runs the common file against `build/firmware.bin`, then
-`test_arm_sim_self_only.py` (our-firmware-specific tests). When a factory image
-is given it *also* runs the common file against that image and
-`test_arm_sim_factory_only.py` (factory-specific tests) — the common code is thus
-executed against both.
+`make test-sim` runs two sub-targets:
+
+- **`test-sim-ours`** builds our firmware, runs the common file against
+  `build/firmware.bin`, then `test_arm_sim_self_only.py`.
+- **`test-sim-factory`** runs the common file against the factory `.bin`, then
+  `test_arm_sim_factory_only.py` — so the common code is executed against both
+  images.
+
+The common runner only accepts a **flat `.bin`**, so a vendor Intel `.hex` is
+converted first. `make factory LXP_FACTORY_HEX=/path/App.hex` runs the same
+HEX→flat conversion as `tools/hex2bin.py` (gaps filled with `0xFF`, every byte at
+its true flash address) and writes `reference/com_flat.bin` (overridable with
+`FACTORY_BIN=`). `test-sim-factory` uses `$LXP_FACTORY_BIN` if set, else that
+file, and will auto-convert from `$LXP_FACTORY_HEX` if the `.bin` is missing.
 
 Needs `pip install unicorn`. The factory image is never committed (it is
-proprietary); the factory runs **SKIP** rather than fail when it is absent, so
-`make test-sim` is green on our firmware alone. Point `LXP_FACTORY_HEX` (or
-`LXP_FACTORY_BIN`) at the factory image to run the oracle checks — **the format
-is auto-detected by content**, so either var accepts either an Intel `.hex` (the
-harness runs the same HEX→flat conversion as `tools/hex2bin.py`, in memory) or an
-already-converted flat `.bin`. `LXP_FACTORY_HEX` takes precedence if both are set.
+proprietary); `test-sim-factory` **SKIPS** rather than fails when no factory
+`.bin` is available, so `make test-sim` is green on our firmware alone.
 
 ## Adding a behaviour (the TDD loop)
 

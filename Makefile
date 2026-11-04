@@ -85,27 +85,54 @@ test:
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
 #
-# The common tests (tests/test_arm_sim.py) are run twice -- the SAME test code
-# against each firmware image, passed as a command-line argument: once against
-# our build, and (when a factory image is provided) once against the factory
-# oracle. Target-specific tests that must name internal symbols/addresses live in
-# their own files: test_arm_sim_self_only.py (our firmware) and
+# The common tests (tests/test_arm_sim.py) run the SAME test code against each
+# firmware image, given as a flat .bin on the command line (it rejects a .hex).
+# Target-specific tests that must name internal symbols/addresses live in their
+# own files: test_arm_sim_self_only.py (our firmware) and
 # test_arm_sim_factory_only.py (the factory image).
 #
-# The factory image is never committed (it is proprietary); give one via
-# $LXP_FACTORY_HEX (a vendor .hex, converted in-memory), $LXP_FACTORY_BIN, or
-# reference/com_flat.bin. Without one, the factory runs are skipped and the
-# target is still green on our firmware alone.
-FACTORY_IMG := $(or $(LXP_FACTORY_HEX),$(LXP_FACTORY_BIN),$(wildcard reference/com_flat.bin))
-test-sim: $(BUILD)/$(TARGET).bin
+#   make test-sim          # test-sim-ours + test-sim-factory
+#   make test-sim-ours     # build our fw; common + self-only tests on it
+#   make factory           # convert $LXP_FACTORY_HEX -> $(FACTORY_BIN)
+#   make test-sim-factory  # common + factory-only tests on the factory .bin
+#
+# The factory image is never committed (it is proprietary). Convert a vendor
+# .hex to the flat .bin the tests load with `make factory LXP_FACTORY_HEX=...`;
+# without a factory .bin the factory run is skipped and `make test-sim` is still
+# green on our firmware alone.
+FACTORY_BIN ?= reference/com_flat.bin
+
+# Convert a proprietary vendor Intel .hex into the flat .bin the harness loads
+# (gaps filled with 0xFF, every byte at its true flash address -- see hex2bin).
+factory:
+	@test -n "$(LXP_FACTORY_HEX)" || { \
+	  echo "make factory: set LXP_FACTORY_HEX=/path/to/vendor.hex"; exit 1; }
+	@mkdir -p $(dir $(FACTORY_BIN))
+	python3 tools/hex2bin.py "$(LXP_FACTORY_HEX)" "$(FACTORY_BIN)"
+
+test-sim: test-sim-ours test-sim-factory
+
+test-sim-ours: $(BUILD)/$(TARGET).bin
 	python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
 	python3 tests/test_arm_sim_self_only.py
-ifneq ($(FACTORY_IMG),)
-	python3 tests/test_arm_sim.py $(FACTORY_IMG)
-	LXP_FACTORY_IMG=$(FACTORY_IMG) python3 tests/test_arm_sim_factory_only.py
-else
-	@echo "# (no factory image: set LXP_FACTORY_HEX/LXP_FACTORY_BIN to run the factory oracle)"
-endif
+
+# Runs against $LXP_FACTORY_BIN if set, else $(FACTORY_BIN); if that is missing
+# but $LXP_FACTORY_HEX is set, it is converted first (via the `factory` target).
+# Skips cleanly when no factory image is available.
+test-sim-factory:
+	@bin="$(LXP_FACTORY_BIN)"; \
+	if [ -z "$$bin" ]; then \
+	  bin="$(FACTORY_BIN)"; \
+	  if [ ! -f "$$bin" ] && [ -n "$(LXP_FACTORY_HEX)" ]; then \
+	    $(MAKE) --no-print-directory factory; fi; \
+	fi; \
+	if [ -f "$$bin" ]; then \
+	  echo "python3 tests/test_arm_sim.py $$bin"; \
+	  python3 tests/test_arm_sim.py "$$bin" && \
+	  LXP_FACTORY_IMG="$$bin" python3 tests/test_arm_sim_factory_only.py; \
+	else \
+	  echo "# test-sim-factory: no factory .bin (run 'make factory LXP_FACTORY_HEX=...'); skipped"; \
+	fi
 
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App
@@ -116,4 +143,4 @@ endif
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory

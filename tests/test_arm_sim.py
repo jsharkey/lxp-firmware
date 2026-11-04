@@ -14,7 +14,7 @@ oracle and our reimplementation are proven to agree -- parity by shared contract
 The Makefile's `test-sim` target invokes this twice, once per image:
 
     python3 tests/test_arm_sim.py build/firmware.bin          # our firmware
-    python3 tests/test_arm_sim.py path/to/factory.hex         # factory oracle
+    python3 tests/test_arm_sim.py reference/com_flat.bin      # factory oracle (flat .bin)
 
 Target-specific tests (which must name internal symbols or addresses, so they
 cannot be shared) live in their own files:
@@ -25,14 +25,15 @@ cannot be shared) live in their own files:
 Usage:
     python3 tests/test_arm_sim.py [IMAGE]
 
-IMAGE may be an Intel .hex or a raw flat .bin (auto-detected by content). If
-omitted, $LXP_SIM_IMAGE is used, else build/firmware.bin if it exists (so plain
-`python3 tests/test_arm_sim.py` and pytest still work after `make`). Tests SKIP
-(not fail) when no image is available. Needs `pip install unicorn`.
+IMAGE must be a flat .bin (an Intel .hex is rejected -- convert it first with
+`make factory` or tools/hex2bin.py). If omitted, $LXP_SIM_IMAGE is used, else
+build/firmware.bin if it exists (so plain `python3 tests/test_arm_sim.py` and
+pytest still work after `make`). Tests SKIP (not fail) when no image is
+available. Needs `pip install unicorn`.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
-from arm_sim import ArmSim
+from arm_sim import ArmSim, is_intel_hex
 
 # Image under test. Set by the __main__ runner from argv; otherwise resolved
 # from the environment / default build so pytest and a bare run still work.
@@ -54,16 +55,20 @@ def _resolve_image():
 
 
 def _sim():
-    """Build a fresh sim on the image under test (no symbols -- these tests are
-    pure black box, so the same code loads our .bin and the factory .hex alike).
-    """
+    """Build a fresh sim on the flat-.bin image under test (no symbols -- these
+    tests are pure black box, so the same code loads our .bin and the factory
+    .bin alike). A .hex is rejected: convert it first (`make factory`)."""
     path = _resolve_image()
     if not path:
         raise Skip("no image (pass one on the command line, set $LXP_SIM_IMAGE, "
                    "or `make` so build/firmware.bin exists)")
     if not os.path.exists(path):
         raise Skip("image %s not found" % path)
-    return ArmSim.from_image(path)
+    if is_intel_hex(path):
+        raise ValueError("%s is an Intel .hex; test_arm_sim.py takes a flat .bin "
+                         "only -- convert it first (`make factory` or "
+                         "tools/hex2bin.py)" % path)
+    return ArmSim(path)
 
 
 def _observe_pb7():
