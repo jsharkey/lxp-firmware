@@ -267,21 +267,22 @@ flat reg-indexed array — registers map to *named field offsets*). Evidence:
   `sub_0802afe2`, a scheduler task on **UART5** (`0x40005000`); it reads/writes
   `0x20009854` by field.
 
-### First field proven end-to-end (ARM side)
+### ⚠️ Retraction: `settings + 0x0B` is NOT output priority
 
-`sub_0802afe2` does `ldrh [0x20009854 + 0x0B]; cmp #2` — the exact **"is AC First?"**
-test. So **output priority lives at `settings + 0x0B`**, and:
+An earlier version of this section claimed `settings + 0x0B` was output priority,
+from a single `ldrh [0x20009854+0x0B]; cmp #2` read as the "is AC First?" test.
+**That was a misinterpretation and is withdrawn.** Looking at the full dispatch in
+`sub_0802afe2`, `[0x20009854+0x0B]` is compared against a dozen different values
+(`0,2,4,5,6,8,9,0xa,0xb,0xd,0x13,0x15,0x17`), i.e. it is a **multi-valued
+state/command field**, not a 0/1/2 output-priority setting; that `cmp #2` was a
+state comparison. So **no register→offset field mapping is proven yet** — the
+`0x20009854` struct is confirmed as the big central context/settings struct
+(validated by `sub_080132a0`, written by the HMI handlers), but the per-register
+field offsets inside it are still unmapped.
 
-```
-Modbus reg 145 (HR_OUTPUT_PRIO_CFG, 2 = AC First)
-  → ARM settings 0x20009854 + 0x0B
-  → config frame (0x20009414 snapshot)
-  → DSP block 0 → g_outputPrio (0x00ADA8), tested == 2   (docs/07)
-```
-
-This is the full chain the project set out to prove, for one field, from the
-`.hex`. The value match (`== 2` = AC First on both the ARM field and the DSP
-target) is the cross-check.
+Lesson for this map: single `cmp` reads are not enough to pin a field — a mapping
+needs the value to round-trip (write reg N via Modbus → observe the stored
+offset, or read it back), which is what the driver below is for.
 
 ### Completing the map — the working method
 
@@ -292,8 +293,11 @@ UART5 Modbus handler, and read the response — the returned value *is* the
 field offset, giving `reg N → settings offset` directly, one sweep for all
 registers. Then `settings offset → frame position → block` closes it (the frame
 is the `0x20009414` RAM snapshot; the DSP block boundaries are the `DAT_0000B300`
-completeness bits). **Status: store + method + one proven field done; the full
-reg→offset sweep is the next step (not yet run end-to-end).**
+completeness bits). **Status: the central struct (`0x20009854`) and the dongle
+link (UART5, buffer `0x20008ca4`, TX data at `+0xc9`) are located; NO per-register
+field offset is proven yet (the earlier output-priority claim was retracted).
+Driving the gated dongle task to emit a register image under emulation is still
+unsolved — cold runs don't build a response without a validly-injected request.**
 
 ## Reference (word addresses / DSP)
 
