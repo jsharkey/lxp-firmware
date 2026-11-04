@@ -44,6 +44,7 @@ Honest picture of where things stand:
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
 - [ ] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — needs schematic or data-flow trace
 - [ ] Decode the `0x21/0x22/0x23` payloads; populate live telemetry from the DSP link
+- [x] **Disassemble the TI C28x control DSP** → Ghidra 12.1.2 + `ghidra-tms320c28x` SLEIGH module; F2837x-class, image byte-swapped, ~650 functions recovered. First decode: the **"AC First" output-priority logic** (see [`docs/07-dsp-ac-first-mode.md`](docs/07-dsp-ac-first-mode.md))
 - [ ] Verify on hardware
 
 ## The honest scope

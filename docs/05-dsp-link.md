@@ -88,6 +88,17 @@ main thing still to decode.
   properly needs a C28x disassembler (Ghidra has a C28x/`TMS320C28x` processor
   module; TI's own tools also work).
 
+> **Update:** the DSP image has now been disassembled — Ghidra 12.1.2 + the
+> `outlandnish/ghidra-tms320c28x` SLEIGH module, ~650 functions recovered. Two
+> findings matter here: (1) the image is **byte-swapped** (each 16-bit word is
+> stored high-byte-first — see [`docs/07`](07-dsp-ac-first-mode.md) for the
+> proof via `LCR` opcode counts), and (2) it is an **F2837x-class** part (flash
+> at word `0x80000`; ePWM1–12 / 4× ADC / CLA). The "string extraction is
+> unreliable" note is academic: the control image has **no** human-readable
+> strings — the ARM-side Modbus map is the Rosetta stone. First decode target
+> ("AC First" output-priority logic) written up in
+> [`docs/07-dsp-ac-first-mode.md`](07-dsp-ac-first-mode.md).
+
 ## Comms stack & write-path (RE on the corrected image)
 
 Traced from the USART3 frame-ready flag (`0x200004b8`) and the dispatchers:
