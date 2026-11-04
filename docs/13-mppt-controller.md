@@ -140,6 +140,64 @@ variable-length Modbus-RTU PDU (`addr/func/len/…`). That matches the EG4 inter
 link described in `docs/05-dsp-link.md` — a Modbus-derived framing with the
 vendor's own command set — rather than vanilla Modbus RTU on the wire.
 
+### Decoded USART1 frame layout and command set
+
+Recovered from the RX state machine (`0x08013114`), the frame dispatcher
+(`0x08013968`), the record decoder (`0x08013340`) and the TX builder
+(`0x080138E0`). Per-UART comms context is a struct at `0x200019F0` (RX buffer at
+`+0x00`, write index `+0x78`, expected length `+0x7C`, busy lock `+0x82`, RX-idle
+tick `+0x80`; the TX ring is at `+0x3C`).
+
+**Outer frame (same for RX and TX):**
+
+| offset | size | field | notes |
+|---|---|---|---|
+| 0 | 1 | `0x42` (`'B'`) | start-of-frame; byte-0 ≠ `0x42` is dropped |
+| 1 | 1 | `0x01` | frame class / protocol id; the dispatcher routes **only** class `0x01` (to the telemetry parser) |
+| 2 | 1 | `addr` | node/port id — stored, **not** range-checked (so no slave-address filtering here) |
+| 3 | 1 | `len` | payload length |
+| 4 … 3+`len` | `len` | payload | |
+| 4+`len` | 1 | CRC-16 **hi** | Modbus RTU CRC-16 over bytes `[0 … 3+len]` |
+| 5+`len` | 1 | CRC-16 **lo** | **big-endian** (hi first) — note: vanilla Modbus RTU sends lo first |
+
+`total = len + 6` (2 sync + addr + len + 2 CRC), minimum 7. The receiver is
+framed by **silence**: an idle tick (`0x0801392E`) resets the parser after ~30
+ticks without a complete frame — the Modbus-RTU inter-frame-gap idea. On a
+complete frame the dispatcher recomputes the CRC over `len+4` bytes and **rejects
+on mismatch**, then checks `byte[1]==1` before parsing.
+
+**Class-1 payload = fixed header + a stream of typed records:**
+
+- bytes `4…0x13` — a ~16-byte header (a byte at 4, two big-endian 32-bit words at
+  5 and 9, more fields at `0xC…0x13`) copied into the status struct at
+  `0x20001CC0`.
+- bytes `0x14 …` — back-to-back **records**, each `=[type:u8][positional fields]`,
+  walked by `0x08013340`. Values are big-endian; each decoded record OR-s an
+  "updated" bit into the event mask at `0x20001D82` for the main loop.
+
+| record `type` | → destination struct | payload shape |
+|---|---|---|
+| `0` | `0x20001CAC` (+ `0x20001CC0`) | 3× BE16, 4× u8, BE16 + a validated BE16 (via `0x8012D28`) — the largest record |
+| `1` | `0x20001CFC` | u8 + 4× BE16 |
+| `2` | `0x20001B74` (`+0x2C…+0x34`) | 5× BE16 |
+
+So class 1 is a **telemetry report**: a header plus one or more register groups
+(types 0/1/2), each landing in its own RAM structure. The physical meaning of each
+register (which BE16 is Vpv, Ipv, Ppv, temperature, status…) is **not** decoded
+here — that needs the vendor register map or a live bus capture — but the framing,
+the CRC, and the record/command structure above are read directly from the code.
+
+**Transmit path (`0x080138E0`):** build the body into the TX buffer at
+`0x20001BB4`, compute the Modbus CRC-16 (`0x0801074C`), append it big-endian
+(hi then lo), then enqueue (`0x080130A8`) into the USART1 TX ring; the `TXE`
+interrupt drains it a byte at a time to `TDR`. Outgoing frames use the identical
+`0x42 0x01 … CRC` envelope.
+
+> Likely the same family as the ARM↔DSP link in `docs/05-dsp-link.md` (Modbus
+> CRC-16, big-endian, fixed framing). Worth cross-checking the start byte (`0x42`
+> vs that link's), the big-endian-CRC convention, and whether the record types map
+> onto its `0x21/0x22/0x23` commands.
+
 ## Scope / what this means for the project
 
 This image is **out of scope** for the current reimplementation, which targets
