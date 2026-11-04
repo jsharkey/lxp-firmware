@@ -730,3 +730,7 @@ Still solid and DSP-independent: the **register definitions for 64-89**
 evaluators** (`sub_0801eb4c` / `sub_0801e1dc`) with their results flowing to
 ARM scheduling + telemetry. The exact BE DSP frame offsets for regs 64-89 should
 be taken from docs/10 (the DSP side), not from the LE emulation here.
+
+> **Hand-off:** a ready-to-run BE-mode (DSP-path) probe and the cross-check plan
+> for the DSP agent are in [`docs/17`](17-dsp-frame-probe-handoff.md)
+> (`tools/emu_dsp_frame_probe.py`).
