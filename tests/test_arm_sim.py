@@ -139,7 +139,7 @@ def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
     if args:
         _IMAGE[0] = args[0]
-    return run_tests("Common GPIO behaviour (both images)",
+    return run_tests("Common tests (both images)",
                      _resolve_image() or "<none>", globals())
 
 

@@ -53,15 +53,12 @@ def run_tests(title, image, namespace):
         emoji, label, col = TAGS[kind]
         return ("%s %s" % (emoji, c(col, label))) if pretty else label.strip()
 
-    # --- header banner -----------------------------------------------------
+    # --- header banner (a single rule + title line delimits the block) -----
     bar = "═" * 64 if pretty else "=" * 64
     head = "%s  ·  image = %s" % (title, image) if pretty \
         else "%s  (image = %s)" % (title, image)
-    print()
     print(c("1;36", bar))
     print(c("1;36", "  " + head))
-    print(c("1;36", bar))
-    print()
 
     tests = [v for k, v in sorted(namespace.items())
              if k.startswith("test_") and callable(v)]
@@ -90,7 +87,6 @@ def run_tests(title, image, namespace):
         parts.append(c("31", "%d error" % n["error"]))
     if n["skip"]:
         parts.append(c("33", "%d skipped" % n["skip"]))
-    print()
     print("  " + c("1", "→ ") + ", ".join(parts))
-    print()
+    print()   # one trailing blank line separates this block from the next
     return 1 if (n["fail"] or n["error"]) else 0
