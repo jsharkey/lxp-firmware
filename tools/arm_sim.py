@@ -295,8 +295,64 @@ class ArmSim:
             pass
         return self
 
+    # ---- snapshot / restore (warm once, clone per test, hermetically) ------
+    def snapshot(self):
+        """Capture the full machine state (CPU context + every mapped memory
+        region + the GPIO shadow). restore() returns to exactly this point, so a
+        firmware can be warmed once and each test branched from an identical,
+        hermetic copy without re-booting."""
+        regions = [(b, e - b + 1) for (b, e, _p) in self.uc.mem_regions()]
+        return {
+            "ctx": self.uc.context_save(),
+            "mem": [(b, s, bytes(self.uc.mem_read(b, s))) for (b, s) in regions],
+            "regions": set(regions),
+            "shadow": dict(self.shadow),
+            "drives": list(self.drive_log),
+        }
+
+    def restore(self, snap):
+        """Reset to a snapshot()."""
+        for (b, e, _p) in self.uc.mem_regions():          # drop pages mapped since
+            if (b, e - b + 1) not in snap["regions"]:
+                try: self.uc.mem_unmap(b, e - b + 1)
+                except Exception: pass
+        for (b, s, data) in snap["mem"]:
+            self.uc.mem_write(b, data)
+        self.uc.context_restore(snap["ctx"])
+        self.shadow = dict(snap["shadow"])
+        self.drive_log = list(snap["drives"])
+        return self
+
+    def run(self, max_insn):
+        """Resume execution from the current PC for up to max_insn instructions
+        (use after restore(); does not reset)."""
+        pc = self.uc.reg_read(UC_ARM_REG_PC)
+        try:
+            self.uc.emu_start(pc | 1, 0xFFFFFFFF, count=max_insn)
+        except UcError:
+            pass
+        return self
+
+    def run_until_input_read(self, pin, max_insn=8_000_000, vector_base=None):
+        """Boot and stop the moment the firmware's loop first reads `pin`'s port
+        (its IDR) -- i.e. the first time it samples that input. The natural warm
+        point for an input->output behaviour: boot is done, the loop is about to
+        look at the pin, and it is reached the same way regardless of the pin's
+        eventual level (boot doesn't depend on it)."""
+        ip, _ = parse_pin(pin)
+        idr = GPIO[ip] + R_IDR
+        def _stop(uc, access, addr, size, value, ud):
+            uc.emu_stop()
+        h = self.uc.hook_add(UC_HOOK_MEM_READ, _stop, begin=idr, end=idr + 4)
+        try:
+            self.run_reset(max_insn=max_insn, vector_base=vector_base)
+        finally:
+            self.uc.hook_del(h)
+        return self
+
     def run_until_output(self, out_pin, level=1, settle_input=None,
-                         settle_reads=40, max_insn=8_000_000, vector_base=None):
+                         settle_reads=40, max_insn=8_000_000, vector_base=None,
+                         reset=True):
         """Boot the firmware and run its own event loop until it drives `out_pin`
         to `level` -- then stop immediately. This keeps the black box (no entry
         point named) but finishes as soon as the expected edge happens instead of
@@ -335,7 +391,10 @@ class ArmSim:
             hooks.append(self.uc.hook_add(UC_HOOK_MEM_READ, _stop_on_settle,
                                           begin=idr, end=idr + 4))
         try:
-            self.run_reset(max_insn=max_insn, vector_base=vector_base)
+            if reset:
+                self.run_reset(max_insn=max_insn, vector_base=vector_base)
+            else:
+                self.run(max_insn)        # resume from a restored warm state
         finally:
             for h in hooks:
                 self.uc.hook_del(h)

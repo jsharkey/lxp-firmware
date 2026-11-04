@@ -34,11 +34,15 @@ sim = ArmSim("path.bin", symbols_dict) # explicit
 
 sim.set_input("PB7", 1)                # inject an external input level (IDR bit)
 sim.clear_drives()
-# boot the image's own loop (black box) and stop at the expected edge; for the
-# no-edge case, stop once the input has been sampled settle_reads times:
-driven = sim.run_until_output("PB7", level=1, settle_input="PB7", settle_reads=40)
-sim.run_reset(max_insn=300_000)        # or run a fixed budget
+# boot the image's own loop (black box) and stop at the expected edge:
+driven = sim.run_until_output("PB7", level=1, max_insn=200_000)
+sim.run_reset(max_insn=300_000)        # or run a fixed budget from reset
 sim.call("mb_port_init", (cfg_ptr,))   # or call one function, by symbol/address
+
+# warm once, then branch each case from an identical, hermetic copy:
+sim.run_until_input_read("PB7")        # boot up to the first time PB7 is sampled
+warm = sim.snapshot()                  # CPU + all memory + GPIO shadow
+sim.restore(warm); sim.set_input("PB7", 1); sim.run_until_output("PB7", 1, reset=False)
 
 sim.get_output("PB7")                  # current driven level (shadow latch)
 sim.was_driven("PB7", level=1)         # was it driven (to a level) since clear?
@@ -48,6 +52,25 @@ sim.r32(addr) / sim.bit(addr, n)       # peek RAM (status words, flags)
 `run_reset()` finds the vector table itself (`vector_base()`), so our
 monolithic image (@`0x08000000`) and the factory App that sits above an absent
 bootloader (@`0x08005000`) both "just boot".
+
+### Warm once, clone per case (speed)
+
+Booting the factory to where its loop first touches a pin costs ~640k
+instructions; paying that per test case is the dominant cost. Instead the test
+**warms once** — `run_until_input_read("PB7")` boots up to the first PB7 sample
+(boot is input-independent, so the warm point is identical whatever level we
+test) — takes a `snapshot()` (CPU context + every mapped region + the GPIO
+shadow), and `restore()`s it before each case. Each case resumes
+(`run_until_output(reset=False)`) and finishes in a few hundred instructions.
+Restores are hermetic: order-independent and repeatable (verified).
+
+> **Why not warm to full "steady state"?** This harness has no SysTick/timer, so
+> the factory's cooperative scheduler only advances during boot — its periodic
+> tasks (the PB7 sampler among them) run in a short **boot window** (~instr 640k
+> here) and then not again. Warming *past* that window would skip the behaviour
+> entirely. So we warm only up to the first sample of the pin under test. The day
+> we inject a timer tick (so the loop genuinely cycles), warm-to-steady-state +
+> clone becomes both correct and an even bigger win.
 
 ## The parity test (factory oracle == our firmware), black box
 
@@ -66,15 +89,13 @@ it does not.
 
 In the `ceaa-07xx` image this is factory `sub_0802e452` (debounce-sample PB7 10×,
 drive high on a majority); our `pb7_sample_poll()` (`src/gpio_sample.c`, called
-from `main`'s loop) mirrors it. The test runs each firmware from its reset
-vector, so *their* loops do the sampling and driving, and `run_until_output()`
-stops the instant the expected edge appears (or, for the low case, once PB7 has
-been sampled enough times) — so the suite finishes in a fraction of a second
-without a factory image, rather than burning a multi-million-instruction budget.
-It asserts our firmware propagates PB7, and — when a factory image is available —
-that the two behave identically; with no factory image the our-firmware check
-still runs. Only the observable GPIO is compared, so the two can match despite
-different internals.
+from `main`'s loop) mirrors it. The test warms each firmware once, snapshots, and
+branches both cases from that copy (above), so *their* loops do the sampling and
+driving while the slow boot is paid once. It asserts our firmware propagates PB7,
+and — when a factory image is available — that the two behave identically; with
+no factory image the our-firmware check still runs. Only the observable GPIO is
+compared, so the two can match despite different internals. Runtime: ~0.4s
+without a factory image, ~1.3s with one (down from ~5s / ~10s).
 
 ## Running our firmware (boot smoke test)
 

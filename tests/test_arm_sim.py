@@ -60,16 +60,24 @@ def _observe_pb7(make_sim):
     for our firmware. (The factory image boots its App above an absent
     bootloader; the harness finds the vector table itself.)
     """
+    # Warm up ONCE: boot the firmware up to the first time its loop samples PB7
+    # (boot is done, and it's reached the same way regardless of PB7's level), then
+    # snapshot. Each case restores that identical warm state -- hermetic, but we
+    # pay the (slow) boot only once instead of per case.
+    sim = make_sim()
+    sim.run_until_input_read("PB7")
+    warm = sim.snapshot()
+
     out = {}
     for level in (1, 0):
-        sim = make_sim()
+        sim.restore(warm)
         sim.set_input("PB7", level)
         sim.clear_drives()
-        # Run the loop and stop the moment PB7 is driven high (the expected edge);
-        # for the low case, stop once the loop has sampled PB7 ~40 times without
-        # driving it. Either way we finish fast instead of burning a huge budget.
-        out[level] = sim.run_until_output("PB7", level=1,
-                                          settle_input="PB7", settle_reads=40)
+        # Resume from the warm point; stop at the PB7-high edge if it comes. A
+        # small budget comfortably covers the sampler's decision window, so the
+        # low case (no edge) also finishes fast.
+        out[level] = sim.run_until_output("PB7", level=1, max_insn=200_000,
+                                          reset=False)
     return out
 
 
