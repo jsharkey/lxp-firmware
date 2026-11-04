@@ -257,6 +257,55 @@ offset to the DSP block boundaries (`DAT_0000B300` completeness bits / the
 `FUN_00092EE2` targets). That isolates reg→offset→block per field, with proof on
 both ends. Locating the holding-register store is the prerequisite.
 
+## UPDATE — the `0x20009414` frame builder is located (and it is request-driven)
+
+The "packer not isolated" caveat above is now resolved. Tracing the writers of
+the frame-#1 length (`0x2000a922`) and send-gate (`0x2000a920`) pins the builder:
+
+- **`sub_08014fec` builds the `0x20009414` frame and sets its length.** It is a
+  **dispatcher**: given a pointer to the USART3 **RX** buffer `0x20007490`, it reads
+  a class byte `[0x20007490+1]` and calls one of `sub_0803373c` (classes 3/4),
+  `sub_08033bb4`, or `fn_NOTB` (classes 0x1b–0x1d) to serialize the response into
+  `0x20009414`, then stores the built length at `0x2000a922` and bumps the
+  change-gate `0x2000a920` so `sub_08015094` transmits it. So the "config push"
+  on this frame is actually a **response to a received request** — the peer polls,
+  the ARM answers — not an unsolicited positional snapshot. (The periodic
+  **clock** frame `0x20009754` *is* unsolicited; see above.)
+
+- **`sub_0803373c` is the serializer** (byte-by-byte, `strb [frame, fp++]`).
+  Emulated with settings seeded so `settings[i]==i`, a class-3 request produces a
+  header: `[addr][class][SN 10 bytes = settings[1..10] at frame 0x02..0x0b][0 0 0]
+  …`. The **10-byte SN is copied from `settings+0x01`** into frame offset `0x02`
+  (this is the "18-byte SN+timestamp header").
+
+- **The block payload is a Modbus-style register *range* read, not a settings
+  struct copy.** Past the header the serializer walks a `[start, start+count)`
+  register range (the start/count come from the request via `sub_08014dc6`) and
+  for each register looks the value up in a **register-value image at
+  `0x2000691c`**, 2-D-indexed by register number (e.g. one branch handles a
+  16-register group as a 4×4 grid of 54-byte records). Register *values*, not raw
+  settings bytes, are what gets serialized — so the DSP-visible "blocks" are
+  register ranges, and `FUN_00092EE2`'s positional layout (docs/10) is the DSP's
+  interpretation of a specific requested range.
+
+**What this means for the regs-64-89 → block-3-6 map (honest status).** The
+mapping is now a tractable-but-unfinished three-part chain, and it is *not* yet
+proven end-to-end:
+1. **reg → value image.** The grid-charge window registers (64-89) resolve to
+   entries in the `0x2000691c` register image; the exact index formula per group
+   still needs tracing (each request branch indexes differently).
+2. **value image → frame offset.** Determined by which range the DSP requests;
+   extractable by emulating `sub_0803373c` per request (the `tools/` probes do
+   this — a class-3 request already yields the header layout).
+3. **frame offset → DSP slot.** Already given by [`docs/10`](10-dsp-config-field-map.md)
+   (blocks 3-6 triplets → `0xAD8F…`/`0xAD9C…`/`0xADAC…`).
+
+Two blockers remain before the 64-89 map can be stated with proof: the **register
+definitions for 64-89** (the EG4 18kPV-12LV holding-register table — not committed
+to this repo), and the **per-group index formula** into `0x2000691c`. Until both
+are in hand, the slot assignments would be guesses — deliberately not recorded
+here.
+
 ## Worked example — AC-First registers 152–157 (PROVEN, ARM `.hex`)
 
 Tracing Modbus regs 152–157 (the "AC First" load-priority time windows) through
