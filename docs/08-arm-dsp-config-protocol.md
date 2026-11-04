@@ -177,6 +177,44 @@ UART for the config push differs from USART3. The DSP-side framing is solid; the
 exact ARM-side *emit* site is still unpinned and worth confirming (the Unicorn
 harness can capture it once the faulting cold-start state is seeded).
 
+## ARM-side link map — USART3 CONFIRMED (and the packer hunt)
+
+Investigated with the Unicorn harness (`tools/emu.py`, now with `stubs`/`stop_at`)
+and static RE. Results, separating confirmed from not-yet-proven:
+
+**Confirmed (ARM side):**
+- **The DSP link is USART3** — no longer just "all but certain". The runtime
+  parser `sub_0801c3e6` is driven by `sub_0801c6e0`, which references USART3
+  (`0x40004800`). The per-UART runtime clusters are clean: USART3
+  `sub_0801c2ea/0801c672/0801c6e0`, USART2 `…c792/c992/c9ec`, UART5, UART4.
+- **Two protocol layers share USART3** (matches docs/05's "two framings, one
+  transport"): the **bootloader / firmware-update** path (`0x21/0x22/0x23`, RX
+  buffer `0x20000028`, dispatch `sub_08001482 → sub_08001420`) and the
+  **runtime config/telemetry** path (link buffer `0x20007490`, RX frame at
+  `[0..0x31F]`, **TX frame at `+0x321`**, drained to USART3 by `sub_0801c672`).
+- **The runtime DSP comms task is `sub_0801c11c`** — a scheduler-registered
+  periodic task (via `sub_0803e4c8`), re-confirming the push is continuous.
+
+**Not yet proven (honest):** the byte-level **packer** — the exact code that
+writes each holding-register value into each block's payload — was **not
+isolated**. Store-offset heuristics flagged status structures, not the frame;
+and cold emulation doesn't exercise the packer because (a) it is gated by
+runtime flags that are 0 from a cold start, so most sub-builders early-return,
+and (b) the ARM settings RAM is zero, so any frame that *is* built is empty. No
+writes to the `0x20007490+0x321` TX region were observed in a cold single pass.
+
+**Recommended path to the full register→block map.** The mapping is more
+tractably proven from the **DSP deserialiser `FUN_00092EE2`** (already decoded
+in Ghidra, docs/07): its field read-order per block + the DSP RAM targets
+(`0x00AD??`/`0x00AB??`/`0x00B2??`) + the register semantics give block→register
+directly. The one field proven so far is **block 0: output priority = Modbus
+reg 145 → `g_outputPrio` (0x00ADA8)** (docs/07). To confirm from the ARM side,
+the next harness step is: locate the ARM holding-register store (via the dongle
+Modbus write handler), seed it + the gating flags, then emulate `sub_0801c11c`
+and read the frame assembled at `0x20007490+0x321`. Until then, blocks 1–7 field
+semantics remain unmapped and the `src/dsp/dsp_config.c` field tables stay as
+clearly-marked stubs.
+
 ## Reference (word addresses / DSP)
 
 | symbol | addr | role |
