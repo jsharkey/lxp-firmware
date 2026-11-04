@@ -165,6 +165,16 @@ directly. These are **target-specific**, so they live outside the common file:
 - `tests/test_arm_sim_self_only.py` — our firmware, by symbol (`src/relay.c`);
 - `tests/test_arm_sim_factory_only.py` — the factory image, by address.
 
+Both take their image on the command line, the same style as `test_arm_sim.py`
+(no path-guessing, no environment variables). The factory file needs only the
+flat `.bin`; the self file also needs the `.elf`, since it calls our firmware's
+functions *by name* and so needs the symbol table:
+
+```bash
+python3 tests/test_arm_sim_self_only.py    build/firmware.bin build/firmware.elf
+python3 tests/test_arm_sim_factory_only.py reference/com_flat.bin
+```
+
 **1. Working mode → run-enable relay** (`test_relay_follows_working_mode`): PC6
 is closed iff the inverter is in a running operating mode. Factory: seed
 `IR_STATE` (`0x2000d0e4+0xa0`), invoke `sub_08016ec6`; ours: `relay_set_mode()` +

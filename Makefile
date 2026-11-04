@@ -115,13 +115,13 @@ $(FACTORY_BIN):
 
 factory: $(FACTORY_BIN)
 
-test-sim-ours: $(BUILD)/$(TARGET).bin
+test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 	python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
-	python3 tests/test_arm_sim_self_only.py
+	python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 
 test-sim-factory: $(FACTORY_BIN)
 	python3 tests/test_arm_sim.py $(FACTORY_BIN)
-	LXP_FACTORY_IMG=$(FACTORY_BIN) python3 tests/test_arm_sim_factory_only.py
+	python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
 
 test-sim: test-sim-ours
 ifneq ($(or $(strip $(LXP_FACTORY_HEX)),$(wildcard $(FACTORY_BIN))),)

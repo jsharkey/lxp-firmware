@@ -15,21 +15,22 @@ schedule (docs/19), so they can't be reached purely by injecting a GPIO input.
 Instead we call the genuine factory drive code directly with the state the RTOS
 task would act on (the override path is self-contained -- no boot needed).
 
-The factory image is never committed (it is proprietary), so these SKIP (not
-fail) unless one is provided, via (in order) $LXP_FACTORY_IMG, $LXP_FACTORY_HEX,
-$LXP_FACTORY_BIN, or reference/com_flat.bin. An Intel .hex or a flat .bin is
-accepted (auto-detected). Needs `pip install unicorn`.
+Usage (same style as test_arm_sim.py -- the image is a command-line argument, a
+flat .bin; a .hex is rejected, convert it first with `make factory`):
 
-    LXP_FACTORY_HEX=/path/App.hex python3 tests/test_arm_sim_factory_only.py
+    python3 tests/test_arm_sim_factory_only.py reference/com_flat.bin
+
+The factory image is never committed (it is proprietary); with no image argument
+the tests SKIP. Needs `pip install unicorn`.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
-from arm_sim import ArmSim
+from arm_sim import ArmSim, is_intel_hex
 from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
 
-# factory image resolution (never committed -- proprietary)
-_DEFAULT_BIN = "reference/com_flat.bin"
+# Factory flat-.bin image under test. Set by the __main__ runner from argv.
+_IMAGE = [None]
 
 
 class Skip(Exception):
@@ -37,16 +38,15 @@ class Skip(Exception):
 
 
 def _factory():
-    path = (os.environ.get("LXP_FACTORY_IMG")
-            or os.environ.get("LXP_FACTORY_HEX")
-            or os.environ.get("LXP_FACTORY_BIN")
-            or (_DEFAULT_BIN if os.path.exists(_DEFAULT_BIN) else None))
+    path = _IMAGE[0]
     if not path:
-        raise Skip("no factory image (set $LXP_FACTORY_HEX to a vendor .hex, "
-                   "or $LXP_FACTORY_BIN / reference/com_flat.bin to a flat image)")
+        raise Skip("no factory image given (pass a flat .bin as the argument)")
     if not os.path.exists(path):
         raise Skip("factory image %s not found" % path)
-    return ArmSim.from_image(path)
+    if is_intel_hex(path):
+        raise ValueError("%s is an Intel .hex; pass a flat .bin -- convert it "
+                         "first (`make factory` or tools/hex2bin.py)" % path)
+    return ArmSim(path)
 
 
 # --- factory internals for the manual/AutoTest relay override (ceaa-07xx) ---
@@ -102,12 +102,16 @@ def test_relay_follows_working_mode():
         assert _run_relay_factory(st) == 0, "factory: PC6 should be open for state 0x%02x" % st
 
 
-# --- zero-dependency runner -------------------------------------------------
-if __name__ == "__main__":
+# --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
+def _main(argv):
+    args = [a for a in argv[1:] if not a.startswith("-")]
+    if args:
+        _IMAGE[0] = args[0]
+    print("# test_arm_sim_factory_only.py: image = %s" % (_IMAGE[0] or "<none>"))
+
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
     rc = 0
-    print("# test_arm_sim_factory_only.py: factory image")
     for t in tests:
         try:
             t(); print("PASS  %s" % t.__name__)
@@ -117,4 +121,8 @@ if __name__ == "__main__":
             rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
         except Exception as e:
             rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    sys.exit(rc)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv))

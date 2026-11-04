@@ -15,15 +15,24 @@ schedule (docs/19), so they can't be reached purely by injecting a GPIO input.
 Instead we call the real drive code with seeded state. g_ticks is an internal
 symbol with no factory equivalent.
 
-Runs with `python3 tests/test_arm_sim_self_only.py` (needs `pip install
-unicorn`); also discoverable by pytest. SKIPs (not fails) when build/firmware.*
-is absent. Run `make` first.
+Usage (same style as test_arm_sim.py -- the image is a command-line argument).
+Because these tests call firmware functions *by name*, the symbol table is
+needed too, so the .elf is a second argument alongside the flat .bin:
+
+    python3 tests/test_arm_sim_self_only.py build/firmware.bin build/firmware.elf
+
+With no arguments the tests SKIP. Needs `pip install unicorn`; the .elf's symbols
+are read with `arm-none-eabi-nm`.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
-from arm_sim import ArmSim
+from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
 from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
+
+# Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
+_BIN = [None]
+_ELF = [None]
 
 
 class Skip(Exception):
@@ -31,9 +40,16 @@ class Skip(Exception):
 
 
 def _ours():
-    if not (os.path.exists("build/firmware.bin") and os.path.exists("build/firmware.elf")):
-        raise Skip("build/firmware.{bin,elf} not present (run `make`)")
-    return ArmSim.ours()
+    binp, elfp = _BIN[0], _ELF[0]
+    if not binp or not elfp:
+        raise Skip("no firmware given (pass build/firmware.bin and "
+                   "build/firmware.elf as arguments; run `make` first)")
+    for p in (binp, elfp):
+        if not os.path.exists(p):
+            raise Skip("%s not present (run `make`)" % p)
+    if is_intel_hex(binp):
+        raise ValueError("%s is an Intel .hex; pass a flat .bin" % binp)
+    return ArmSim(binp, load_symbols_nm(elfp))
 
 
 # --- manual/AutoTest relay override (src/relay.c) ---------------------------
@@ -86,12 +102,19 @@ def test_systick_advances_tick_counter():
     assert on.r32(on.sym("g_ticks")) > 0, "SysTick injection did not advance g_ticks"
 
 
-# --- zero-dependency runner -------------------------------------------------
-if __name__ == "__main__":
+# --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
+def _main(argv):
+    args = [a for a in argv[1:] if not a.startswith("-")]
+    if len(args) >= 1:
+        _BIN[0] = args[0]
+    if len(args) >= 2:
+        _ELF[0] = args[1]
+    print("# test_arm_sim_self_only.py: image = %s  symbols = %s"
+          % (_BIN[0] or "<none>", _ELF[0] or "<none>"))
+
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
     rc = 0
-    print("# test_arm_sim_self_only.py: our firmware (build/firmware.*)")
     for t in tests:
         try:
             t(); print("PASS  %s" % t.__name__)
@@ -101,4 +124,8 @@ if __name__ == "__main__":
             rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
         except Exception as e:
             rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    sys.exit(rc)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv))
