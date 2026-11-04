@@ -141,12 +141,37 @@ def presets(b, base):
         print(f"  0x{a:08x}  {s!r}")
 
 
+def builders(b, base):
+    # Locate where frame IDs are loaded as immediates via Thumb-2 MOVW (T3).
+    # For an 11-bit ID (<0x800): hw1 == 0xF240 (imm4=0,i=0); hw2 = imm3<<12|Rd<<8|imm8.
+    # This pins the builder/handler sites without a fragile linear disassembly.
+    ids = sorted(set(KNOWN_3XX) | {0x300, 0x301, 0x302, 0x400})
+    print("\n== frame-ID MOVW sites (builders / RX handlers) ==")
+    found = {}
+    for o in range(0, len(b) - 3, 2):
+        if u16(b, o) != 0xF240:
+            continue
+        hw2 = u16(b, o + 2)
+        imm16 = ((hw2 >> 12) & 7) << 8 | (hw2 & 0xFF)   # imm3:imm8 (imm4=i=0)
+        rd = (hw2 >> 8) & 0xF
+        if imm16 in ids:
+            found.setdefault(imm16, []).append((base + o, rd))
+    for cid in sorted(found):
+        note = KNOWN_3XX.get(cid, "inverter->batt" if cid in (0x300, 0x301, 0x302, 0x400) else "")
+        sites = ", ".join(f"0x{a:08x}(r{r})" for a, r in found[cid])
+        print(f"  0x{cid:03x} {note:28s} {sites}")
+    if not found:
+        print("  (none — IDs may be table-sourced; see frame table above)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bin")
     ap.add_argument("--base", default="0x20000",
                     help="flat load base of the App partition (default 0x20000)")
+    ap.add_argument("--builders", action="store_true",
+                    help="also locate the MOVW sites that load each frame ID")
     a = ap.parse_args()
     base = int(a.base, 0)
     b = open(a.bin, "rb").read()
@@ -155,6 +180,8 @@ def main():
     periph(b, base)
     frame_table(b, base)
     presets(b, base)
+    if a.builders:
+        builders(b, base)
 
 
 if __name__ == "__main__":

@@ -130,17 +130,85 @@ set. The **Pylontech `0x42xx`** frame IDs (`0x4210/0x4220/0x4240/0x4290`, …) a
 also present but **scattered**, built individually in code rather than from a
 table (the Pylontech-style presets).
 
-### Open items (next passes)
+## Per-frame byte layout (recovered)
 
-- [ ] **Bus baud rate** — decode the HC32 CAN `SBT` bit-timing against the CAN
-  clock. Expected **500 kbit/s** (universal for this frame family), to confirm.
-- [ ] **Preset → frame-table binding** — find the selector that maps a `Pnn`
-  preset to its active frame table / builders.
-- [ ] **Per-frame byte layout** — map each `0x35x` TX frame's 8 bytes to the BMS
-  data model (cell V, pack V/I, temps, SOC/SOH, limits, protect/alarm bitfields),
-  and the inverter→battery `0x305/0x307` RX frames.
+The TX side is one large builder, **`FUN_0002a0bc`** (~3,900 insns, handles all
+presets via branches). It fills a RAM **CAN descriptor array** whose records are
+**16 bytes** each:
+
+```
+record[n] @ 16*n:  { u32 can_id; u32 dlc; u8 data[8] }   // data at record+8
+```
+
+The builder's tail block stamps the IDs next to their data, giving the
+record→ID map for the **standard (little-endian) preset**:
+
+| record | +0 id | data bytes | frame |
+|---|---|---|---|
+| `0x00` | `0x351` | `0x08–0x0f` | charge/discharge limits |
+| `0x10` | `0x355` | `0x18–0x1f` | SOC / SOH |
+| `0x20` | `0x356` | `0x28–0x2f` | voltage / current / temp |
+| `0x30` | `0x35a` | `0x38–0x3f` | alarms |
+| `0x40` | `0x35b` | `0x48–0x4f` | extended status |
+| `0x60` | `0x35f` | `0x68–0x6f` | firmware / capacity |
+
+Byte-exact field layouts (direct reads of the builder — see
+`include/inv/bms_can_map.h` for the C form):
+
+**`0x351` — limits** (DLC 8, little-endian):
+
+| bytes | field | scaling | source |
+|---|---|---|---|
+| 0–1 | charge voltage limit | ×0.1 V | model-selected: `0x230`=56.0 V (51.2 V pack), `0x118`=28.0 V (25.6 V), `0x8c`=14.0 V (12.8 V) |
+| 2–3 | max charge current | ×0.1 A | `FUN_00029338`×10, clamp `0x7530`=3000.0 A |
+| 4–5 | max discharge current | ×0.1 A | `FUN_0002935c`×10, clamp 3000.0 A |
+| 6–7 | discharge voltage limit | ×0.1 V | model-selected: `0x1c2`=45.0 V (51.2 V pack) |
+
+The charge-/discharge-voltage branches key off a pack-class config register
+(`==4` / `==8` / `==0xf` / else) — exactly the **M25.6 / M48.0 / 51.2VP** module
+variants named in the identity strings.
+
+**`0x355` — SOC/SOH** (DLC 6, little-endian): `[0:1]` SOC % (`FUN_000291f6`),
+`[2:3]` SOH % (`FUN_00029380`), `[4:5]` SOC high-res ×0.01 % (= SOC×100).
+
+**`0x356` — measurements** (DLC 6, little-endian, signed): `[0:1]` pack voltage
+×0.01 V (`FUN_000296f8`), `[2:3]` current ×0.1 A s16 (`FUN_00029478`), `[4:5]`
+temperature ×0.1 °C s16 (`FUN_000296b4`×10).
+
+These three match the industry-standard "CAN bus battery" layout exactly.
+
+> **Endianness is preset-dependent.** The tail block above is little-endian
+> (standard). A *different* preset path at the top of the same builder
+> (`0x2a128…`) packs the same fields **big-endian** (MSB at the low byte). Byte
+> order therefore depends on the active `Pnn` preset — do not assume one.
+
+### Inverter → battery (RX), `FUN_0002314c`
+
+The RX dispatcher walks a matching 16-byte-record receive table and decodes
+inverter→battery IDs **`0x300`** (request), **`0x301`** (config/handshake, 8-byte
+copy), **`0x305`** (keep-alive), and **`0x400`** (command — `data[0]==1` drives a
+state action via `FUN_00030af0`). RX parsing is also gated by the active-preset
+byte (`==1` / `==5` / `==6` branches).
+
+### Status
+
+- [x] **Per-frame byte layout** — descriptor structure + `0x351`/`0x355`/`0x356`
+  byte-exact (standard preset); RX IDs `0x300/0x301/0x305/0x400` identified.
+  Captured in `include/inv/bms_can_map.h`.
+- [ ] **Alarm/flag bit maps** (`0x359`/`0x35a`/`0x35c`) — positions partially
+  recovered; finish the exact standard-bit assignment.
+- [ ] **Bus baud rate** — decode the HC32 CAN `SBT` bit-timing. Expected 500 kbit/s.
+- [ ] **Per-preset byte-order/table map** — which `Pnn` preset selects which
+  builder path (and endianness).
 - [ ] **Exact HC32 SKU** + bootloader (`0x0`–`0x20000`) layout.
-- [ ] Bind this contract to the com-MCU side (`include/inv/` + `docs/16` CAN1).
+- [ ] Bind this contract to the com-MCU side (`docs/16` CAN1 reader).
+
+## Reproduce the frame analysis
+
+```bash
+python3 tools/recurse.py   BATT_IN280-Z03T13.bin --base 0x20000 --out /tmp/batt_ref
+python3 tools/batt_canmap.py BATT_IN280-Z03T13.bin --builders   # locate ID builders/handlers
+```
 
 ## Reproduce
 
