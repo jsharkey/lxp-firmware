@@ -20,9 +20,13 @@ and [`docs/12-6000xp.md`](docs/12-6000xp.md).
 > active variant is selected at build time (and keyed in the factory image by a
 > 4-char `Model` code: `ceaa`=12000XP, `FAAB`=18kPV).
 
-The device has **three processors**: a TI C2000 **Control DSP**, this STM32
-**Communication/HMI MCU** (what this project reimplements), and a **redundant
-safety CPU**. We reimplement only the Communication MCU.
+The device has **multiple processors**: a TI C2000 **Control DSP**, this STM32
+**Communication/HMI MCU** (what this project reimplements), a **redundant
+safety CPU**, and a dedicated **`mppt` power-stage controller** (a separate,
+smaller STM32F103, newly characterized — see
+[`docs/13-mppt-controller.md`](docs/13-mppt-controller.md)). The vendor splits
+its firmware by role (`com` / `dsp` / `mppt`). We reimplement only the
+Communication MCU.
 
 > **Scope:** this project reimplements only the **ARM "com" MCU**. The TI C2000
 > DSP that runs the real-time power electronics is intentionally left untouched;
@@ -40,6 +44,7 @@ Honest picture of where things stand:
 - [x] **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)
 - [x] **Track 12000XP revisions over time** → `ceaa-05xx` (2025-03) vs `ceaa-07xx` (2026-02): the 07 series moved to a **bootloader + App** layout (vectors relocated `0x08000000`→`0x08005000`), and added generator scheduling / quick-charge / smart-load / resume-SOC / buzzer menus — mapped to the vendor changelog (see [`docs/11-12000xp-revisions.md`](docs/11-12000xp-revisions.md))
 - [x] **Add a third variant → EG4 6000XP** (`ccaa`): same MCU + codebase (07-era), same bootloader + App layout as the 12000XP 07-series (vectors @`0x08005000`, 20 KB bootloader); added as a build target `make VARIANT=6000xp` (see [`docs/12-6000xp.md`](docs/12-6000xp.md))
+- [x] **Identify a distinct `mppt` power-stage controller image** (`CBAA`): *not* a com-MCU variant — a smaller **STM32F103xB (128 KB)** running a bare-metal **TIM1-PWM + ADC + DMA** control loop (zero HMI strings, only TIM1_CC + EXTI3 interrupts), built with the same EG4 toolchain/boot conventions. A separate peer processor for the solar DC-DC stage (see [`docs/13-mppt-controller.md`](docs/13-mppt-controller.md))
 - [x] Recover the data model with **authoritative** values — states, faults, warnings, telemetry (see `include/inv/` and [`docs/02-recovered-model.md`](docs/02-recovered-model.md))
 - [x] **External Modbus-RTU map fully specified** → [`include/inv/modbus_map.h`](include/inv/modbus_map.h) (the comms layer is now a known interface)
 - [x] Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
@@ -138,6 +143,7 @@ place their own copy under `reference/` (gitignored). Recorded for integrity:
 | `..._ceaa-07xx_vE_260214_Br7k5_2.hex` (12000XP ARM, 07-series App) | 574885 | `ccc5172a11ea1e1b302c83bc8e834846` |
 | `..._FAAB-1Bxx_20240528_App.hex` (18kPV ARM App) | 502737 | `7091e1ad60fa2e725a5da8d39fa5bc8c` |
 | `..._ccaa-xx15xx_260519.hex` (6000XP ARM App) | 478004 | `220f1a2fd8aa6adbdbb0a2bea6b9880d` |
+| `169a5158-CBAA-1Cxxxx_mppt_250805.hex` (MPPT stage controller, STM32F103xB — separate processor) | 104767 | `9c4168c1f1ac42cdd0ab6e01deb77325` |
 
 As the product's maintainer you own these images; whether/how to publish them is
 your call. Keeping them out of the public tree is the conventional default.
