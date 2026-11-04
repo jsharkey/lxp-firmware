@@ -335,3 +335,55 @@ Open questions a schematic or a live unit would answer:
   register map would let the com side (this project) read MPPT telemetry directly.
   It is very likely the same EG4 Modbus-family link as `docs/05-dsp-link.md`; a
   cross-check of the CRC seed and the `0x21/0x22/0x23` command bytes would confirm.
+
+## DSP-side check (C28x images): the MPPT's `0x42` link is **not** in these DSP builds
+
+The "MPPT ⇄ DSP" conclusion above is an **ARM-side inference** (the ARM has no
+`0x42` path and no analog metering, so PV must arrive via the DSP). I now checked
+it from the DSP side, against the two decoded C28x images — the 12000XP DSP
+(`CEAA-xx07_dsp_vE_250325`, docs/07/10) and the 18kPV DSP
+(`fAAB-xx22_Para375_20250428`, docs/15). **Neither DSP parses or emits the MPPT's
+binary `0x42 0x01` frame.** So the specific CBAA `0x42` UART link is not present in
+these builds; the picture needs refining.
+
+What the DSP images actually show (direct reads):
+
+- **No `0x42` MPPT frame handler, RX or TX.** The only `0x42` occurrences are an
+  **ASCII console** where `'B'` (0x42) is one of ~16 single-char commands (SOF
+  `0x7e`/`'Q'`, CR-terminated; `FUN_00096885`/`FUN_0009681f`), plus two payload
+  writes and two flag assignments — none is a frame SOF or an MPPT poll.
+- **The DSP meters analog itself.** It reads its own ADC result registers
+  (ADC‑A `0xB00`/`0xB0A`, ADC‑C `0xB40`/`0xB54`, ADC‑D `0xB61`) and drives the
+  power stage with ePWM (117 ePWM base loads). A C2000 controller sensing PV/grid/
+  bus directly is the expected topology.
+- **12000XP DSP:** only **SCI‑A/B**, bit-wise `0xA001` CRC, no spare link, no
+  `0x42` → it does **not** use an external MPPT-over-UART. PV is sensed on-die.
+- **18kPV DSP:** **SCI‑A/B/C**, **table-driven** CRC (the same Modicon-table
+  family as the MPPT — no `0xA001`). Port roles:
+  - **SCI‑B** — the ARM link (type-1 `0x49`/`0x41` + `0x21/0x22/0x23`; docs/10).
+  - **SCI‑C** — a bidirectional **sub-controller telemetry link** (`FUN_0009EEFA`):
+    RX frames start **`'T'` (0x54)**, TX frames start **`'D'` (0x44)**, 30-byte,
+    CRC‑16 big-endian; each RX frame carries **~7 big-endian u16s + a status byte**
+    into `DAT_000111C8…D2`, consumed by the DSP's **control loops**
+    (`FUN_0009145D`/`FUN_00095779`), not forwarded verbatim to the ARM.
+  - an **ASCII console** as above.
+  None of these is the CBAA `0x42`/`0x01` framing.
+
+### Interpretation (refines the ARM-side inference)
+
+- For the **12000XP/18kPV**, the control DSP most plausibly **senses PV on its own
+  ADCs**; the standalone **CBAA MPPT MCU is a separate product/config** (or pairs
+  with a DSP build not on hand — note the version skew: MPPT image `…_250805`
+  (Aug 2025) vs these DSP images Mar–Apr 2025). So "MPPT → DSP over the `0x42`
+  UART" is **not evidenced** by the DSP images we have.
+- The 18kPV DSP's **SCI‑C `'T'`/`'D'` link is a real inter-processor telemetry
+  link** whose BE16 values feed the DSP control loops — a plausible **PV/MPPT or
+  secondary power-stage sub-controller** by *shape*, but it uses a different SOF
+  (`'T'`/`'D'`, not `0x42`) and a shorter 30-byte frame, so it **cannot be equated**
+  with the CBAA MPPT without a matching DSP build or a live bus capture.
+
+**Proven (direct reads):** no `0x42` handler in either DSP; DSP does its own ADC
+metering; the 18kPV SCI‑C `'T'`/`'D'` sub-controller link and its field cluster.
+**Open:** the positive identity of the SCI‑C peer, and which DSP build (if any)
+actually terminates the CBAA MPPT's `0x42` link — both need a schematic or a live
+capture.
