@@ -7,7 +7,7 @@ extend with new features.
 
 **Supported variants: EG4 12000XP, EG4 18kPV, and EG4 6000XP.**
 Reverse-engineering the factory ARM images proves they are the **same codebase**
-on the **same MCU** (STM32F103 high-density, Cortex-M3), differing only in a
+on the **same MCU** (STM32F1-compatible, M4-class core — see below), differing only in a
 short, enumerable set of ways — flash/boot layout, MPPT count (2 vs 3), and
 hybrid grid-tie features. Those deltas are captured as a **variant descriptor**
 (`include/inv/variant.h`), so the firmware is written once and branched on data,
@@ -38,7 +38,7 @@ This is an early-stage effort. There is a verified understanding of the target
 and a recovered data model — but **not yet** a buildable replacement firmware.
 Honest picture of where things stand:
 
-- [x] Confirm target MCU and memory map → **STM32F103 high-density, Cortex-M3**, flash `0x08000000`, RAM `0x20000000` (see [`docs/01-firmware-analysis.md`](docs/01-firmware-analysis.md))
+- [x] Confirm target MCU and memory map → **STM32F1-compatible, M4-class core** (ARMv7E-M: the factory runs `smlabb`/`sdiv`, undefined on M3 — most likely a **GD32F303-style F1 clone**; first read as "STM32F103/M3", corrected via dynamic RE), flash `0x08000000`, RAM `0x20000000` (see [`docs/01-firmware-analysis.md`](docs/01-firmware-analysis.md), [`docs/19`](docs/19-gpio-test-harness.md))
 - [x] Confirm the image is **not encrypted/compressed** (reimplementation is feasible)
 - [x] Identify the product → **EG4 12000XP** (Modbus spec shared with the 18kPV-12LV superset)
 - [x] **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)

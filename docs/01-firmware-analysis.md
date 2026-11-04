@@ -69,17 +69,29 @@ The system has **three processors**:
 | `Com Ver` | **Communication/HMI MCU — this STM32F103** | **yes** |
 | `Slave Ver` | Redundant/safety CPU (cross-checks sampling; fault E027) | no |
 
-## MCU identification: STM32F103 high-density (Cortex-M3)
+## MCU identification: STM32F1-compatible, **M4-class core** (GD32F303-style clone)
+
+> **Correction (dynamic RE, see [`docs/19`](19-gpio-test-harness.md)).** This was
+> first read as a Cortex-**M3** STM32F103. It is an **STM32F1-*compatible*** part
+> but the core is **ARMv7E-M (M4-class), not M3**: the factory image executes DSP
+> instructions (`smlabb`, `sdiv`) as live code, which are **undefined on
+> Cortex-M3** (they fault under an M3 model and run under M4). An F1
+> peripheral/pin map + an M4 core points to a **GD32F303-series** clone (EG4 uses
+> cost-reduced ST-compatible parts). Our own firmware builds `-mcpu=cortex-m3`
+> and still runs — M3 is a subset of M4 — but the silicon is M4-class.
 
 Evidence, in decreasing strength:
 
-1. **Peripheral bases in literal pools**: `RCC @ 0x40021000` and
-   `FLASH_ACR @ 0x40022000`. These addresses exist **only on STM32F1**
-   (on F2/F4 they are `0x40023800` / `0x40023C00`).
-2. **Fault vectors present**: MemManage / BusFault / UsageFault are populated,
-   which rules out Cortex-M0/M0+ — this is an M3/M4. Combined with (1) → M3.
-3. **60 external IRQs** — matches the STM32F1 high-density interrupt map exactly.
-4. **`SystemInit`** is textbook CMSIS-F1: enable HSION, clear `RCC->CFGR`,
+1. **DSP/`sdiv` instructions in executed code** (`smlabb`, `sdiv`, …): present on
+   ARMv7E-M (Cortex-M4), **undefined on Cortex-M3**. Decisive for the core.
+2. **Peripheral bases in literal pools**: `RCC @ 0x40021000` and
+   `FLASH_ACR @ 0x40022000`. These addresses are the **STM32F1** layout
+   (on ST F2/F4 they are `0x40023800` / `0x40023C00`) — i.e. F1-*compatible*
+   peripherals, which GD32F303 (an M4 core) also uses.
+3. **Fault vectors present**: MemManage / BusFault / UsageFault are populated,
+   ruling out Cortex-M0/M0+.
+4. **60 external IRQs** — matches the STM32F1 high-density interrupt map.
+5. **`SystemInit`** is textbook CMSIS-F1: enable HSION, clear `RCC->CFGR`,
    disable HSE/CSS/PLL, set `RCC->CIR`, call `SetSysClock` (HSE+PLL), set VTOR.
 
 Filename hint `vE` is consistent with an STM32F103**VE** (512 KB flash,
