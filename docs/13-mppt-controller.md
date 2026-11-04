@@ -198,6 +198,55 @@ interrupt drains it a byte at a time to `TDR`. Outgoing frames use the identical
 > vs that link's), the big-endian-CRC convention, and whether the record types map
 > onto its `0x21/0x22/0x23` commands.
 
+### Remote firmware update — the bootloader DOES speak `0x21/0x22/0x23`
+
+**Yes: the ARM can reflash this MPPT MCU over the UART, using the same
+`0x21/0x22/0x23` update vocabulary as the DSP link (`docs/05`).** The command set
+lives in the **bootloader** (the `0x08000000` image), not the app — the app only
+accepts `byte[1]==0x01` telemetry frames (`cmp #0x21/#0x22/#0x23` appears *only*
+in the bootloader region).
+
+The bootloader command router (`0x08000204`) reads the command from `frame[1]`
+and routes:
+
+| cmd | handler | action (direct reads + analogy to `docs/05`) |
+|---|---|---|
+| `0x21` | `0x08000242` | **session start** — captures the target image's address / length / CRC fields from the frame (words at payload offsets `0xC` and `0x10`, via BE readers `0x8000916`/`0x8000908`) into update state (`0x2000037C…0x20000388`); prepares/erases flash |
+| `0x22` | `0x0800031C` | **program block** — writes the payload to flash |
+| `0x23` | `0x080004D4` | **verify / commit** — checks the programmed image, marks the app valid, resets into it |
+
+Supporting machinery, all read straight from the bootloader:
+
+- **FLASH IAP driver.** Unlock writes `KEY1=0x45670123` / `KEY2=0xCDEF89AB` to
+  `FLASH_KEYR` (`0x080006C4`), then erase/program via `FLASH_SR`/`FLASH_CR`. The
+  register offsets used — `KEYR@0x08`, `SR@0x10`, `CR@0x14` — are the **STM32G0**
+  FLASH layout (another G0 confirmation; F1 differs).
+- **ACK frames.** After each command the bootloader builds a reply in the same
+  `0x42 <cmd> … CRC16` envelope (echoes the command + a status byte + a 16-bit
+  field, then the Modbus CRC) — `0x08000140`+.
+- **Software reset** via `SCB->AIRCR = 0x05FA0004` (`0x080000B8`) — used to jump
+  into the freshly programmed app. The *app* has the identical reset sequence
+  (`0x08012028`), so the running app can bounce itself into the bootloader.
+- **App-valid gate.** The bootloader reads the `NOTB` marker at `0x0800C800`
+  (`0x08000AD4`) to decide run-app vs. stay-in-update — the same `"NOTB"`
+  build-config scheme as the ARM com bootloader in `docs/05`.
+
+So the end-to-end remote-update path is: the ARM gets the MPPT into bootloader
+mode (the app can self-reset; the bootloader stays in update mode when the app is
+marked invalid), then streams `0x21` (begin/erase) → `0x22`×N (program) → `0x23`
+(verify/commit), each as a CRC-checked `0x42` frame, and the bootloader reboots
+into the new image.
+
+What's **proven** here (direct reads): the `0x21/0x22/0x23` dispatch, the FLASH
+unlock/erase/program driver, the CRC-checked ACK framing, the `NOTB` app-valid
+gate, and the soft-reset. What's **inferred** (strong — by the handler structure
+plus the `docs/05` DSP analogy): the exact field semantics inside each command
+(image addr/len/CRC in `0x21`, block layout in `0x22`, the commit checks in
+`0x23`) and the precise trigger that first drops the app into the bootloader.
+Confirming those, and whether the CRC seed / `"EDSN"`-style tag match the DSP
+link, would come from a live capture — note this image carries **no** `"EDSN"`
+tag, so the session magic differs from the DSP's.
+
 ## Scope / what this means for the project
 
 This image is **out of scope** for the current reimplementation, which targets
