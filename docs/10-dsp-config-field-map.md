@@ -189,6 +189,50 @@ All BE16:
 - **Output priority** (the AC-First selector) is the single byte at **frame
   offset `0x1E`** inside block 0.
 
+## Is this a standard Modbus read response? (cross-check — no)
+
+A fair challenge was raised from the ARM side: that `FUN_00092EE2` is really
+parsing a standard **EG4-Modbus read response** and the "block id @ `0x14`" is a
+mis-framing of `SN[10] + start + bytecount + values` (the "5-byte header delta
+`0x10`→`0x15`"). Re-examined from the DSP side, the evidence is **against** that —
+this is the custom type-1 block protocol, not SN-stamped Modbus:
+
+1. **`buf[0x14]` is a discriminator, not a bytecount.** Across all of
+   `FUN_00092EE2` it appears only in `== 0 … == 8` tests (a 9-way switch); it is
+   never used as a length/count/address. A Modbus bytecount drives a copy loop —
+   this never does. So `0x14` selects a layout; it is not the Modbus header's
+   byte-count byte.
+2. **No `SN[10]`.** The receive path (`FUN_00098F72` → `FUN_0009E309` →
+   `FUN_00092EE2`) performs **no serial-number check** on `buf[2..0x0B]`, and the
+   DSP's own transmit builder shows there is no SN field at all (next point).
+3. **The DSP's own uplink uses the identical, SN-less framing.** `FUN_00096EE8`
+   (same SCI comms loop) builds the reply frame as `[0]=0x49` · `[1]=1` (type) ·
+   `[2:3]=0x0036` (length) · fixed status at `[4..0x13]` · then
+   `FUN_00092110(buf, 0x14)` fills **block data from offset `0x14`** — and
+   `FUN_00092110` dispatches on the **same 9 block ids (0–8)** that `FUN_00092EE2`
+   parses. So both directions share one symmetric, **block-tagged** frame with a
+   20-byte header and block id at `0x14`; there is no `addr/func/SN/start/count`
+   Modbus shape and no SN anywhere.
+4. **Byte order is big-endian.** `FUN_0009E7C2` reads `p[0]<<8 | p[1]` (MSB
+   first). The EG4 **dongle** Modbus is little-endian (`docs/08`: "values … LE,
+   in register order", `0x10 + (N-start)*2`). Opposite endianness ⇒ different
+   protocol.
+
+**Reconciliation.** Both observations are correct — about **different links**.
+The ARM genuinely speaks standard EG4-Modbus (func `3/4/6/0x10`, `SN[10]`, LE,
+values at `0x10`) — that is the **external RS-485 dongle** path the ARM trace
+followed. The **ARM↔DSP** link is the separate **type-1 block exchange** (no SN,
+BE, block id at `0x14`, values at `0x15`) documented here. The cleanest model is
+the one `docs/05` already proposed: the **ARM bridges** between the two — dongle
+Modbus on one side, this type-1 block protocol to the DSP on the other. The
+"5-byte header delta" is not a mis-frame; it is just the two protocols having
+different headers (Modbus 16-byte `…start+count`, type-1 20-byte `…+block id`).
+
+> What would change this verdict: finding, on the ARM side, that the UART which
+> drives the **func-`0x10`** frames is the same one wired to the DSP (not the
+> dongle). The DSP-side facts above (no SN, BE, symmetric block filler) would
+> still need explaining, so the bridge model remains the most consistent.
+
 ## Confidence & open items
 
 - **High confidence:** field order, offsets, widths, endianness, and DSP targets
