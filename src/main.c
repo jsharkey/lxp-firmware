@@ -13,6 +13,7 @@
 #include "inv/hmi.h"
 #include "inv/hmi_menu.h"
 #include "inv/dsp_link.h"
+#include "inv/variant.h"
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -29,7 +30,10 @@ void SysTick_Handler(void) { g_ticks++; }
 static mb_exception_t mb_rd_input(void *c, uint16_t a, uint16_t *o) {
     (void)c;
     if (a >= 160) return MB_EXC_ILLEGAL_ADDRESS;
-    *o = g_rt.input_reg[a];
+    /* Variant gating: the Modbus map is the 18kPV superset. On a 2-MPPT build
+     * the 3rd-tracker slots are not meaningful, so report a well-formed 0
+     * instead of whatever happens to be in the image. */
+    *o = inv_ir_active(a) ? g_rt.input_reg[a] : 0;
     return MB_OK;
 }
 static mb_exception_t mb_rd_hold(void *c, uint16_t a, uint16_t *o) {
@@ -84,11 +88,18 @@ static void systick_init_1ms(void) {
 }
 
 int main(void) {
+    const inv_variant_t *v = inv_variant();  /* the model this build targets */
+
     /* seed a plausible snapshot so a Modbus poll returns real-looking data */
     g_rt.input_reg[IR_STATE] = (uint16_t)STATE_STANDBY;
     g_rt.input_reg[IR_VBAT]  = 520;          /* 52.0 V (0.1 V units) */
+    g_rt.input_reg[IR_VPV1]  = 3200;         /* 320.0 V */
+    g_rt.input_reg[IR_VPV2]  = 3180;         /* 318.0 V */
+    if (inv_has_mppt3())                     /* 3rd tracker only on 18kPV */
+        g_rt.input_reg[IR_VPV3] = 3150;      /* 315.0 V */
     g_rt.holding_reg[HR_COM_ADDR] = g_mb.address;
     (void)MENU__COUNT;                       /* HMI model available */
+    (void)v;                                 /* name/model_code used by HMI/DSP */
 
     systick_init_1ms();
     mb_port_init(&g_mb);

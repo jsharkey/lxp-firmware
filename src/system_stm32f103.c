@@ -9,6 +9,7 @@
  * USART baud (e.g. the DSP link) depends on these being exact.
  */
 #include "stm32f103.h"
+#include "inv/variant.h"
 
 uint32_t SystemCoreClock = 72000000UL;
 
@@ -38,6 +39,9 @@ void SystemInit(void)
     RCC->CFGR |= RCC_CFGR_SW_PLL;
     while ((RCC->CFGR & RCC_CFGR_SWS_PLL) != RCC_CFGR_SWS_PLL) { }
 
-    /* 7. Vector table at flash base (matches the original) */
-    SCB->VTOR = FLASH_BASE_ADDR;
+    /* 7. Vector table base. On a monolithic image (12000XP) this is the flash
+     * base; on an App-over-bootloader image (18kPV) the App's vectors are
+     * relocated (0x0800C800), so take it from the active variant descriptor
+     * rather than hard-coding FLASH_BASE_ADDR. */
+    SCB->VTOR = inv_variant()->vector_addr;
 }
