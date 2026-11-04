@@ -90,19 +90,17 @@ pin-init functions (main / comms / CAN groups).
 | Pin(s) | Driver → logic | Inferred role | Conf. |
 |---|---|---|---|
 | PA12 + PB3 | `sub_080334fc` / `sub_08033536` via `sub_08018a7c` (grid-connect debounce, `[+0xbc]` bit20 & bits29-30==2, ~50-tick) | **main grid / EPS transfer contactors** | med |
-| PB2 + PC6 | `sub_080334ae` via `sub_08016ec6` (gated by status `0x2000da6c` bit4 and mode byte `0x2000d0e4+0xa0` == 2/3) | **mode / output-priority-driven relays** (bypass / AC path) | med |
-| PC5 | `sub_0803348e` via `sub_08017022` (multi-condition, 100/1501-tick debounce) | relay — AC-charge / grid | low-med |
-| PD11 | `sub_08033556` via `sub_08035ef2` (config bits + debounce) | **auxiliary relay (dry-contact candidate)** | low-med |
+| PB2 + PC6 | `sub_080334ae` via `sub_08016ec6` (gated by `IR_STATE` `0x2000d0e4+0xa0` + override `0x2000da6c` bit4) | **inverter run-enable / bypass** | med |
+| PC5 | `sub_0803348e` via `sub_08017022` (multi-condition, 100/1501-tick debounce) | slow AC relay — gen-input / AC-couple | low-med |
+| PD11 | `sub_08033556` via `sub_08035ef2` (config bits + debounce) | **EPS/backup or dry-contact relay** | low-med |
 
-> **AC-First tie-in.** `sub_08016ec6` drives **PC6** from status word `0x2000da6c`
-> **bit 4** and the output-priority mode byte (`…+0xa0`, tested `==2` = AC First,
-> `==3`). This is the first ARM GPIO found to move with the output-priority /
-> AC-First decision — the thread [`docs/14`](14-arm-gpio-relay-acfirst.md) left
-> open. It does **not** contradict docs/14's finding about the *time-window*
-> signal (regs 152-157 → telemetry): PC6 is gated by the **mode byte** and a
-> different status word, not by the window-active bit (`0x2000a8e6` bit4). Which
-> status word `0x2000da6c` bit4 actually is still needs confirming — see open
-> items.
+> **Full relay analysis in [`docs/18`](18-power-path-relays.md).** The byte at
+> `0x2000d0e4+0xa0` is the live **operating mode = IR_STATE (input reg 0)**, a
+> bitmask (value-matched to [`states.h`](../include/inv/states.h)) — not the
+> output-priority setting. So PC6 is gated by the **working mode**, and
+> `0x2000da6c` is the **AutoTest/manual relay-override** word. (An earlier draft
+> read `+0xa0 == 2` as "AC First"; that is `STATE_PROGRAMMING` — corrected in
+> docs/18. docs/14's AC-First *time-window* conclusion is unaffected.)
 
 ### Outputs — HMI / indicators / misc
 
@@ -131,8 +129,9 @@ the same technique `tools/emu_acfirst.py` uses for the AC-First window.
 - Confirm the USART1 pins (PA9/PA10 presumed; not hit by the init sweep) and
   which peer each UART serves (USART3=DSP and UART5=dongle are known; USART1/
   USART2/UART4 peers — meter, BMS-UART, console — are not yet pinned).
-- Identify `0x2000da6c` bit 4 (drives PC6) and `0x2000d0e4+0xa0` (the mode byte)
-  against the register model, to state the PC6 relay's exact role.
+- Resolved in [`docs/18`](18-power-path-relays.md): `0x2000d0e4+0xa0` = IR_STATE
+  (reg 0); `0x2000da6c` = AutoTest/manual relay-override. Remaining: fix each
+  relay's silkscreen identity (grid vs EPS vs gen vs dry).
 - Pin the dry contact (method above) and the SPI1 peers (LCD vs EEPROM) and the
   PB6/PB7 bit-banged bus.
 - Map the EXTI inputs (external-interrupt lines) — the scan shows EXTI/AFIO use
