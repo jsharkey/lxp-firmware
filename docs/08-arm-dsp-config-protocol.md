@@ -257,6 +257,48 @@ offset to the DSP block boundaries (`DAT_0000B300` completeness bits / the
 `FUN_00092EE2` targets). That isolates reg→offset→block per field, with proof on
 both ends. Locating the holding-register store is the prerequisite.
 
+## Worked example — AC-First registers 152–157 (PROVEN, ARM `.hex`)
+
+Tracing Modbus regs 152–157 (the "AC First" load-priority time windows) through
+the ARM, confirmed byte-exact against `reference/com_flat.bin`:
+
+**1. Register → settings-struct offset.** The Modbus register dispatch `fn_ceaa`
+(`0x08032000`) has an explicit per-register `switch`; the case stubs read the
+holding-register store `0x20009854` at fixed offsets:
+
+| Modbus reg | field | case stub | settings offset |
+|---|---|---|---|
+| **152** | AC First **Start** (win 0) | `0x080326a4` `ldrh [0x20009854+0x64]` | **`+0x64`** |
+| **153** | AC First **End** (win 0) | `0x080326ac` `ldrh [+0x66]` | **`+0x66`** |
+| 154 / 155 | Start / End (win 1) | `0x080326b4` / `0x080326bc` | `+0x68` / `+0x6a` |
+| 156 / 157 | Start / End (win 2) | `0x080326c4` / `0x080326cc` | `+0x6c` / `+0x6e` |
+
+So the three AC-First windows are a **4-byte-strided array** in the settings
+struct: window *i* is `{start @ 0x64+4i, end @ 0x66+4i}`.
+
+**2. Field encoding.** Each is a `u16 = (minute << 8) | hour`. Proof: the window
+evaluator `sub_0801eb4c` reads `settings[0x64 + 4i]` both as a byte (`= hour`)
+and as a halfword `>>8` (`= minute`), then computes `hour*60 + minute`
+(minutes-of-day) and compares start vs end with a 1439-minute (`0x59F+…`)
+day-wrap. (Notably: **the ARM itself evaluates the AC-First windows** against its
+RTC here, setting an active-window status bit at `0x2000aa5e` — it is not purely
+the DSP.)
+
+**3. Change-detection → re-push.** `sub_080230b6` diffs `settings[0x64/0x66/0x68]`
+against a saved mirror (`0x2000a330 + 0x4c/0x4e/0x50`) and, on a difference, sets
+a pending flag (`0x2000a7a8 |= 0x100`) and updates the mirror — the hook that
+makes a changed AC-First window get re-pushed to the DSP.
+
+**Open (final hop):** `settings 0x64…0x6f → which block/offset in the pushed
+frame`. Per [`docs/10`](10-dsp-config-field-map.md) the AC-charge/grid-charge
+*schedule* parameters are the block 3–6 "slot triplets" (→ the DSP
+`0xAD8F…`/`0xAD9C…`/`0xADAC…` records, `docs/07`), so the AC-First windows are
+expected there — but the specific ARM packer that copies `settings+0x64` into a
+frame block offset has not been byte-traced yet (the `0x64` readers found so far
+are the Modbus handler, the window evaluator, and the change-detector, not a
+frame packer). So the register→settings-offset half is proven; the
+settings-offset→block half is the remaining step.
+
 ## ARM holding-register store FOUND — `0x20009854`
 
 The ARM keeps its settings in a **byte-packed struct at RAM `0x20009854`** (not a
