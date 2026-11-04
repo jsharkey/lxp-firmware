@@ -140,6 +140,43 @@ in `docs/07`).
   1–7 by correlating their target RAM with the ARM-side Modbus holding-register
   map; and trace the uplink telemetry payload (`FUN_00096EE8` fills `0x00ADC2`).
 
+## ARM-side: trigger/cadence and this repo's implementation
+
+**Trigger — confirmed periodic, not edit-driven (ARM RE).** The config push is a
+registered task in a cooperative scheduler, not something fired on a setting
+change:
+
+- `sub_0803e4c8` sets up the scheduler and registers periodic tasks via
+  `sub_0803e728(fn)`; `sub_0803e69a` is the per-dispatch task runner and calls
+  the comms task `sub_080140e8` every cycle (`sub_0802e780 → sub_0803e4c8 → …`).
+- So the ARM re-emits the full block set on a fixed cadence regardless of whether
+  anything changed — matching the DSP-side evidence (completeness bitmask + per-
+  value diffing). **The answer to "what triggers a write to the DSP" is: a timer/
+  scheduler tick — it is always pushed, continuously, as a full snapshot.**
+
+**Reimplementation** (`src/dsp/`, bound to the shared holding-register model so an
+HMI edit or dongle write is simply picked up by the next snapshot):
+
+- `include/inv/dsp_link.h` / `src/dsp/dsp_config.c` — frame builder (addr, type 1,
+  18-byte SN+timestamp header, block id, payload, CRC-16) + the 8-block rotation
+  (`dsp_push_next`). Per-block payloads come from an **editable field table**;
+  block 0 (AC-First / output-priority group) has a best-effort field list,
+  blocks 1–7 frame correctly with an empty payload until decoded.
+- `src/dsp/dsp_link_port.c` — polled USART3 TX of a built frame.
+- `tests/test_dsp_config.c` — host tests (`make test`, 35 checks): frame layout,
+  CRC validity, 8-block rotation, and that a changed value re-appears in the next
+  full snapshot.
+- Wired into `main.c`: one block pushed per ~20 ms (full snapshot ~6×/s).
+
+**Open item flagged to RE (ARM TX path).** The USART3 TX *queue* I traced on the
+ARM (`sub_0800103a`, the `0x20000028+0x321` buffer) is only reached from the
+firmware-update / extended (`0x21/0x22/0x23`) paths — **not** from a type-1
+config builder. So either the type-1 push uses a different USART3 TX mechanism
+than that buffer, or (less likely, given this doc's DSP-side evidence) the ARM
+UART for the config push differs from USART3. The DSP-side framing is solid; the
+exact ARM-side *emit* site is still unpinned and worth confirming (the Unicorn
+harness can capture it once the faulting cold-start state is seeded).
+
 ## Reference (word addresses / DSP)
 
 | symbol | addr | role |

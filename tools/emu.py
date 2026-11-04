@@ -53,6 +53,7 @@ class Emu:
         self._entries = set(self.names)
         self._last_f = None
         self.watch = None       # (lo, hi) RAM range to log writes for
+        self.stubs = {}         # addr -> return value: force an immediate return
         self._build()
 
     def _build(self):
@@ -89,6 +90,11 @@ class Emu:
     def _on_code(self, uc, address, size, ud):
         if address == STOP:
             uc.emu_stop(); return
+        if address in self.stubs:                 # force immediate return
+            uc.reg_write(UC_ARM_REG_R0, self.stubs[address] & 0xFFFFFFFF)
+            lr = uc.reg_read(UC_ARM_REG_LR)
+            uc.reg_write(UC_ARM_REG_PC, lr)
+            return
         if self.trace_funcs and address in self._entries and address != self._last_f:
             self._last_f = address
             if len(self.ftrace) < 4000:

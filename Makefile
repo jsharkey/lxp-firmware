@@ -52,6 +52,8 @@ test:
 	@./$(BUILD)/test_modbus
 	$(HOSTCC) $(HOSTFLAGS) src/hmi/hmi.c src/hmi/hmi_model.c tests/test_hmi.c -o $(BUILD)/test_hmi
 	@./$(BUILD)/test_hmi
+	$(HOSTCC) $(HOSTFLAGS) src/dsp/dsp_config.c src/modbus/modbus.c tests/test_dsp_config.c -o $(BUILD)/test_dsp_config
+	@./$(BUILD)/test_dsp_config
 
 # Flashing helpers (uncomment the one matching your tooling):
 # flash-stlink: $(BUILD)/$(TARGET).bin

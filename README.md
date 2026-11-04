@@ -46,6 +46,7 @@ Honest picture of where things stand:
 - [ ] Decode the `0x21/0x22/0x23` payloads; populate live telemetry from the DSP link
 - [x] **Disassemble the TI C28x control DSP** → Ghidra 12.1.2 + `ghidra-tms320c28x` SLEIGH module; F2837x-class, image byte-swapped, ~650 functions recovered. First decode: the **"AC First" output-priority logic** (see [`docs/07-dsp-ac-first-mode.md`](docs/07-dsp-ac-first-mode.md))
 - [x] **ARM→DSP config protocol** → direction + framing resolved from the DSP side: ARM **pushes all settings** as 8 positionally-packed blocks (not Modbus register writes, not deltas); DSP is the reactive slave (see [`docs/08-arm-dsp-config-protocol.md`](docs/08-arm-dsp-config-protocol.md))
+- [x] **ARM→DSP config push implemented** → frame builder + CRC + 8-block full-snapshot scheduler, bound to the register model; trigger confirmed as a periodic scheduler tick (continuous, not edit-driven). Host-tested (`src/dsp/`, `make test`). Block payloads 1–7 are editable field-table stubs pending field decode
 - [ ] Verify on hardware
 
 ## The honest scope
@@ -95,6 +96,7 @@ include/inv/ states, faults, settings, modbus_map, hmi_menu
 src/         startup_stm32f103.c, system_stm32f103.c, main.c (skeleton)
 src/modbus/  Modbus-RTU slave engine + USART3 port
 src/hmi/     LCD/keypad menu engine + menu model + port
+src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
 ldscripts/   stm32f103ve.ld linker script
 tests/       host unit tests (make test)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)

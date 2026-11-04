@@ -12,6 +12,7 @@
 #include "inv/modbus_map.h"
 #include "inv/hmi.h"
 #include "inv/hmi_menu.h"
+#include "inv/dsp_link.h"
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -66,6 +67,16 @@ static const hmi_io_t g_hmi_io = {
 };
 static hmi_t g_hmi;
 
+/* ---- ARM -> DSP config push (docs/08): continuous full snapshot ---- */
+static bool dsp_rd_holding(void *c, uint16_t reg, uint16_t *o) {
+    (void)c;
+    if (reg >= 256) return false;
+    *o = g_rt.holding_reg[reg];
+    return true;
+}
+static dsp_push_t  g_dsp;
+static dsp_cfg_src_t g_dsp_src = { .address = 0, .read_holding = dsp_rd_holding };
+
 static void systick_init_1ms(void) {
     SysTick->LOAD = (SystemCoreClock / 1000U) - 1U;
     SysTick->VAL  = 0;
@@ -87,7 +98,10 @@ int main(void) {
     hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
     hmi_render(&g_hmi);
 
-    uint32_t last_render = 0;
+    for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
+    dsp_push_init(&g_dsp);
+
+    uint32_t last_render = 0, last_dsp = 0;
     for (;;) {
         mb_port_poll(g_ticks);
 
@@ -97,6 +111,15 @@ int main(void) {
             last_render = g_ticks;
             hmi_render(&g_hmi);
         }
-        /* TODO: fault/state machine, DSP link, settings persistence */
+
+        /* Push the next DSP config block (~one per 20 ms => full 8-block
+         * snapshot ~6x/s). TODO: fill g_dsp_src timestamp from the RTC. */
+        if ((uint32_t)(g_ticks - last_dsp) >= 20) {
+            last_dsp = g_ticks;
+            uint8_t frame[DSP_FRAME_MAX];
+            size_t n = dsp_push_next(&g_dsp, &g_dsp_src, frame, sizeof frame);
+            if (n) dsp_link_tx(frame, n);
+        }
+        /* TODO: fault/state machine, settings persistence */
     }
 }
