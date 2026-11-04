@@ -34,37 +34,40 @@ sim = ArmSim("path.bin", symbols_dict) # explicit
 
 sim.set_input("PB7", 1)                # inject an external input level (IDR bit)
 sim.clear_drives()
-sim.call("mb_port_init", (cfg_ptr,))   # call a function by symbol name or address
-sim.run_reset(max_insn=300_000)        # or boot from the reset vector
+sim.run_reset(max_insn=5_000_000)      # boot the image's own loop (black box)
+sim.call("mb_port_init", (cfg_ptr,))   # or call one function, by symbol/address
 
 sim.get_output("PB7")                  # current driven level (shadow latch)
 sim.was_driven("PB7", level=1)         # was it driven (to a level) since clear?
 sim.r32(addr) / sim.bit(addr, n)       # peek RAM (status words, flags)
 ```
 
-## Parity behaviours (factory oracle == our firmware)
+`run_reset()` finds the vector table itself (`vector_base()`), so our
+monolithic image (@`0x08000000`) and the factory App that sits above an absent
+bootloader (@`0x08005000`) both "just boot".
 
-The core pattern is a **parity test**: one GPIO contract, asserted against both
-the factory image (the oracle) and our firmware, so our reimplementation is
-held to the shipped behaviour. Contracts live in the `BEHAVIOURS` list in
-`tests/test_arm_sim.py`; two tests consume it:
+## The parity test (factory oracle == our firmware), black box
 
-- `test_behaviours_ours` — our firmware satisfies each contract (runs always).
-- `test_behaviours_factory_vs_ours_parity` — factory and ours drive the output
-  **identically** (SKIPs when no factory image is present).
+`tests/test_arm_sim.py :: test_pb7_input_drives_output` is the pattern: assert a
+GPIO contract against both firmwares **without naming any entry point**. It only
+injects a GPIO input, lets each firmware's *own event loop* run, and reads a GPIO
+output — so the test cannot tell factory from ours apart, which is the point.
 
-The first contract, **`pb7_input_drives_output`** (the base case): in the
-`ceaa-07xx` image, **`sub_0802e452`** debounce-samples **PB7 as an input** (10×)
-and, iff the majority read high, drives **PB7 high** via `GPIO_SetBits`. Our
-`pb7_sample_poll()` (`src/gpio_sample.c`) reproduces it. The observable contract
-is the GPIO drive (internal status flags are not part of parity):
+The contract: hold **PB7** high → the firmware drives **PB7 high**; hold it low →
+it does not.
 
 | `set_input("PB7")` | `was_driven("PB7", 1)` — factory | — ours |
 |---|---|---|
 | 1 | True | True |
 | 0 | False | False |
 
-Minimal input→output causality, proven end-to-end through **both** firmwares.
+In the `ceaa-07xx` image this is factory `sub_0802e452` (debounce-sample PB7 10×,
+drive high on a majority); our `pb7_sample_poll()` (`src/gpio_sample.c`, called
+from `main`'s loop) mirrors it. The test runs each firmware from its reset
+vector, so *their* loops do the sampling and driving. It asserts our firmware
+propagates PB7, and — when a factory image is available — that the two behave
+identically; with no factory image the our-firmware check still runs. Only the
+observable GPIO is compared, so the two can match despite different internals.
 
 ## Running our firmware (boot smoke test)
 
@@ -91,16 +94,18 @@ already-converted flat `.bin`. `LXP_FACTORY_HEX` takes precedence if both are se
 
 ## Adding a behaviour (the TDD loop)
 
-1. Find it in the factory image (`tools/disres.py`, `tools/gpio_map.py`): which
-   input pin, which output pin, and the input→output contract.
-2. Append a `dict(...)` to `BEHAVIOURS` in `tests/test_arm_sim.py` — `in_pin`,
-   `out_pin`, `factory` (address/symbol), `ours` (the symbol you will write),
-   and `expected`. Run `make test-sim`: the parity/ours tests go **red** (no
-   such symbol yet), the factory side already matches.
-3. Implement the function in `src/` and wire it in (reference it from `main`
-   so `--gc-sections` keeps it). Rebuild; `make test-sim` goes **green** on both.
+`pb7_input_drives_output` was built this way, and is the template:
 
-This is exactly how `pb7_input_drives_output` + `pb7_sample_poll()` were added.
-Behaviours whose output depends on more than one input, or on a status word,
-extend `_observe()` similarly — keep the asserted surface to *observable GPIO*
-so factory and our firmware can be compared even with different internals.
+1. Find the contract in the factory image (`tools/disres.py`, `tools/gpio_map.py`):
+   which input pin, which output pin, how one drives the other.
+2. Write a black-box test: inject the input, `run_reset()` the firmware's loop,
+   assert the output. Run it against our firmware — **red**, because our loop
+   doesn't do it yet.
+3. Implement the behaviour in `src/` and wire it into `main`'s loop (so
+   `--gc-sections` keeps it and the *loop* exercises it). Rebuild → **green** on
+   ours, and identical to the factory oracle when the image is present.
+
+Keep the asserted surface to *observable GPIO* (and, where needed, Modbus
+registers) — never a firmware's internal RAM address — so the factory and our
+firmware stay comparable despite different internals. Add more such tests only
+when there is a second behaviour to pin; don't pre-build a framework for them.

@@ -51,57 +51,43 @@ def _ours():
     return ArmSim.ours()
 
 
-# --------------------------------------------------------------------------
-# Parity behaviours: a GPIO contract each implementation must satisfy, stated
-# as observable input->output. The SAME contract is asserted against the
-# factory image (the oracle) and against our firmware, so new behaviours are
-# added by appending to BEHAVIOURS, not by writing per-image tests.
-#
-# Each behaviour:
-#   name        - label
-#   in_pin      - the GPIO input it reacts to (docs/16 name)
-#   out_pin     - the GPIO output it drives
-#   factory     - how to invoke it on the factory image (address or symbol)
-#   ours        - how to invoke it in our firmware (symbol)
-#   expected    - {input_level: output_driven_high?} the contract
-# --------------------------------------------------------------------------
-BEHAVIOURS = [
-    dict(
-        # Factory sub_0802e452 debounce-samples PB7 (10x) and, on majority-high,
-        # drives PB7 high (sets a status flag too, but the observable contract is
-        # the GPIO drive). docs/16 PB7 = the bit-banged line; docs/18 context.
-        name="pb7_input_drives_output",
-        in_pin="PB7", out_pin="PB7",
-        factory=0x0802e452,          # ceaa-07xx d673c5ed-...-260214
-        ours="pb7_sample_poll",
-        expected={1: True, 0: False},
-    ),
-]
+def _observe_pb7(make_sim):
+    """Black box: boot the firmware, hold PB7 at each level, let *its own* event
+    loop notice the input and drive the output. Returns {level: PB7 driven high?}.
 
-def _observe(make_sim, in_pin, out_pin, entry, levels):
-    """Run `entry` for each input level on a fresh sim; return {level: driven-high}."""
-    obs = {}
-    for lvl in levels:
+    No firmware entry point is named — we only inject a GPIO input, run the loop,
+    and read a GPIO output, so the same logic works for the factory image and
+    for our firmware. (The factory image boots its App above an absent
+    bootloader; the harness finds the vector table itself.)
+    """
+    out = {}
+    for level in (1, 0):
         sim = make_sim()
-        sim.set_input(in_pin, lvl)
+        sim.set_input("PB7", level)
         sim.clear_drives()
-        sim.call(entry)
-        obs[lvl] = sim.was_driven(out_pin, level=1)
-    return obs
+        sim.run_reset(max_insn=5_000_000)   # let the firmware's loop run
+        out[level] = sim.was_driven("PB7", level=1)
+    return out
 
-def test_behaviours_ours():
-    """Our firmware satisfies each GPIO behaviour contract."""
-    for b in BEHAVIOURS:
-        obs = _observe(_ours, b["in_pin"], b["out_pin"], b["ours"], b["expected"].keys())
-        assert obs == b["expected"], "%s: ours=%r expected=%r" % (b["name"], obs, b["expected"])
 
-def test_behaviours_factory_vs_ours_parity():
-    """Factory image and our firmware drive the output identically (the goal)."""
-    for b in BEHAVIOURS:
-        fac = _observe(_factory, b["in_pin"], b["out_pin"], b["factory"], b["expected"].keys())
-        our = _observe(_ours,    b["in_pin"], b["out_pin"], b["ours"],    b["expected"].keys())
-        assert fac == our == b["expected"], \
-            "%s: factory=%r ours=%r expected=%r" % (b["name"], fac, our, b["expected"])
+def test_pb7_input_drives_output():
+    """Holding the PB7 line high makes the firmware's own event loop drive PB7
+    high; holding it low does not. Our firmware must do this, and must match the
+    factory image (the oracle) when it is available.
+
+    (Factory sub_0802e452 debounce-samples PB7 and drives it high on a majority;
+    our pb7_sample_poll() mirrors that — but this test invokes neither directly,
+    it just runs each firmware's loop as a black box. docs/16: PB7 is the
+    board's bit-banged line.)
+    """
+    ours = _observe_pb7(_ours)
+    assert ours == {1: True, 0: False}, "our firmware did not propagate PB7: %r" % ours
+
+    try:
+        factory = _observe_pb7(_factory)
+    except Skip:
+        return   # no factory image: our-firmware behaviour was still verified
+    assert factory == ours, "factory %r != ours %r" % (factory, ours)
 
 
 def test_our_firmware_boots_and_configures_usart3_gpio():

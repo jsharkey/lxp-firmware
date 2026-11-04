@@ -268,12 +268,29 @@ class ArmSim:
                 raise RuntimeError("emu fault %s at pc=0x%08x" % (e, pc))
         return uc.reg_read(UC_ARM_REG_R0)
 
-    def run_reset(self, max_insn=500_000, vector_base=FLASH_BASE):
-        """Boot from the image's reset vector for up to max_insn instructions."""
-        sp = self.r32(vector_base); pc = self.r32(vector_base + 4)
+    def vector_base(self):
+        """Locate the Cortex-M vector table (initial SP in RAM, reset PC in
+        flash). Handles our monolithic image (@0x08000000) and the factory App
+        that sits above an absent bootloader (@0x08005000) — so callers never
+        need to hard-code where a given image boots."""
+        n = len(self.data)
+        for off in range(0, min(n, 0x80000) - 8, 0x100):
+            sp = struct.unpack_from("<I", self.data, off)[0]
+            pc = struct.unpack_from("<I", self.data, off + 4)[0]
+            if (RAM_BASE <= sp <= RAM_BASE + RAM_SIZE
+                    and (pc & 1) and FLASH_BASE <= (pc & ~1) < FLASH_BASE + n):
+                return FLASH_BASE + off
+        raise RuntimeError("no vector table found in image")
+
+    def run_reset(self, max_insn=500_000, vector_base=None):
+        """Boot from the image's own reset vector and run its event loop for up
+        to max_insn instructions (black box: no entry address needed). A bounded
+        boot stops wherever it is in the loop; callers assert on observed IO."""
+        base = self.vector_base() if vector_base is None else vector_base
+        sp = self.r32(base); pc = self.r32(base + 4)
         self.uc.reg_write(UC_ARM_REG_SP, sp)
         try:
             self.uc.emu_start(pc & ~1 | 1, 0xFFFFFFFF, count=max_insn)
         except UcError:
-            pass   # a bounded boot may stop anywhere; callers assert on observed IO
+            pass
         return self
