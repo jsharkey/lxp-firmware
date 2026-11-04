@@ -117,6 +117,36 @@ anchor. Best evidence still says: **ARM = timekeeper + config/HMI + bridge; the
 DSP evaluates the real-time time-window rules** (the protocol's `0x10` = "SN +
 time only" means time is explicitly pushed to whoever evaluates).
 
+## Dynamic analysis (Unicorn harness: tools/emu.py)
+
+A Unicorn emulator (`tools/emu.py`) runs firmware functions in a sandbox with
+stubbed STM32 peripherals, capturing UART TX and tracing which named functions
+execute. It is **validated**: `sub_08000d98(buf,len)` computes the Modbus CRC-16
+correctly in-firmware (`CRC("123456789") == 0x4B37`), confirming the emulation
+executes the real code faithfully.
+
+What it established by injecting crafted Modbus frames into the USART3 buffer
+(`0x20000028`) and running the processors:
+
+- `sub_08001482` CRC-validates a frame (`sub_08000d98` compute vs `sub_08000de4`
+  read-back) and dispatches via `sub_08001420` — but that path **only deep-processes
+  the extended `0x21/0x22/0x23` commands**; standard `0x03/0x04/0x06/0x10` are
+  no-ops there (empty response, no store). So USART3's `sub_08001482` path is the
+  **tagged extended protocol** (the `SNEC/SNFC/...` records), *not* the standard
+  register-serving Modbus.
+- The standard register read/write (serving input/holding registers) is a
+  **separate handler**, not yet pinned. The 356-byte block at RAM `0x20009048`
+  (zeroed by the comms task) is the likely **input-register/telemetry array**;
+  it is referenced by the USART2 handler (`sub_0801c9ec`) and the link parser
+  `sub_08014a3a` (buffer `0x20007cec`), among others.
+
+**Direction still unresolved.** The harness can answer it, but needs the right
+entry points: run each link's service routine with a seeded register array and a
+crafted request, and observe whether it (a) *responds* (slave: the master reads
+the ARM's registers) or (b) *initiates* a write (master: ARM pushes to the DSP).
+The blocker is matching each of the 5 links to its physical peer, which the
+schematic settles directly.
+
 ## How to finish (ranked)
 
 1. **Schematic** (you're providing): label which MCU UART → DSP, BMS, meter,

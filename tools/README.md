@@ -19,6 +19,14 @@ deps with `pip install capstone pyelftools`.
 | `recurse.py` | recursive-descent function mapper → `symbols.csv`, `callgraph.txt` |
 | `strtab.py`  | ordered string catalog + menu enum (`hmi_menu.h`) |
 | `xref.py`    | string↔function xrefs, symbol names, Ghidra rename script |
+| `emu.py`     | **Unicorn harness**: run firmware functions in a sandbox, capture UART TX, trace calls (`pip install unicorn`) |
+
+Dynamic analysis example (validate + call a function):
+
+```bash
+python3 emu.py ../reference/com_flat.bin --selftest          # in-firmware CRC == 0x4B37
+python3 emu.py ../reference/com_flat.bin --call 0x08001482   # run a handler, capture TX
+```
 
 Example:
 
