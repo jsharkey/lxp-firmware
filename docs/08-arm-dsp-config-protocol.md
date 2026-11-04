@@ -378,6 +378,43 @@ encoding, and that they reach the DSP as positional values in the group read at
 `0x10 + (reg-start)*2`.** Mapping those onto docs/10's `0xAD8F…`/`0xAD9C…`
 DSP targets is the one remaining cross-check, and it is a DSP-side question.
 
+### The func-`0x10` write path checked — still standard Modbus, not docs/10's blocks
+
+To test whether docs/10's `type=1`/block-id-`@0x14` frame is the **write**
+direction, the func-6/`0x10` handler was traced:
+
+- `sub_08014fec` dispatches `[RX+1]` → `sub_0803373c` for **3/4** (read),
+  `sub_08033bb4` for **6/`0x10`** (write), `fn_NOTB` for `0x21/0x22/0x23`
+  (the bootloader commands).
+- `sub_08033bb4` builds a plain **Modbus write echo**: `[addr][func][SN[0..9] =
+  settings+0x01][start-addr echo]` — no block id, no positional slot triplets.
+
+And the link really is the DSP: the `0x20007490` buffer's drain (`sub_0801c672`)
+and RX (`sub_0801c6e0`) both target **USART3 `0x40004800`**.
+
+**So neither the read nor the write path the ARM serves on the DSP link matches
+docs/10's positional-block frame.** The ARM side of USART3 is a **standard
+EG4-Modbus slave** (func 3/4/6/`0x10`, SN-stamped, register groups of 40), byte-
+for-byte consistent with the EG4 spec — *not* a bespoke `type=1` block protocol.
+Config flows ARM→DSP by the **DSP polling the ARM** (Modbus master reads), with
+the ARM owning the settings (docs/09); regs 64-89 cross as register values at
+`0x10 + (reg-start)*2`.
+
+**Reconciliation status (honest, and not unilaterally overturning docs/10).**
+docs/05 noted "two protocol layers on one wire." Two possibilities remain, and
+the resolution is DSP-side:
+1. docs/10's `FUN_00092EE2` parses a **different frame** than the Modbus traffic
+   analysed here — e.g. a separate push layer, or a different DSP SCI port — in
+   which case the ARM-side builder for a docs/10-shaped frame is still unlocated
+   (no ARM function was found that emits `type=1`/block-id-`@0x14`).
+2. `FUN_00092EE2` is in fact parsing a **Modbus read response**, and docs/10's
+   "18-byte header / block id `@0x14` / payload `@0x15`" is a mis-framing of
+   `SN[10] + start + bytecount + values` (the 5-byte header delta `0x10`→`0x15`
+   is the thing to re-check on the DSP side).
+
+Until that DSP-side check is done, the `regs 64-89 → 0xAD8F…` *slot* equivalence
+stays unproven; what is solid is the **Modbus register-group** path above.
+
 ## Worked example — AC-First registers 152–157 (PROVEN, ARM `.hex`)
 
 Tracing Modbus regs 152–157 (the "AC First" load-priority time windows) through
