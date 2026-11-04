@@ -167,8 +167,15 @@ class ArmSim:
 
     def _build(self):
         uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
-        try: uc.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M3)
-        except Exception: pass
+        # The factory com-MCU executes ARMv7E-M DSP instructions (smlabb, sdiv, …)
+        # with STM32F1-compatible peripherals -- i.e. an M4-class core (a GD32F303-
+        # style F1 clone), not a true Cortex-M3. Use an M4 model so those decode;
+        # our own M3-built firmware runs on it unchanged (M4 is a superset).
+        for m in ("UC_CPU_ARM_CORTEX_M4", "UC_CPU_ARM_CORTEX_M33", "UC_CPU_ARM_CORTEX_M7"):
+            mv = globals().get(m)
+            if mv is not None:
+                try: uc.ctl_set_cpu_model(mv); break
+                except Exception: pass
         fsz = (len(self.data) + 0xFFF) & ~0xFFF
         uc.mem_map(FLASH_BASE, max(fsz, 0x80000))
         uc.mem_write(FLASH_BASE, self.data)
@@ -218,6 +225,17 @@ class ArmSim:
         elif base == RCC and off == 0x04:                    # RCC_CFGR: SWS mirrors SW
             cur = struct.unpack("<I", uc.mem_read(RCC+4, 4))[0]
             uc.mem_write(RCC+4, struct.pack("<I", (cur & ~(3<<2)) | ((cur & 3) << 2)))
+        elif base == RCC and off == 0x20:                    # RCC_BDCR: LSE ready (RTC crystal)
+            cur = struct.unpack("<I", uc.mem_read(RCC+0x20, 4))[0]
+            uc.mem_write(RCC+0x20, struct.pack("<I", cur | (1 << 1)))
+        elif base == RCC and off == 0x24:                    # RCC_CSR: LSI ready
+            cur = struct.unpack("<I", uc.mem_read(RCC+0x24, 4))[0]
+            uc.mem_write(RCC+0x24, struct.pack("<I", cur | (1 << 1)))
+        elif addr == 0x40002804:                             # RTC_CRL: RSF synced + RTOFF ready
+            cur = struct.unpack("<I", uc.mem_read(0x40002804, 4))[0]
+            uc.mem_write(0x40002804, struct.pack("<I", cur | (1 << 3) | (1 << 5)))
+        elif base in (0x40013000, 0x40003800) and off == 0x08:   # SPI1/SPI2_SR: TXE|RXNE, not BSY
+            uc.mem_write(base + 0x08, struct.pack("<I", (1 << 1) | (1 << 0)))
         elif (addr & ~0xFF) in USARTS and off == 0x00:       # USART_SR: keep TXE|TC
             uc.mem_write(addr & ~0xFF, struct.pack("<I", USART_SR_READY))
         return True

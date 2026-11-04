@@ -89,6 +89,35 @@ on and stays 0 with it off. It is **off by default** (keeps non-tick tests fast)
 > is the tool for the genuinely periodic behaviours (the IR_STATE-driven relays,
 > the DSP push cadence); turn it on when testing those.
 
+## Booting the factory further (toward the relay app-loop)
+
+The power-path **relays** (docs/18) are driven from the factory's main control
+loop (`sub_0801b3dc`), which is reached only after a long hardware-dependent
+boot. Getting there turned up two things worth recording:
+
+- **The com MCU is an M4-class core, not a Cortex-M3.** The factory executes
+  ARMv7E-M DSP instructions (`smlabb`, `sdiv`, …) as real code, which fault under
+  a Cortex-M3 model. With STM32F1-compatible peripherals + an M4 core, it is
+  almost certainly a **GD32F303-style F1 clone**. The harness now uses an M4
+  model (our own M3-built firmware still runs, M4 being a superset). *(Worth
+  reconciling with docs/01's "STM32F103 / M3" identification.)*
+- Boot polls a chain of **peripheral-ready** signals that a bare sandbox leaves
+  at 0: the harness now fakes **RCC_BDCR LSERDY** (RTC crystal), **RCC_CSR
+  LSIRDY**, **RTC_CRL RSF/RTOFF**, and **SPI1/2 SR TXE|RXNE** — the same class as
+  the existing HSE/PLL/USART fakes. These advance boot from an early LSE spin to
+  deep into SPI device bring-up.
+
+**Still blocked (the relay app-loop is not yet reachable):** past the ready
+flags, boot does **data-dependent SPI device transactions** (e.g. a `0x05`/`0xA5`
+"read status" handshake against an SPI flash/LCD) and waits for specific
+responses. Faking the status byte gets past one handshake but others follow.
+Reaching `sub_0801b3dc` therefore needs the boot-time SPI device(s) *emulated*
+(canned, structured responses), not just ready flags — a real piece of work.
+**Until then a relay parity test cannot run its stimulus through the factory's
+own loop, so it is deliberately not added** (a test that cannot validate the
+oracle is worse than none). The groundwork above is committed so this can be
+finished; see the options discussed with the maintainer.
+
 ## The parity test (factory oracle == our firmware), black box
 
 `tests/test_arm_sim.py :: test_pb7_input_drives_output` is the pattern: assert a
