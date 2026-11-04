@@ -22,7 +22,7 @@ config push is its own third thing: type byte **`1`**.)
 
 **Q: Are all settings pushed, or only edited ones?**
 **All of them, as a repeating full image** — the ARM streams the complete set of
-**8 config blocks** (ids 0–7), re-sending the current value of every setting, not
+**9 config blocks** (ids 0–8), re-sending the current value of every setting, not
 just the ones that changed. The DSP itself does the change detection: it
 diffs each freshly-received value against its stored copy and only *acts* on a
 difference. Two independent mechanisms prove this (below): a completeness
@@ -66,12 +66,18 @@ Frame layout (each element is one 16-bit word = one C28x "byte"; offsets in word
 There is **no register-number field anywhere** — the block id plus a fixed field
 order is the entire addressing scheme.
 
-## The 8 config blocks
+## The 9 config blocks
 
 `FUN_00092EE2` (word `0x92EE2`) switches on the block id at `[0x14]` and unpacks a
 fixed sequence of fields via the endian reader `FUN_0009E7C2`. One block per
-frame; ~85 fields total across the eight. Each block also sets a distinct
-"received" bit in `DAT_0000b300`:
+frame; ~85 fields total across the nine (ids 0–8). Each block also sets a
+distinct "received" bit in `DAT_0000b300`.
+
+> **Byte-exact field map:** the complete per-block layout — every field's frame
+> offset, width, big-endian byte order, and DSP RAM target — is in
+> [`docs/10-dsp-config-field-map.md`](10-dsp-config-field-map.md), for the ARM
+> packer. (Notably: output priority is the single byte at frame offset **`0x1E`**
+> in block 0.)
 
 | block | `b300` bit | target variable cluster | likely content |
 |---|---|---|---|
@@ -116,7 +122,7 @@ in `docs/07`).
 
 ## Direction and cadence
 
-- **Downlink (ARM → DSP):** type-`1` frames, streaming all 8 config blocks in
+- **Downlink (ARM → DSP):** type-`1` frames, streaming all 9 config blocks in
   rotation, each a full snapshot. The DSP applies them as it receives them and
   marks the set complete when all blocks have arrived. A link-health flag
   (`DAT_0000AD67` bit 2) follows whether valid frames keep coming.
@@ -127,7 +133,7 @@ in `docs/07`).
 ## Confidence & open items
 
 - **High confidence:** the custom (non-register) block-structured layout; block
-  id at `[0x14]`; the 8 blocks and their `b300` completeness bits; CRC-16
+  id at `[0x14]`; the 9 blocks and their `b300` completeness bits; CRC-16
   validation; ARM-push / DSP-slave direction; full-image (not delta) pushing;
   block 0 = the AC-First group.
 - **Partial:** the 18-word header (`[0x02..0x13]`) — SN is expected there and the
@@ -305,7 +311,7 @@ unsolved — cold runs don't build a response without a validly-injected request
 |---|---|---|
 | `FUN_00098F72` | `0x98F72` | app comms task: RX into `0xAC80`, CRC check, dispatch type `1` |
 | `FUN_0009E309` | `0x9E309` | type-1 pre-parse; calls the deserialiser with offset `0x14` |
-| `FUN_00092EE2` | `0x92EE2` | settings deserialiser (8 blocks; sole caller is `FUN_0009E309`) |
+| `FUN_00092EE2` | `0x92EE2` | settings deserialiser (9 blocks, ids 0–8; sole caller is `FUN_0009E309`) |
 | `FUN_0009E7C2` | `0x9E7C2` | frame field reader (endianness) |
 | `FUN_00081034` | `0x81034` | CRC-16/Modbus (shared with the bootloader path) |
 | `FUN_0009DD14` | `0x9DD14` | telemetry TX builder (`0xADC2` + CRC) |
