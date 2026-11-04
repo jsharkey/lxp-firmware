@@ -645,3 +645,49 @@ unsolved — cold runs don't build a response without a validly-injected request
 | `DAT_0000B300` | `0xB300` | per-block "received" completeness bitmask |
 | `DAT_0000AD56` | `0xAD56` | per-setting "dirty"/pending-change bits |
 | `DAT_0000ADA8` | `0xADA8` | output priority (block 0; `2` = AC First) |
+
+## The ARM evaluates the charge/discharge windows against its RTC too
+
+Follow-up to the AC-First trace: do the **AC-charge / charge-priority /
+forced-discharge** windows (regs 64-89) get evaluated against the ARM RTC, and
+where do the results go? Concrete answer: **yes** — there is a second
+RTC-window evaluator with byte-for-byte the same shape as the AC-First one.
+
+**`sub_0801e1dc` — a charge/discharge window evaluator** (proven, same idiom as
+`sub_0801eb4c`):
+- `now = RTC.hour*60 + RTC.minute` from `0x2000a718` (`+2`=hour, `+1`=min).
+- loops 3 windows reading `settings[0x3a + 4i]` as the **start** (byte = hour,
+  halfword `>>8` = minute) and `settings[0x3c + 4i]` as the **end** — a
+  4-byte-strided `{start, end}` array, identical to the AC-First layout at 0x64.
+- `start ≤ now < end` with the same 1439-minute (`0x59f`) day-wrap.
+- gated by `settings[0x33]` bits[1:3]; per-window result → status byte
+  `0x2000aa55` and record arrays `0x2000a48c` / `0x2000a6dc`.
+
+Crucially, **`settings+0x3a` is also read by `fn_ceaa`** (the Modbus register
+getter), so this window register is *both* served to the DSP in the group read
+*and* evaluated locally by the ARM — evaluation happens on **both** sides.
+
+**Where the result flows — `sub_0801e608` (the schedule controller).** It calls
+`sub_0801e1dc`, then combines the window verdict with:
+- a 2-bit **mode** selector `settings[0x33]` bits[4:6] (0-3),
+- a measured **SOC** (`0x20009e54+0xa`, in 0.1 % — the live telemetry bank), and
+- an **SOC limit** (`settings+0x82`),
+
+to set charge/discharge **control flags** `0x2000aa5c`/`0x2000aa5d`
+(+ `0x2000aa57..0x2000aa5b`), and — like the AC-First path — it also folds a bit
+into the telemetry status halfword `0x2000a8e6` (which `sub_080258ca` reports to
+the app/dongle). So the window evaluation drives the ARM's **own** schedule
+state + app telemetry; the raw window values additionally cross to the DSP via
+the Modbus group read (above).
+
+**Honest scope.** One ARM charge/discharge window evaluator is proven
+(`sub_0801e1dc`, `settings+0x3a`) alongside AC-First (`sub_0801eb4c`,
+`settings+0x64`); a whole-image scan for the `0x59f` day-wrap idiom finds only
+these two. Whether the three named features (AC-charge / charge-priority /
+forced-discharge) are each a separate window bank or are multiplexed through
+`sub_0801e608`'s `settings[0x33]` mode field is **not** pinned here — the exact
+register↔settings-offset identity of the `0x3a` bank was not nailed down, so it
+is described as "a charge/discharge schedule window set", not labelled to one of
+the three. The proven claim is narrow and solid: **the ARM evaluates these
+schedule windows against its RTC, and the verdict flows to an ARM-side schedule
+controller (`sub_0801e608`) + app telemetry, not into the DSP config frame.**
