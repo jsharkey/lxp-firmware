@@ -1,70 +1,85 @@
 #!/usr/bin/env python3
 """
-GPIO-behaviour tests on the arm_sim harness (tools/arm_sim.py).
+Common GPIO-behaviour tests on the arm_sim harness (tools/arm_sim.py), run
+against ONE firmware image given on the command line.
 
-Two things are proven here, end-to-end:
+The whole point of this file: the *exact same* test code runs against both our
+open-source build and the factory reference image -- there is no per-image
+branching, no symbols, no sniffing which firmware is loaded. Each test boots the
+image as a black box, injects a GPIO input and/or reads a GPIO output (or a
+memory-mapped peripheral register), and asserts a behaviour that both firmwares
+must exhibit. Because the identical spec passes against both images, the factory
+oracle and our reimplementation are proven to agree -- parity by shared contract.
 
-  1. BASE CASE (factory image = oracle): the function sub_0802e452 in the
-     ceaa-07xx image debounce-samples PB7 as an INPUT (10x via
-     GPIO_ReadInputDataBit) and, iff the majority read high, drives PB7 HIGH via
-     GPIO_SetBits and sets status flag 0x2000d890 bit 6. So flipping one GPIO
-     INPUT flips a GPIO OUTPUT — the minimal input->output causality that proves
-     the harness instruments real firmware correctly.
+The Makefile's `test-sim` target invokes this twice, once per image:
 
-  2. OUR FIRMWARE runs in the same harness: booting build/firmware.bin from its
-     reset vector reaches mb_port_init, which configures GPIOB->CRH for USART3
-     (PB10 = AF push-pull, PB11 = floating input). This is the hook future
-     feature tests grow from: assert our firmware's GPIO behaviour the same way.
+    python3 tests/test_arm_sim.py build/firmware.bin          # our firmware
+    python3 tests/test_arm_sim.py path/to/factory.hex         # factory oracle
 
-Runs with plain `python3 tests/test_arm_sim.py` (only needs `pip install
-unicorn`); also discoverable by pytest if installed. Tests that need an image
-SKIP (not fail) when it is absent, since the factory image is never committed.
+Target-specific tests (which must name internal symbols or addresses, so they
+cannot be shared) live in their own files:
 
-Factory image location: $LXP_FACTORY_BIN or reference/com_flat.bin.
-Our firmware:           build/firmware.bin (+ .elf) — run `make` first.
+    tests/test_arm_sim_self_only.py      -- our firmware, by symbol
+    tests/test_arm_sim_factory_only.py   -- the factory image, by address
+
+Usage:
+    python3 tests/test_arm_sim.py [IMAGE]
+
+IMAGE may be an Intel .hex or a raw flat .bin (auto-detected by content). If
+omitted, $LXP_SIM_IMAGE is used, else build/firmware.bin if it exists (so plain
+`python3 tests/test_arm_sim.py` and pytest still work after `make`). Tests SKIP
+(not fail) when no image is available. Needs `pip install unicorn`.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from arm_sim import ArmSim
 
-FACTORY_HEX = os.environ.get("LXP_FACTORY_HEX")                      # vendor .hex (converted in-memory)
-FACTORY_BIN = os.environ.get("LXP_FACTORY_BIN", "reference/com_flat.bin")  # pre-converted flat image
+# Image under test. Set by the __main__ runner from argv; otherwise resolved
+# from the environment / default build so pytest and a bare run still work.
+_IMAGE = [None]
 
 class Skip(Exception):
     pass
 
 
-def _factory():
-    # symbols optional (we call by address). Either env var accepts either an
-    # Intel HEX or a raw flat .bin -- the format is auto-detected by content.
-    path = FACTORY_HEX or (FACTORY_BIN if os.path.exists(FACTORY_BIN) else None)
+def _resolve_image():
+    if _IMAGE[0]:
+        return _IMAGE[0]
+    env = os.environ.get("LXP_SIM_IMAGE")
+    if env:
+        return env
+    if os.path.exists("build/firmware.bin"):
+        return "build/firmware.bin"
+    return None
+
+
+def _sim():
+    """Build a fresh sim on the image under test (no symbols -- these tests are
+    pure black box, so the same code loads our .bin and the factory .hex alike).
+    """
+    path = _resolve_image()
     if not path:
-        raise Skip("no factory image (set $LXP_FACTORY_HEX to a vendor .hex, "
-                   "or $LXP_FACTORY_BIN / reference/com_flat.bin to a flat image)")
+        raise Skip("no image (pass one on the command line, set $LXP_SIM_IMAGE, "
+                   "or `make` so build/firmware.bin exists)")
     if not os.path.exists(path):
-        raise Skip("factory image %s not found" % path)
+        raise Skip("image %s not found" % path)
     return ArmSim.from_image(path)
 
-def _ours():
-    if not (os.path.exists("build/firmware.bin") and os.path.exists("build/firmware.elf")):
-        raise Skip("build/firmware.{bin,elf} not present (run `make`)")
-    return ArmSim.ours()
 
-
-def _observe_pb7(make_sim):
+def _observe_pb7():
     """Black box: boot the firmware, hold PB7 at each level, let *its own* event
     loop notice the input and drive the output. Returns {level: PB7 driven high?}.
 
-    No firmware entry point is named — we only inject a GPIO input, run the loop,
-    and read a GPIO output, so the same logic works for the factory image and
-    for our firmware. (The factory image boots its App above an absent
-    bootloader; the harness finds the vector table itself.)
+    No firmware entry point is named -- we only inject a GPIO input, run the loop,
+    and read a GPIO output, so the same logic works for any image. (The factory
+    image boots its App above an absent bootloader; the harness finds the vector
+    table itself.)
     """
     # Warm up ONCE: boot the firmware up to the first time its loop samples PB7
     # (boot is done, and it's reached the same way regardless of PB7's level), then
     # snapshot. Each case restores that identical warm state -- hermetic, but we
     # pay the (slow) boot only once instead of per case.
-    sim = make_sim()
+    sim = _sim()
     sim.run_until_input_read("PB7")
     warm = sim.snapshot()
 
@@ -83,133 +98,46 @@ def _observe_pb7(make_sim):
 
 def test_pb7_input_drives_output():
     """Holding the PB7 line high makes the firmware's own event loop drive PB7
-    high; holding it low does not. Our firmware must do this, and must match the
-    factory image (the oracle) when it is available.
+    high; holding it low does not -- the minimal input->output causality that
+    proves the harness instruments real firmware correctly.
 
-    (Factory sub_0802e452 debounce-samples PB7 and drives it high on a majority;
-    our pb7_sample_poll() mirrors that — but this test invokes neither directly,
-    it just runs each firmware's loop as a black box. docs/16: PB7 is the
-    board's bit-banged line.)
+    Both firmwares must exhibit this; asserting the same contract against each
+    image (run separately) is how factory-vs-ours parity is established, without
+    this test ever telling the two apart. (In the ceaa-07xx image this is factory
+    sub_0802e452, which debounce-samples PB7 10x and drives it high on a majority;
+    our pb7_sample_poll() mirrors it -- but this test invokes neither directly, it
+    just runs each firmware's loop as a black box. docs/16: PB7 is the board's
+    bit-banged line.)
     """
-    ours = _observe_pb7(_ours)
-    assert ours == {1: True, 0: False}, "our firmware did not propagate PB7: %r" % ours
-
-    try:
-        factory = _observe_pb7(_factory)
-    except Skip:
-        return   # no factory image: our-firmware behaviour was still verified
-    assert factory == ours, "factory %r != ours %r" % (factory, ours)
+    got = _observe_pb7()
+    assert got == {1: True, 0: False}, "firmware did not propagate PB7: %r" % got
 
 
-def test_our_firmware_boots_and_configures_usart3_gpio():
-    """Our firmware boots in the harness and mb_port_init configures GPIOB."""
-    sim = _ours()
+def test_boots_and_configures_usart3_gpio():
+    """The firmware boots in the harness and configures GPIOB for USART3 (the
+    RS485/dongle Modbus link): PB10 = AF push-pull (0xB), PB11 = floating input
+    (0x4). Both firmwares bring USART3 up the same way, so this is a common
+    boot/IO smoke test -- proof the harness runs each image through its init, not
+    just isolated functions."""
+    sim = _sim()
     sim.run_reset(max_insn=300_000)
-    crh = sim.r32(0x40010C04)                # GPIOB->CRH
-    pb10 = (crh >> 8) & 0xF                   # PB10 = USART3_TX
-    pb11 = (crh >> 12) & 0xF                  # PB11 = USART3_RX
+    crh = sim.r32(0x40010C04)                 # GPIOB->CRH
+    pb10 = (crh >> 8) & 0xF                    # PB10 = USART3_TX
+    pb11 = (crh >> 12) & 0xF                   # PB11 = USART3_RX
     assert pb10 == 0xB, "PB10 mode nibble = 0x%x (expected 0xB AF-PP 50MHz)" % pb10
     assert pb11 == 0x4, "PB11 mode nibble = 0x%x (expected 0x4 floating input)" % pb11
 
 
-# --- factory internals for the manual/AutoTest relay override (ceaa-07xx) -----
-# docs/18: the grid-protection self-test drives the AC transfer relays directly.
-# sub_08018a7c, in manual mode, sets PA12 <- cmd bit1 and PB3 <- cmd bit0.
-FAC_RELAY_UPDATER = 0x08018a7c
-FAC_MANUAL_FLAG   = 0x2000d0e4 + 0xa9   # 1 = manual/test mode
-FAC_RELAY_CMD     = 0x2000da6c          # override command word
-
-# contract: (cmd, manual) -> (PA12, PB3). bit1->PA12, bit0->PB3; only in manual mode.
-RELAY_TRUTH = {(0, 1): (0, 0), (1, 1): (0, 1), (2, 1): (1, 0),
-               (3, 1): (1, 1), (3, 0): (0, 0)}
-
-def _relay_factory(cmd, manual):
-    sim = _factory()
-    sim.wbytes(FAC_MANUAL_FLAG, bytes([manual]))
-    sim.wbytes(FAC_RELAY_CMD, bytes([cmd & 0xFF, (cmd >> 8) & 0xFF]))
-    sim.clear_drives()
-    sim.call(FAC_RELAY_UPDATER)
-    return (sim.get_output("PA12"), sim.get_output("PB3"))
-
-def _relay_ours(cmd, manual):
-    sim = _ours()
-    sim.call("relay_set_override", (cmd, manual))
-    sim.clear_drives()
-    sim.call("relay_poll")
-    return (sim.get_output("PA12"), sim.get_output("PB3"))
-
-
-def test_relay_override_drives_transfer_pins():
-    """Manual/AutoTest relay override (docs/18): in test mode a command word
-    drives the AC transfer relays PA12 (bit 1) and PB3 (bit 0); ignored when not
-    in manual mode. Our firmware must match the factory image.
-
-    (This exercises the real factory relay-drive code via the override path. The
-    working-mode-driven path needs the factory's RTOS scheduler running, which
-    the harness does not yet emulate -- see docs/19.)"""
-    for (cmd, manual), exp in RELAY_TRUTH.items():
-        got = _relay_ours(cmd, manual)
-        assert got == exp, "ours (cmd=%d manual=%d) = %r, expected %r" % (cmd, manual, got, exp)
-    try:
-        fac = {k: _relay_factory(*k) for k in RELAY_TRUTH}
-    except Skip:
-        return   # no factory image: our-firmware contract still verified
-    assert fac == RELAY_TRUTH, "factory relay override mismatch: %r" % fac
-
-
-# --- working-mode relay: the run-enable relay PC6 follows IR_STATE -------------
-FAC_RUN_RELAY_UPDATER = 0x08016ec6       # PB2/PC6 updater (docs/18)
-FAC_IR_STATE          = 0x2000d0e4 + 0xa0  # operating mode byte (= IR_STATE)
-# contract: PC6 closed (1) iff running (IR_STATE > PROGRAMMING=2); open otherwise.
-RUN_STATES    = (0x04, 0x10, 0x40, 0xC0)   # PV-ongrid, bat-ongrid, bat-offgrid, pv+bat-offgrid
-NONRUN_STATES = (0x00, 0x01, 0x02)         # standby, fault, programming
-
-def _run_relay_factory(state):
-    sim = _factory()
-    sim.wbytes(FAC_RELAY_CMD, b"\x00\x00")          # override off
-    sim.wbytes(FAC_IR_STATE, bytes([state]))
-    sim.clear_drives()
-    for _ in range(600):                            # settle the updater's debounce
-        sim.call(FAC_RUN_RELAY_UPDATER)
-    return sim.get_output("PC6")
-
-def _run_relay_ours(state):
-    sim = _ours()
-    sim.call("relay_set_override", (0, 0))
-    sim.call("relay_set_mode", (state,))
-    sim.clear_drives()
-    sim.call("relay_poll")
-    return sim.get_output("PC6")
-
-
-def test_relay_follows_working_mode():
-    """The run-enable relay (PC6) is closed when the inverter is in a running
-    operating mode (IR_STATE > PROGRAMMING) and open in standby/fault/programming
-    -- the factory's sub_08016ec6 gate (docs/18). Our firmware must match."""
-    for st in RUN_STATES:
-        assert _run_relay_ours(st) == 1, "ours: PC6 should be closed for state 0x%02x" % st
-    for st in NONRUN_STATES:
-        assert _run_relay_ours(st) == 0, "ours: PC6 should be open for state 0x%02x" % st
-    try:
-        fac = {st: _run_relay_factory(st) for st in RUN_STATES + NONRUN_STATES}
-    except Skip:
-        return
-    exp = {st: (1 if st in RUN_STATES else 0) for st in RUN_STATES + NONRUN_STATES}
-    assert fac == exp, "factory run-relay vs mode mismatch: %r" % fac
-
-
-def test_systick_advances_tick_counter():
-    """The harness has no real timer, so tick-driven firmware logic freezes after
-    boot -- unless SysTick injection is on. With it on, our firmware's 1 ms tick
-    counter (g_ticks) advances; with it off it stays at 0."""
-    off = _ours(); off.run_reset(max_insn=800_000)
-    assert off.r32(off.sym("g_ticks")) == 0, "g_ticks advanced without SysTick"
-    on = _ours(); on.enable_systick(20_000); on.run_reset(max_insn=800_000)
-    assert on.r32(on.sym("g_ticks")) > 0, "SysTick injection did not advance g_ticks"
-
-
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
-if __name__ == "__main__":
+def _main(argv):
+    # Optional single positional arg: the image to test. (argparse would reject
+    # pytest's own flags, so keep it this simple.)
+    args = [a for a in argv[1:] if not a.startswith("-")]
+    if args:
+        _IMAGE[0] = args[0]
+    label = _resolve_image() or "<none>"
+    print("# test_arm_sim.py: image = %s" % label)
+
     tests = [v for k, v in sorted(globals().items())
              if k.startswith("test_") and callable(v)]
     rc = 0
@@ -222,4 +150,8 @@ if __name__ == "__main__":
             rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
         except Exception as e:
             rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    sys.exit(rc)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv))

@@ -82,13 +82,30 @@ test:
 	$(HOSTCC) $(HOSTFLAGS) src/variant.c tests/test_variant.c -o $(BUILD)/test_variant
 	@./$(BUILD)/test_variant
 
-# GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Builds our
-# firmware first so the "our firmware boots" test has something to load; the
-# factory-oracle test SKIPs unless a factory image is given: $LXP_FACTORY_HEX
-# (a vendor .hex, converted in-memory), $LXP_FACTORY_BIN, or reference/com_flat.bin.
-# Needs: pip install unicorn.
+# GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
+# install unicorn.
+#
+# The common tests (tests/test_arm_sim.py) are run twice -- the SAME test code
+# against each firmware image, passed as a command-line argument: once against
+# our build, and (when a factory image is provided) once against the factory
+# oracle. Target-specific tests that must name internal symbols/addresses live in
+# their own files: test_arm_sim_self_only.py (our firmware) and
+# test_arm_sim_factory_only.py (the factory image).
+#
+# The factory image is never committed (it is proprietary); give one via
+# $LXP_FACTORY_HEX (a vendor .hex, converted in-memory), $LXP_FACTORY_BIN, or
+# reference/com_flat.bin. Without one, the factory runs are skipped and the
+# target is still green on our firmware alone.
+FACTORY_IMG := $(or $(LXP_FACTORY_HEX),$(LXP_FACTORY_BIN),$(wildcard reference/com_flat.bin))
 test-sim: $(BUILD)/$(TARGET).bin
-	python3 tests/test_arm_sim.py
+	python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
+	python3 tests/test_arm_sim_self_only.py
+ifneq ($(FACTORY_IMG),)
+	python3 tests/test_arm_sim.py $(FACTORY_IMG)
+	LXP_FACTORY_IMG=$(FACTORY_IMG) python3 tests/test_arm_sim_factory_only.py
+else
+	@echo "# (no factory image: set LXP_FACTORY_HEX/LXP_FACTORY_BIN to run the factory oracle)"
+endif
 
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App

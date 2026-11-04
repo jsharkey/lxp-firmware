@@ -136,12 +136,19 @@ the vendor scheduler through it — a sizeable, quirk-heavy component. **And it
 turns out not to be needed to validate the relay behaviour** (below), so it is
 deliberately deferred to its own effort rather than block the relay tests.
 
-### The relay parity tests (run the real factory relay code directly)
+### The relay parity tests (target-specific: shared contract, per-image drive)
 
-Both relay behaviours are validated by invoking the factory's *actual* relay
-code with seeded state — the same state the RTOS task would act on — and holding
-our firmware to the identical contract. (Not the loop-driven black box: the RTOS
-blocks that, per above. But it runs the genuine factory drive code.)
+The relays can't be reached as a pure black box: the factory drives them from an
+RTOS task the harness doesn't schedule (per above), so there is no GPIO input to
+inject that makes the loop drive them. Instead each firmware is exercised through
+its *own* drive path, with seeded state — the same state the RTOS task would act
+on — and both are held to **one shared contract** (`tests/arm_sim_contract.py`).
+Because the identical spec passes on each side, the factory oracle and our
+reimplementation are proven to agree without a test that compares the two
+directly. These are **target-specific**, so they live outside the common file:
+
+- `tests/test_arm_sim_self_only.py` — our firmware, by symbol (`src/relay.c`);
+- `tests/test_arm_sim_factory_only.py` — the factory image, by address.
 
 **1. Working mode → run-enable relay** (`test_relay_follows_working_mode`): PC6
 is closed iff the inverter is in a running operating mode. Factory: seed
@@ -153,12 +160,8 @@ is closed iff the inverter is in a running operating mode. Factory: seed
 | `0x00/0x01/0x02` | standby / fault / programming | 0 (open) |
 | `0x04/0x10/0x40/0xC0` | any running state | 1 (closed) |
 
-### The relay parity test (via the manual/AutoTest override)
-
-What *also* validates the factory's real relay code is the **override path**
-(docs/18): the grid-protection self-test drives the AC transfer relays directly.
-`test_relay_override_drives_transfer_pins` asserts the contract on **both**
-firmwares:
+**2. Manual/AutoTest override** (`test_relay_override_drives_transfer_pins`): the
+grid-protection self-test (docs/18) drives the AC transfer relays directly.
 
 | command | manual? | PA12 | PB3 |
 |---|---|---|---|
@@ -171,77 +174,69 @@ firmwares:
 Factory: seed its manual-mode flag + command word, invoke its relay updater
 (`sub_08018a7c`) — the genuine factory drive code runs (no boot needed, the
 override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
-(`src/relay.c`), TDD'd to match. This is **not** the loop-driven black box (the
-
-### The relay parity test (via the manual/AutoTest override)
-
-What *does* validate the factory's real relay code today is the **override path**
-(docs/18): the grid-protection self-test drives the AC transfer relays directly.
-`test_relay_override_drives_transfer_pins` asserts the contract on **both**
-firmwares:
-
-| command | manual? | PA12 | PB3 |
-|---|---|---|---|
-| bit1=0 bit0=0 | yes | 0 | 0 |
-| bit1=0 bit0=1 | yes | 0 | 1 |
-| bit1=1 bit0=0 | yes | 1 | 0 |
-| bit1=1 bit0=1 | yes | 1 | 1 |
-| bit1=1 bit0=1 | **no** | 0 | 0 (override ignored) |
-
-Factory: seed its manual-mode flag + command word, invoke its relay updater
-(`sub_08018a7c`) — the genuine factory drive code runs (no boot needed, the
-override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
-(`src/relay.c`), TDD'd to match. This is **not** the loop-driven black box (the
-RTOS blocks that for relays); it runs the factory's real relay-drive code with a
-seeded command, and holds our reimplementation to the same truth table.
+(`src/relay.c`), TDD'd to match the same truth table.
 
 Committed groundwork toward the full working-mode path: the M4 model, the
 peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`), SysTick
 injection, and the RTOS finding above. **Next** for working-mode-driven relays:
-emulate the RTOS context switch so `sub_0801b3dc` runs as a task.
+emulate the RTOS context switch so `sub_0801b3dc` runs as a task — which would
+also let these move from a seeded-state call into the common black-box file.
 
-## The parity test (factory oracle == our firmware), black box
+## The common tests — the SAME code against both images
 
-`tests/test_arm_sim.py :: test_pb7_input_drives_output` is the pattern: assert a
-GPIO contract against both firmwares **without naming any entry point**. It only
-injects a GPIO input, lets each firmware's *own event loop* run, and reads a GPIO
-output — so the test cannot tell factory from ours apart, which is the point.
+`tests/test_arm_sim.py` holds only tests that run **identically against either
+firmware image**: no symbols, no addresses, no sniffing which firmware is loaded.
+The image is passed on the command line, and the Makefile runs the file twice —
+once per image — so the two firmwares are compared by each independently
+satisfying one shared spec, not by a test that inspects both at once.
 
-The contract: hold **PB7** high → the firmware drives **PB7 high**; hold it low →
-it does not.
+```bash
+python3 tests/test_arm_sim.py build/firmware.bin     # our firmware
+python3 tests/test_arm_sim.py path/to/factory.hex    # the factory oracle
+```
 
-| `set_input("PB7")` | `was_driven("PB7", 1)` — factory | — ours |
-|---|---|---|
-| 1 | True | True |
-| 0 | False | False |
+There are two common tests today:
+
+**1. `test_pb7_input_drives_output`** — the black-box pattern: assert a GPIO
+contract **without naming any entry point**. It only injects a GPIO input, lets
+the firmware's *own event loop* run, and reads a GPIO output — so the test cannot
+tell factory from ours apart, which is the point. Contract: hold **PB7** high →
+the firmware drives **PB7 high**; hold it low → it does not.
+
+| `set_input("PB7")` | `was_driven("PB7", 1)` |
+|---|---|
+| 1 | True |
+| 0 | False |
 
 In the `ceaa-07xx` image this is factory `sub_0802e452` (debounce-sample PB7 10×,
 drive high on a majority); our `pb7_sample_poll()` (`src/gpio_sample.c`, called
-from `main`'s loop) mirrors it. The test warms each firmware once, snapshots, and
-branches both cases from that copy (above), so *their* loops do the sampling and
-driving while the slow boot is paid once. It asserts our firmware propagates PB7,
-and — when a factory image is available — that the two behave identically; with
-no factory image the our-firmware check still runs. Only the observable GPIO is
-compared, so the two can match despite different internals. Runtime: ~0.4s
-without a factory image, ~1.3s with one (down from ~5s / ~10s).
+from `main`'s loop) mirrors it. The test warms the firmware once, snapshots, and
+branches both cases from that copy (above), so *its* loop does the sampling and
+driving while the slow boot is paid once. Only observable GPIO is compared, so
+the two images can match despite different internals.
 
-## Running our firmware (boot smoke test)
-
-`test_our_firmware_boots_and_configures_usart3_gpio` boots `build/firmware.bin`
-from its reset vector and asserts `mb_port_init` configured `GPIOB->CRH` for
-USART3 (PB10 = AF-PP `0xB`, PB11 = floating-in `0x4`) — proof the harness runs
-our firmware through its init, not just isolated functions.
+**2. `test_boots_and_configures_usart3_gpio`** — boots the image from its reset
+vector and asserts `GPIOB->CRH` is configured for USART3 (PB10 = AF-PP `0xB`,
+PB11 = floating-in `0x4`). Both firmwares bring the RS485/dongle Modbus link up
+the same way, so this doubles as a boot smoke test (the harness runs each image
+through its init, not just isolated functions) and a shared-behaviour check.
 
 ## Running the tests
 
 ```bash
-make test-sim                                   # builds our fw, runs the harness tests
-LXP_FACTORY_HEX=/path/App.hex    make test-sim   # vendor .hex (converted in-memory)
-LXP_FACTORY_BIN=/path/com_flat.bin make test-sim # or a pre-converted flat image
+make test-sim                                    # builds our fw, runs the harness tests
+LXP_FACTORY_HEX=/path/App.hex     make test-sim  # also run the factory oracle (vendor .hex)
+LXP_FACTORY_BIN=/path/com_flat.bin make test-sim # ...or a pre-converted flat image
 ```
 
+`make test-sim` runs the common file against `build/firmware.bin`, then
+`test_arm_sim_self_only.py` (our-firmware-specific tests). When a factory image
+is given it *also* runs the common file against that image and
+`test_arm_sim_factory_only.py` (factory-specific tests) — the common code is thus
+executed against both.
+
 Needs `pip install unicorn`. The factory image is never committed (it is
-proprietary); tests that need it **SKIP** rather than fail when it is absent, so
+proprietary); the factory runs **SKIP** rather than fail when it is absent, so
 `make test-sim` is green on our firmware alone. Point `LXP_FACTORY_HEX` (or
 `LXP_FACTORY_BIN`) at the factory image to run the oracle checks — **the format
 is auto-detected by content**, so either var accepts either an Intel `.hex` (the
@@ -263,5 +258,11 @@ already-converted flat `.bin`. `LXP_FACTORY_HEX` takes precedence if both are se
 
 Keep the asserted surface to *observable GPIO* (and, where needed, Modbus
 registers) — never a firmware's internal RAM address — so the factory and our
-firmware stay comparable despite different internals. Add more such tests only
-when there is a second behaviour to pin; don't pre-build a framework for them.
+firmware stay comparable despite different internals. Such black-box tests go in
+`test_arm_sim.py`, where the one test runs against both images. Only when a
+behaviour genuinely can't be reached as a black box (e.g. it needs a symbol or a
+hard-coded address, like the relay tests) does it become target-specific: put
+the factory side in `test_arm_sim_factory_only.py`, our side in
+`test_arm_sim_self_only.py`, and the shared truth table in `arm_sim_contract.py`
+so both are held to one spec. Add more such tests only when there is a second
+behaviour to pin; don't pre-build a framework for them.
