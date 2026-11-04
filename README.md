@@ -47,6 +47,7 @@ Honest picture of where things stand:
 - [x] **Disassemble the TI C28x control DSP** → Ghidra 12.1.2 + `ghidra-tms320c28x` SLEIGH module; F2837x-class, image byte-swapped, ~650 functions recovered. First decode: the **"AC First" output-priority logic** (see [`docs/07-dsp-ac-first-mode.md`](docs/07-dsp-ac-first-mode.md))
 - [x] **ARM→DSP config protocol** → direction + framing resolved from the DSP side: ARM **pushes all settings** as 8 positionally-packed blocks (not Modbus register writes, not deltas); DSP is the reactive slave (see [`docs/08-arm-dsp-config-protocol.md`](docs/08-arm-dsp-config-protocol.md))
 - [x] **ARM→DSP config push implemented** → frame builder + CRC + 8-block full-snapshot scheduler, bound to the register model; trigger confirmed as a periodic scheduler tick (continuous, not edit-driven). Host-tested (`src/dsp/`, `make test`). Block payloads 1–7 are editable field-table stubs pending field decode
+- [x] **Settings persistence + clock ownership** → the DSP has **no** NV settings storage (no SPI flash / I2C EEPROM / EMIF; internal flash is update-only) and **no** power-off-surviving RTC; the ARM persists settings + owns the clock and re-provisions the DSP each boot (see [`docs/09-dsp-persistence-and-clock.md`](docs/09-dsp-persistence-and-clock.md))
 - [ ] Verify on hardware
 
 ## The honest scope
