@@ -20,6 +20,8 @@ deps with `pip install capstone pyelftools`.
 | `strtab.py`  | ordered string catalog + menu enum (`hmi_menu.h`) |
 | `xref.py`    | string↔function xrefs, symbol names, Ghidra rename script |
 | `emu.py`     | **Unicorn harness**: run firmware functions in a sandbox, capture UART TX, trace calls (`pip install unicorn`) |
+| `gpio_map.py` | **GPIO/IO map**: auto-detect the StdPeriph GPIO helpers, resolve every pin's direction/mode + driver (`docs/16`) |
+| `periph_map.py` | on-chip peripherals in use (UART/SPI/CAN/TIM/…) by base-address + bit-band scan (`docs/16`) |
 | `emu_acfirst.py` | AC-First window→DSP experiment: sweep the RTC, diff RAM to show the windows are evaluated ARM-side, not pushed (`docs/08`) |
 | `emu_regrange.py` | drive a Modbus register-group read, dump reg→frame-offset (`docs/08` regs 64-89) |
 | `emu_gpio_acfirst.py` | capture GPIO level-drive writes in vs out of the AC-First window → tests the "ARM toggles a relay directly" theory (`docs/14`) |
