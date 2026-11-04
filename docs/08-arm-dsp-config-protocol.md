@@ -329,6 +329,39 @@ pushed output-priority byte (block 0 frame offset `0x1E` → DSP `0xADA8`) or on
 drives the ARM's own mode/HMI; that is the reg-145 output-priority path, a
 separate subsystem from the window storage traced here.
 
+### Emulation experiment — set the window, sweep the RTC, diff the push
+
+`tools/emu_acfirst.py` makes the above reproducible on the real image under
+Unicorn. Window 0 is seeded to **02:00–04:00** (`settings+0x64 = 0x0002`,
+`+0x66 = 0x0004`) and the emulated RTC (`0x2000a718`) is moved across the edges.
+
+**Stage A — the ARM's window evaluation is exact** (`start ≤ now < end`):
+
+| RTC | `0x2000aa5e` | `0x2000a758` bit24 | `0x2000a8e6` bit4 | |
+|---|---|---|---|---|
+| 01:59 | `0x00` | 0 | 0 | off |
+| **02:00** | `0x01` | 1 | 1 | **active** (start inclusive) |
+| 03:59 | `0x01` | 1 | 1 | active |
+| **04:00** | `0x00` | 0 | 0 | **off** (end exclusive) |
+
+**Stage B — what the window actually changes in the push.** Running the real
+DSP comms-task builder `sub_0801c11c` at an in-window time (03:00) vs an
+out-of-window time (05:00) and diffing *all 64 KB of RAM*, the **only**
+window-dependent bytes are the RTC input, the three derived-status locations
+above, and a stack scratch holding the computed minutes-of-day (`0xB4`=180 vs
+`0x12C`=300). **No byte of any DSP TX frame (`0x20009414`/`0x20009053`/
+`0x20009754`) or of the comms struct changes, and no `sub_0801c370` send is
+emitted.** So the window's effect stops at the ARM's own status words — a fifth,
+dynamic confirmation that the AC-First *times* are not pushed as frame data.
+
+> Honest caveat: `sub_0801c11c` is a gated scheduler task; a cold single-pass
+> run does not exercise every frame-writing branch (the runtime flags that open
+> them are 0 from reset). This proves the window does **not** flow to the frame
+> *as data* along the paths a cold run reaches; it does not by itself rule out a
+> deeper gated path in which the derived `0x2000a758` bit24 modulates the pushed
+> **output-priority** byte (block 0 offset `0x1E`). That reg-145 output-priority
+> question is the remaining open item — see above.
+
 ## ARM holding-register store FOUND — `0x20009854`
 
 The ARM keeps its settings in a **byte-packed struct at RAM `0x20009854`** (not a
