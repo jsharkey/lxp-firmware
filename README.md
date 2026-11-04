@@ -37,6 +37,7 @@ Honest picture of where things stand:
 - [x] Confirm the image is **not encrypted/compressed** (reimplementation is feasible)
 - [x] Identify the product → **EG4 12000XP** (Modbus spec shared with the 18kPV-12LV superset)
 - [x] **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)
+- [x] **Track 12000XP revisions over time** → `ceaa-05xx` (2025-03) vs `ceaa-07xx` (2026-02): the 07 series moved to a **bootloader + App** layout (vectors relocated `0x08000000`→`0x08005000`), and added generator scheduling / quick-charge / smart-load / resume-SOC / buzzer menus — mapped to the vendor changelog (see [`docs/11-12000xp-revisions.md`](docs/11-12000xp-revisions.md))
 - [x] Recover the data model with **authoritative** values — states, faults, warnings, telemetry (see `include/inv/` and [`docs/02-recovered-model.md`](docs/02-recovered-model.md))
 - [x] **External Modbus-RTU map fully specified** → [`include/inv/modbus_map.h`](include/inv/modbus_map.h) (the comms layer is now a known interface)
 - [x] Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
@@ -130,7 +131,8 @@ place their own copy under `reference/` (gitignored). Recorded for integrity:
 |---|---|---|
 | `..._com_vE_250325.bin` (12000XP ARM, this project) | 244080 | `d1c1d8dedd26d59518e95668e95f06d6` |
 | `..._dsp_vE_250325.bin` (12000XP TI DSP, out of scope) | 141304 | `4e3e360ed21742275c2885cba8b69724` |
-| `..._ceaa-05xx_com_vE_250325.hex` (12000XP ARM, source hex) | 587465 | `d07b6b5ddfdcddd453a3b0cc845e9659` |
+| `..._ceaa-05xx_com_vE_250325.hex` (12000XP ARM, 05-series) | 587465 | `d07b6b5ddfdcddd453a3b0cc845e9659` |
+| `..._ceaa-07xx_vE_260214_Br7k5_2.hex` (12000XP ARM, 07-series App) | 574885 | `ccc5172a11ea1e1b302c83bc8e834846` |
 | `..._FAAB-1Bxx_20240528_App.hex` (18kPV ARM App) | 502737 | `7091e1ad60fa2e725a5da8d39fa5bc8c` |
 
 As the product's maintainer you own these images; whether/how to publish them is
