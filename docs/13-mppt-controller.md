@@ -317,6 +317,50 @@ temperature). A byte-exact record→register map can't be pinned from these two
 images alone because the **DSP re-packs** the data between the MPPT's framing and
 the ARM's `0x49` telemetry framing — that hop needs the C28x DSP image.
 
+### Remote update path — the ARM is a `0x21/0x22/0x23` gateway
+
+Does the ARM relay the firmware-update commands from the dongle? **Yes — the ARM
+runs a dedicated firmware-update gateway task that accepts `0x21/0x22/0x23`
+update frames and forwards them to the DSP link.** Recovered from the ARM
+`ceaa-07xx` image:
+
+- **Update task** — an endless 3-stage pipeline (`0x08028690` loop →
+  `0x08028414` assemble, `0x08028234` manage, `0x0802782A` dispatch). At startup
+  it loads the signature-tag registry (`SNEC SNED EDSN DPOT atez LAA1 SA22` at
+  `0x08030550`) into its context `0x2000BF24`. `EDSN` is the same session tag the
+  DSP bootloader validates on `0x21` (docs/05).
+- **Command dispatch** (`0x080279CE`): reads the command from **`frame[1]`** (the
+  Modbus function-code slot) and branches —
+
+  | func | → handler | action |
+  |---|---|---|
+  | `0x21` / `0x31` | `0x080279F4` | session start — stashes image addr/len/CRC from the frame into RAM |
+  | `0x22` / `0x32` | `0x08027D22` | program block |
+  | `0x23` / `0x33` | `0x0802801A` | verify / commit |
+
+  The `0x2x` and `0x3x` groups invoke the **same** handlers (two encodings — e.g.
+  two targets or two origins — differentiated inside the handler; not fully
+  resolved).
+- **Forwards to the DSP link** — the dispatcher calls the USART3/DSP handler
+  (`0x0801BA98`), references the DSP context (`0x2000AF60`) and reuses the DSP
+  link's `0x321` length cap. It stages frames in a relay buffer (`0x2000B5F0`) and
+  owns no UART base itself — it bridges assembled frames to the per-link helpers,
+  the signature of a pass-through.
+
+So the remote-update chain is **external tool → dongle (the ARM's external Modbus
+port, UART5 / docs/08) → ARM update gateway (`0x21/0x22/0x23`) → DSP** — and,
+because the MPPT sits *behind* the DSP (previous section), **updating the MPPT is
+tunnelled one hop further: … → DSP → MPPT** (the MPPT bootloader's own
+`0x21/0x22/0x23`, docs/13 above).
+
+**Proven** (ARM image): the update task, its `0x21/0x22/0x23`(+`0x31/0x32/0x33`)
+dispatch on `frame[1]`, the `EDSN` tag, and its coupling to the DSP link.
+**Not fully traced:** a single store binding the relay buffer to the dongle UART
+specifically (the input buffers are shared globals reached through link helpers,
+and the dongle is the architecturally-/docs-indicated source rather than one I
+followed instruction-by-instruction), which `0x2x` vs `0x3x` target is DSP vs
+MPPT vs ARM-self, and the onward DSP→MPPT tunnel (needs the C28x image).
+
 ## Scope / what this means for the project
 
 This image is **out of scope** for the current reimplementation, which targets
