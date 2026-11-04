@@ -294,3 +294,49 @@ class ArmSim:
         except UcError:
             pass
         return self
+
+    def run_until_output(self, out_pin, level=1, settle_input=None,
+                         settle_reads=40, max_insn=8_000_000, vector_base=None):
+        """Boot the firmware and run its own event loop until it drives `out_pin`
+        to `level` -- then stop immediately. This keeps the black box (no entry
+        point named) but finishes as soon as the expected edge happens instead of
+        burning the whole instruction budget.
+
+        For the negative case (the edge should NOT happen): pass `settle_input`,
+        and the run also stops once that input pin has been sampled (its IDR read)
+        `settle_reads` times without the edge -- i.e. the loop looked at the input
+        enough times and chose not to drive. Returns True iff `out_pin` was driven
+        to `level`. `max_insn` is only a safety cap."""
+        op, ob = parse_pin(out_pin)
+        hooks = []
+        def _stop_on_drive(uc, access, addr, size, value, ud):
+            off = addr - GPIO[op]
+            drove = None
+            if off == R_BSRR:
+                if (value >> ob) & 1: drove = 1
+                elif (value >> (16 + ob)) & 1: drove = 0
+            elif off == R_BRR and (value >> ob) & 1:
+                drove = 0
+            elif off == R_ODR:
+                drove = (value >> ob) & 1
+            if drove == level:
+                uc.emu_stop()
+            return True
+        hooks.append(self.uc.hook_add(UC_HOOK_MEM_WRITE, _stop_on_drive,
+                                      begin=GPIO[op], end=GPIO[op] + 0x18))
+        if settle_input is not None:
+            ip, _ = parse_pin(settle_input)
+            idr = GPIO[ip] + R_IDR
+            n = [0]
+            def _stop_on_settle(uc, access, addr, size, value, ud):
+                n[0] += 1
+                if n[0] >= settle_reads:
+                    uc.emu_stop()
+            hooks.append(self.uc.hook_add(UC_HOOK_MEM_READ, _stop_on_settle,
+                                          begin=idr, end=idr + 4))
+        try:
+            self.run_reset(max_insn=max_insn, vector_base=vector_base)
+        finally:
+            for h in hooks:
+                self.uc.hook_del(h)
+        return self.was_driven(out_pin, level=level)

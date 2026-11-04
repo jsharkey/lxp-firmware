@@ -34,7 +34,10 @@ sim = ArmSim("path.bin", symbols_dict) # explicit
 
 sim.set_input("PB7", 1)                # inject an external input level (IDR bit)
 sim.clear_drives()
-sim.run_reset(max_insn=5_000_000)      # boot the image's own loop (black box)
+# boot the image's own loop (black box) and stop at the expected edge; for the
+# no-edge case, stop once the input has been sampled settle_reads times:
+driven = sim.run_until_output("PB7", level=1, settle_input="PB7", settle_reads=40)
+sim.run_reset(max_insn=300_000)        # or run a fixed budget
 sim.call("mb_port_init", (cfg_ptr,))   # or call one function, by symbol/address
 
 sim.get_output("PB7")                  # current driven level (shadow latch)
@@ -64,10 +67,14 @@ it does not.
 In the `ceaa-07xx` image this is factory `sub_0802e452` (debounce-sample PB7 10×,
 drive high on a majority); our `pb7_sample_poll()` (`src/gpio_sample.c`, called
 from `main`'s loop) mirrors it. The test runs each firmware from its reset
-vector, so *their* loops do the sampling and driving. It asserts our firmware
-propagates PB7, and — when a factory image is available — that the two behave
-identically; with no factory image the our-firmware check still runs. Only the
-observable GPIO is compared, so the two can match despite different internals.
+vector, so *their* loops do the sampling and driving, and `run_until_output()`
+stops the instant the expected edge appears (or, for the low case, once PB7 has
+been sampled enough times) — so the suite finishes in a fraction of a second
+without a factory image, rather than burning a multi-million-instruction budget.
+It asserts our firmware propagates PB7, and — when a factory image is available —
+that the two behave identically; with no factory image the our-firmware check
+still runs. Only the observable GPIO is compared, so the two can match despite
+different internals.
 
 ## Running our firmware (boot smoke test)
 

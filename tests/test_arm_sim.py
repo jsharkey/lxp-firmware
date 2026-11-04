@@ -65,8 +65,11 @@ def _observe_pb7(make_sim):
         sim = make_sim()
         sim.set_input("PB7", level)
         sim.clear_drives()
-        sim.run_reset(max_insn=5_000_000)   # let the firmware's loop run
-        out[level] = sim.was_driven("PB7", level=1)
+        # Run the loop and stop the moment PB7 is driven high (the expected edge);
+        # for the low case, stop once the loop has sampled PB7 ~40 times without
+        # driving it. Either way we finish fast instead of burning a huge budget.
+        out[level] = sim.run_until_output("PB7", level=1,
+                                          settle_input="PB7", settle_reads=40)
     return out
 
 
