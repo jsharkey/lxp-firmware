@@ -3,47 +3,56 @@
 Analysis of the attached firmware `169a5158-CBAA-1Cxxxx_mppt_250805.hex`.
 
 **Verdict: this is NOT another flavour of the "com" MCU.** It is a *different,
-smaller* STM32F103-class part running a bare-metal power-control loop, built with
-the same EG4 toolchain and boot conventions as the com firmware. Its vendor
-filename role-tag — **`mppt`** — is a peer of the `com` and `dsp` tags on the
-images we already have, and its peripheral profile (advanced-timer PWM + ADC +
-DMA, no HMI) is exactly that of a solar DC-DC **MPPT / power-stage controller**.
-So the user's guess is right: it is a dedicated chip for the PV MPPT stage, not a
-new model of the processor this project reimplements.
+smaller* MCU — an **STM32G0-class Cortex-M0+** — running a bare-metal power-control
+loop, and it talks to another processor over a **Modbus-family UART link**. Its
+vendor filename role-tag — **`mppt`** — is a peer of the `com` and `dsp` tags on
+the images we already have, and its peripheral profile (advanced-timer PWM +
+DMA-driven ADC + Modbus serial, no HMI) is exactly that of a solar DC-DC
+**MPPT / power-stage controller**. So the user's guess is right: a dedicated chip
+for the PV MPPT stage, not a new model of the processor this project reimplements.
+
+> **Correction note:** an earlier revision of this file mis-identified the part as
+> an STM32F103 (and read the `0x50000000` block as USB-OTG). The USART peripheral
+> uses the *modern* register layout (status `ISR` at `+0x1C`, `TDR` at `+0x28`),
+> which rules out the STM32F1 UART; the interrupt map and the GPIO base at
+> `0x50000000` identify it as **STM32G0** (see "Chip identification" below). The
+> structural facts have been re-derived accordingly.
 
 All *structural* facts below are direct reads of the image (`tools/hex2bin.py`
-then word/vector decode). The *role* ("MPPT controller") is an inference from the
-filename role-tag plus the peripheral mix — strong, but not an in-band string.
+then word/vector decode + Capstone). The *role* ("MPPT controller") is an
+inference from the filename role-tag plus the peripheral mix — strong, but not an
+in-band string.
 
 ## Why it is clearly not the com MCU
 
 | | com MCU (12000XP/18kPV/6000XP) | this `CBAA` image |
 |---|---|---|
-| Part | STM32F103**VE** high-density (512 KB flash, 64 KB RAM) | STM32F103x**B**-class medium-density (**128 KB** flash, ~20 KB RAM) |
+| Part | STM32F103**VE** high-density, Cortex-**M3** (512 KB flash, 64 KB RAM) | **STM32G0-class, Cortex-M0+** (**128 KB** flash, small RAM) |
 | Image size | 244 KB–587 KB | **42.5 KB** of populated flash |
 | Initial MSP | `0x2000AF88` … (tens of KB) | **`0x200007A0`** boot / **`0x200021C8`** app (≈2 KB / ~8.6 KB) |
 | HMI / menu text | ~442 strings, font tables, menu enum | **zero** human-readable strings |
-| Interrupts wired | USARTs, timers, EXTI, … (comms + UI) | **just TIM1_CC + EXTI3** (a control loop) |
+| Interrupts wired | USARTs, timers, EXTI, … (comms + UI) | **just USART1 + DMA1** (serial link + ADC sampling) |
 | Role tag in filename | `…_com_vE_…` | **`…_mppt_…`** |
 
 The com MCU is a communications/HMI/supervisor; this is a tiny real-time
-controller. Different silicon, different job.
+controller. Different silicon, different core, different job.
 
-## Same EG4 firmware family, though
+## Chip identification — STM32G0 (Cortex-M0+)
 
-Despite being a different chip and role, it is unmistakably from the same vendor
-codebase/toolchain as the com images:
+Every discriminator lines up with STM32G0 and excludes the F1/F3 guesses:
 
-- **Identical reset stub idiom** — `ldr r0,=SystemInit; blx r0` then
-  `ldr r0,=__main; bx r0`, with a CMSIS-F1 `SystemInit` that writes `SCB->VTOR`
-  (`0xE000ED08`). This is the same Keil-armcc / scatter-loaded signature noted in
-  `docs/12-6000xp.md`.
-- **`SN__` signature block** — the top-of-flash word at `0x0801FFFC` is `SNAM`,
-  matching the family scheme `SNEC` (12000XP) / `SNCC` (6000XP) / `EAA1` (18kPV).
-- **4-char model code** — `CBAA` (filename) appears as an ASCII tag at
-  `0x080140EC`, the same convention as `ceaa` / `ccaa` / `FAAB`.
-- **STM32F1 peripheral map** — `RCC @0x40021000`, `FLASH_ACR @0x40022000`, FLASH
-  IAP unlock key `0x45670123`, GPIO/AFIO/USART bases all F1-exact.
+| evidence | reading |
+|---|---|
+| `SystemInit` writes `SCB->VTOR` (`0xE000ED08`) | core has VTOR → Cortex-M0+/M3/M4 (not M0) |
+| USART status reg at **`+0x1C`** (`ISR`), `RXNE`=bit5 / `TC`=bit6 / `TXE`=bit7; data out at **`+0x28`** (`TDR`), in at `+0x24` (`RDR`), clear at `+0x20` (`ICR`) | the **modern** USART IP (G0/F0/F3/F7/L/…), **not** the F1/F2/F4 `SR`/`DR` layout |
+| GPIO ports at **`0x50000000` / `0x50000400` / `0x50000800` / `0x50000C00`** (A/B/C/D); `str [port,#0x28]` = `BRR` | G0 GPIO base is `0x50000000` (F0 is `0x48000000`; F1 is `0x40010800`) |
+| `ADC1 @0x40012400`, `TIM1 @0x40012C00`, `DMA1 @0x40020000`, `USART1 @0x40013800`, `RCC @0x40021000`, `FLASH @0x40022000` | all exact on the G0 map |
+| used IRQ slots: **9 = DMA1_Channel1**, **27 = USART1** (VT @`0x08003800`) | the G0 NVIC numbering |
+| recurring constant `0x00F42400` = **16 000 000** | G0's **HSI16** (16 MHz) system clock |
+
+128 KB flash with ≥4 USARTs points at the larger G0 line (e.g. STM32G0B1xB). A
+GD32/compatible clone can't be ruled out from the binary alone, but the map is
+G0-exact.
 
 ## Memory map (direct reads)
 
@@ -53,11 +62,17 @@ comes in four segments — a **bootloader + application** split, with `SNAM` /
 
 | region | addr range | contents |
 |---|---|---|
-| Bootloader | `0x08000000 .. 0x080020FF` | vector table (MSP `0x200007A0`, reset `0x08001FED`), flash-IAP writer (key `0x45670123`) |
-| — tag | `0x08002018` | `SNAMNOTB` signature + constant `0x00F42400` (= 16,000,000) |
+| Bootloader | `0x08000000 .. 0x080020FF` | vector table (MSP `0x200007A0`, reset `0x08001FED`), flash-IAP writer (key `0x45670123`), a Modbus CRC-16 table pair |
+| — tag | `0x08002018` | `SNAMNOTB` signature + constant `0x00F42400` (= 16,000,000 = HSI16) |
 | App vectors | `0x08003600 .. 0x080041FF` | **application vector table @`0x08003800`** (MSP `0x200021C8`, reset `0x08014095`); `SNAM` tag @`0x08004000` |
-| App code | `0x0800C600 .. 0x080141FF` | the control firmware; `NOTB` tag @`0x0800C800`, `CBAA` tag @`0x080140EC` |
+| App code | `0x0800C600 .. 0x080141FF` | the control + comms firmware; `NOTB` tag @`0x0800C800`, `CBAA` tag @`0x080140EC`, a second Modbus CRC-16 table pair |
 | Top signature | `0x0801FF00 .. 0x0801FFFF` | `SNAM` at the 128 KB boundary (`0x0801FFFC`) |
+
+The firmware is clearly the same EG4 vendor lineage as the com images: the reset
+stub is the familiar `ldr;blx`→SystemInit / `ldr;bx`→`__main` idiom, the
+top-of-flash word is `SNAM` (matching the `SN__` family scheme — `SNEC` 12000XP /
+`SNCC` 6000XP), and the 4-char model code `CBAA` is embedded, as `ceaa` / `ccaa` /
+`FAAB` are on the others.
 
 > The exact bootloader→app VTOR handoff is not fully resolved — both reset stubs'
 > `SystemInit` write `VTOR = 0x08000000`, yet a valid second vector table sits at
@@ -67,44 +82,79 @@ comes in four segments — a **bootloader + application** split, with `SNAM` /
 ## The control-loop fingerprint (why "MPPT / power stage")
 
 The application vector table (`0x08003800`) enables exactly two peripheral
-interrupts:
+interrupts, and they tell the whole story:
 
-- **IRQ 27 — TIM1_CC** (`0x080132E8`): TIM1 is the **advanced-control timer**, the
-  one used to generate (complementary) PWM for a switch-mode converter. A
-  capture/compare interrupt is the classic duty-cycle / control-tick of a DC-DC
-  regulation loop.
-- **IRQ 9 — EXTI3** (`0x0800E9DC`): a single external edge line — the shape of a
-  hardware **fault / over-current / sync** input.
+- **IRQ 9 — DMA1_Channel1** (`0x0800E9DC`): the handler polls DMA1 (`0x40020000`),
+  clears the flag, then **averages a batch of ADC samples and applies a
+  calibration scale** (`(hi+lo)/2 · gain >> 10 · …`, reading per-channel calib
+  words from RAM). This is the **PV sensing** path — ADC → DMA ring → scaled
+  engineering units, the classic MPPT measurement front end.
+- **IRQ 27 — USART1** (`0x080132E8` → `0x0801323A`): a serial ISR that tests
+  `ISR.RXNE/TXE/TC` and drives the RX/TX byte handlers — the comms link (below).
 
-The power-control driver block lives at `0x0800DC00..0x0800F900` and is written as
-HAL-style register helpers around:
+`TIM1` (`0x40012C00`, the advanced-control timer) is configured by the init block
+at `0x0800DF40`+ for **converter PWM**; it runs in hardware (no CC interrupt
+needed), with the duty updated from the sensing loop. So the architecture is:
+**TIM1 PWM out → ADC senses PV V/I → DMA batches samples → DMA ISR scales them →
+duty update** — a textbook digital DC-DC / MPPT regulator. There is no display,
+keypad, or menu code anywhere.
 
-- **ADC1** (`0x40012400`) — PV voltage / current / bus sensing,
-- **TIM1** (`0x40012C00`) — converter PWM,
-- **DMA1** (`0x40020000`) — ADC→memory streaming (continuous sampling),
+## UART comms: a Modbus-family register link (answers "does it publish stats?")
 
-with ready-flag spin loops (ADC calibration / clock lock). **USART1**
-(`0x40013800`, the most-referenced peripheral) is the inter-processor link — how
-this controller reports MPPT telemetry to and takes setpoints from the main
-DSP/com side. There is **no** UART-RX interrupt and no display/keypad code at all.
+**Yes — strong, direct evidence.** This firmware runs an interrupt-driven serial
+protocol and exposes register data for another processor to read/parse:
 
-That combination — TIM1 PWM + ADC + DMA + a fault EXTI + one UART, and nothing
-else — is a textbook dedicated power-stage controller, consistent with the `mppt`
-role tag.
+- **Four UARTs initialised.** A generic `uart_init(base, cfg)` (`0x0800E67C`) is
+  called for **USART1 (`0x40013800`), USART2 (`0x40004400`), USART3 (`0x40004800`)
+  and UART4 (`0x40004C00`)**. USART1 is the most-referenced peripheral in the
+  image and is the interrupt-driven one.
+- **RX/TX ring buffers + byte primitives.** TX enqueues into a 60-byte frame
+  buffer (`ctx@0x200019F0`: buffer `+0x3C`, head `+0x7A`, count `+0x7E`) and the
+  ISR shifts bytes out via `TDR` (`str byte,[USART+0x28]`, `0x0801308C`), toggling
+  `CR1.TXEIE`. RX reads `RDR` and feeds a frame parser.
+- **Big-endian 16-bit registers.** The frame helpers `0x08010798` (BE16) and
+  `0x080107A6` (BE24/32) assemble values **most-significant-byte first** — the
+  Modbus / network byte order. Values are handled as `uint16` registers and stored
+  into a per-port context.
+- **Standard Modbus RTU CRC-16.** The image contains the canonical
+  `auchCRCHi`/`auchCRCLo` 256-byte table pair (byte-exact to the Modicon spec) —
+  at `0x08001C58`/`0x08001D58` in the bootloader and `0x08013ACC`/`0x08013BCC` in
+  the app. The CRC routine at `0x08010750` is the textbook table-driven form
+  (`crc=0xFFFF`; `i = hi ^ byte`; `hi = lo ^ auchCRCHi[i]`; `lo = auchCRCLo[i]`;
+  return `hi<<8|lo`). (This is why a search for the bit-wise `0xA001` polynomial
+  comes up empty — the implementation is table-driven.)
+- **Register/command dispatch.** A frame processor (`0x0800E606`) bounds-checks a
+  command index against 12 and indexes a table at `0x08013F54`; the RX parser
+  pulls fields from fixed frame offsets (bytes 4, 5, 9, 0xC–0xF, payload from
+  0x14).
+
+So the MPPT controller behaves as a **Modbus(-family) slave**: a master (the com
+MCU and/or the control DSP) polls it over UART, and it answers with CRC-checked,
+big-endian register frames carrying its telemetry (PV voltage/current/power,
+status) — i.e. it **publishes statistics for another firmware to read and parse**,
+exactly as hypothesised.
+
+One nuance: the CRC-16 and big-endian registers are pure Modbus, but the frame has
+a **fixed-offset layout** (header bytes 0x00–0x13, data from 0x14) rather than the
+variable-length Modbus-RTU PDU (`addr/func/len/…`). That matches the EG4 internal
+link described in `docs/05-dsp-link.md` — a Modbus-derived framing with the
+vendor's own command set — rather than vanilla Modbus RTU on the wire.
 
 ## Scope / what this means for the project
 
 This image is **out of scope** for the current reimplementation, which targets
 only the com MCU (see README). It does **not** belong in `include/inv/variant.h`:
 that abstraction is for *models of the com MCU* (same silicon, same codebase), and
-this is neither. It is better understood as a new **peer processor** alongside the
-TI C2000 control DSP and the com MCU — the EG4 platform splits firmware by role
-(`com` / `dsp` / `mppt`), and this is the `mppt` one.
+this is neither — a different core (M0+ vs M3) and a different role. It is better
+understood as a new **peer processor** alongside the TI C2000 control DSP and the
+com MCU — the EG4 platform splits firmware by role (`com` / `dsp` / `mppt`), and
+this is the `mppt` one.
 
 Open questions a schematic or a live unit would answer:
-- Exact STM32F103xB part number (and whether it's a clone, e.g. GD32/APM32).
+- Exact STM32G0 part number (and whether it's a clone, e.g. GD32).
 - How many PV trackers this one MCU drives, and whether there is one such MCU per
   MPPT or one for all (the 12000XP/6000XP have 2 MPPTs, the 18kPV has 3).
-- The USART1 framing to the DSP/com side (is it the same EG4 Modbus-family link as
-  `docs/05-dsp-link.md`, with its own setpoint/telemetry commands?).
-- Decode of the `0x00F42400` (16 MHz) constant — HSE crystal vs a derived clock.
+- The exact frame layout and command set on the USART1 link — decoding the
+  register map would let the com side (this project) read MPPT telemetry directly.
+  It is very likely the same EG4 Modbus-family link as `docs/05-dsp-link.md`; a
+  cross-check of the CRC seed and the `0x21/0x22/0x23` command bytes would confirm.
