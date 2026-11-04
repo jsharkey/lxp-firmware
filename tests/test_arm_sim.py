@@ -27,7 +27,8 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from arm_sim import ArmSim
 
-FACTORY_BIN = os.environ.get("LXP_FACTORY_BIN", "reference/com_flat.bin")
+FACTORY_HEX = os.environ.get("LXP_FACTORY_HEX")                      # vendor .hex (converted in-memory)
+FACTORY_BIN = os.environ.get("LXP_FACTORY_BIN", "reference/com_flat.bin")  # pre-converted flat image
 
 # --- facts about the ceaa-07xx factory image (d673c5ed-ceaa-07xx_vE_260214) ---
 PB7_SAMPLER_FN = 0x0802e452   # samples PB7 input, drives PB7 + flag on majority-high
@@ -39,9 +40,15 @@ class Skip(Exception):
 
 
 def _factory():
+    # symbols optional (we call by address). Prefer a vendor .hex if given.
+    if FACTORY_HEX:
+        if not os.path.exists(FACTORY_HEX):
+            raise Skip("LXP_FACTORY_HEX=%s not found" % FACTORY_HEX)
+        return ArmSim.from_hex(FACTORY_HEX)
     if not os.path.exists(FACTORY_BIN):
-        raise Skip("factory image %s not present (set $LXP_FACTORY_BIN)" % FACTORY_BIN)
-    return ArmSim(FACTORY_BIN)        # symbols optional; we call by address
+        raise Skip("no factory image (set $LXP_FACTORY_HEX to a vendor .hex, "
+                   "or $LXP_FACTORY_BIN / reference/com_flat.bin to a flat image)")
+    return ArmSim(FACTORY_BIN)
 
 def _ours():
     if not (os.path.exists("build/firmware.bin") and os.path.exists("build/firmware.elf")):

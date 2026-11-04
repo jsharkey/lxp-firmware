@@ -78,10 +78,42 @@ def load_symbols_nm(elf_path, nm="arm-none-eabi-nm"):
             except ValueError: pass
     return out
 
+def hex_to_flat(hex_path, base=FLASH_BASE, fill=0xFF):
+    """Intel HEX -> correctly-addressed flat image bytes (same as tools/hex2bin.py,
+    so a vendor .hex can be loaded directly without a separate convert step)."""
+    mem, linbase = {}, 0
+    with open(hex_path) as f:
+        for ln in f:
+            ln = ln.strip()
+            if not ln.startswith(":"):
+                continue
+            b = bytes.fromhex(ln[1:])
+            n, addr, typ, data = b[0], (b[1] << 8) | b[2], b[3], b[4:4+b[0]]
+            if (sum(b) & 0xFF) != 0:
+                raise ValueError("bad checksum: %s" % ln)
+            if typ == 0x00:
+                for i, by in enumerate(data):
+                    mem[linbase + addr + i] = by
+            elif typ == 0x04:
+                linbase = ((data[0] << 8) | data[1]) << 16
+            elif typ == 0x02:
+                linbase = ((data[0] << 8) | data[1]) << 4
+            elif typ == 0x01:
+                break
+    if not mem:
+        raise ValueError("no data records in %s" % hex_path)
+    hi = max(mem)
+    flat = bytearray([fill]) * (hi - base + 1)
+    for a, by in mem.items():
+        flat[a - base] = by
+    return bytes(flat)
+
 
 class ArmSim:
-    def __init__(self, image_path, symbols=None):
-        self.data = open(image_path, "rb").read()
+    def __init__(self, image, symbols=None):
+        # image: a path to a flat .bin, or the flat image bytes directly
+        self.data = bytes(image) if isinstance(image, (bytes, bytearray)) \
+            else open(image, "rb").read()
         self.names = dict(symbols or {})
         self.shadow = {p: 0 for p in GPIO}     # per-port output latch (ODR shadow)
         self.drive_log = []                     # [(port, pin, 'HIGH'|'LOW')]
@@ -91,6 +123,12 @@ class ArmSim:
     @classmethod
     def factory(cls, image="reference/com_flat.bin", symbols="reference/symbols.csv"):
         return cls(image, load_symbols_csv(symbols))
+
+    @classmethod
+    def from_hex(cls, hex_path, symbols=None):
+        """Load a vendor Intel-HEX image directly (converted to flat in-memory)."""
+        sym = load_symbols_csv(symbols) if isinstance(symbols, str) else symbols
+        return cls(hex_to_flat(hex_path), sym)
 
     @classmethod
     def ours(cls, image="build/firmware.bin", elf="build/firmware.elf"):

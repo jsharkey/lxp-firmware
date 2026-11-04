@@ -84,8 +84,9 @@ test:
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Builds our
 # firmware first so the "our firmware boots" test has something to load; the
-# factory-oracle test SKIPs unless $LXP_FACTORY_BIN (or reference/com_flat.bin)
-# is present. Needs: pip install unicorn.
+# factory-oracle test SKIPs unless a factory image is given: $LXP_FACTORY_HEX
+# (a vendor .hex, converted in-memory), $LXP_FACTORY_BIN, or reference/com_flat.bin.
+# Needs: pip install unicorn.
 test-sim: $(BUILD)/$(TARGET).bin
 	python3 tests/test_arm_sim.py
 

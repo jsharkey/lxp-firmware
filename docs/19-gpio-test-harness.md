@@ -72,14 +72,16 @@ passes against the factory oracle.
 
 ```bash
 make test-sim                                   # builds our fw, runs the harness tests
-LXP_FACTORY_BIN=/path/com_flat.bin make test-sim # also runs the factory-oracle test
+LXP_FACTORY_HEX=/path/App.hex    make test-sim   # vendor .hex (converted in-memory)
+LXP_FACTORY_BIN=/path/com_flat.bin make test-sim # or a pre-converted flat image
 ```
 
 Needs `pip install unicorn`. The factory image is never committed (it is
 proprietary); tests that need it **SKIP** rather than fail when it is absent, so
-`make test-sim` is green on our firmware alone. Rebuild the flat image from a
-vendor `.hex` with `tools/hex2bin.py` and point `LXP_FACTORY_BIN` at it to run
-the oracle checks.
+`make test-sim` is green on our firmware alone. Point `LXP_FACTORY_HEX` straight
+at a vendor `.hex` (the harness runs the same Intel-HEX→flat conversion as
+`tools/hex2bin.py` in memory), or `LXP_FACTORY_BIN` at an already-converted flat
+image, to run the oracle checks. `LXP_FACTORY_HEX` takes precedence.
 
 ## Adding a test
 
