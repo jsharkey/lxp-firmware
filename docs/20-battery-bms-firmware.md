@@ -201,7 +201,11 @@ byte (`==1` / `==5` / `==6` branches).
 - [ ] **Per-preset byte-order/table map** — which `Pnn` preset selects which
   builder path (and endianness).
 - [ ] **Exact HC32 SKU** + bootloader (`0x0`–`0x20000`) layout.
-- [ ] Bind this contract to the com-MCU side (`docs/16` CAN1 reader).
+- [x] **Bind this contract to the com-MCU side** — done: the ARM com-MCU drives
+  CAN1 (polled, no IRQ). Init `sub_08022660`/`sub_080227b6`, RX poll
+  `sub_08005758` → ring `0x200051ac`, parser `sub_0802a760` (dispatches the
+  `0x350–0x360` core + `0x300`/`0x370–0x38c`/`0x4xx` IDs), TX `sub_0800574c`. See
+  [`docs/16` → "CAN1 ↔ battery BMS"](16-arm-io-map.md).
 
 ## Reproduce the frame analysis
 

@@ -124,6 +124,32 @@ the committed harness: in Unicorn, set the Dry-Control setting (and sweep the
 condition it follows) and watch which `GPIO_SetBits`/`ResetBits` pin tracks it —
 the same technique `tools/emu_acfirst.py` uses for the AC-First window.
 
+## CAN1 ↔ battery BMS — the ARM handles it (not the DSP)
+
+The battery pack's BMS firmware ([`docs/20`](20-battery-bms-firmware.md), a
+separate HC32 MCU) sits on **CAN1 / PB8-PB9** (row above). The question "who on
+the inverter side drives that bus?" resolves cleanly to **this ARM com-MCU** —
+the full init / RX / parse / TX path is in the ARM image, serviced from the
+scheduler (there is **no CAN interrupt**: IRQ vectors 19-22 all point at the
+shared default handler, so the bus is **polled**).
+
+| stage | function | detail |
+|---|---|---|
+| **init** | `sub_08022660` (+ filters `sub_080227b6`) | configures bxCAN `0x40006400` and the filter banks `0x40006600…` (`FMR`/`FS1R`/`FFA1R`/`FA1R`/bank 0); brought up via `sub_08039018` |
+| **RX (polled)** | `sub_08005758` | polls the RX-FIFO level (`sub_08022b1c(CAN1, 2)`) and reads each frame via `sub_080229fe` into a **ring of 200 × 20-byte records at `0x200051ac`** (write index `0x2000a9df`, wraps at `0xc8`=200; record = `{id, dlc, data[8]}`) |
+| **parse** | `sub_0802a760` | scheduler task (registered by `sub_0803e4c8`); consumes the ring and dispatches on CAN ID — brackets the `0x350–0x360` core set (`0x351/0x355/0x356/0x359/0x35a/0x35c/0x35f`) plus the `0x300`, `0x370–0x38c` and `0x4xx` (Pylontech) ranges, exactly the TX IDs [`docs/20`](20-battery-bms-firmware.md) recovered from the pack; writes decoded SOC/V/I/limits/alarms into state RAM |
+| **TX** | `sub_0800574c` → `sub_080228c0` | sends a frame from `0x2000a650`; driven from the same CAN task (`sub_0802a760` → `sub_0802a2f8` → `sub_0800574c`) |
+
+So the inverter↔battery CAN contract documented from the pack side in `docs/20`
+is **consumed and produced here, on the ARM**, via the `0x200051ac` RX ring and
+the `sub_0802a760` parser — this is the "CAN1 reader" `docs/20` asked to bind to.
+For the reimplementation, the battery-telemetry module lives on the ARM side next
+to the Modbus/HMI/DSP-link code, keyed off [`include/inv/bms_can_map.h`](../include/inv/bms_can_map.h).
+
+**Not yet decoded:** the CAN **bit-timing/baud** (`CAN_BTR` in `sub_08022660`) —
+`docs/20` expects 500 kbit/s; and which `Pnn` preset / endianness the pack is
+configured for (a battery-side setting, see `docs/20`).
+
 ## Open items
 
 - Confirm the USART1 pins (PA9/PA10 presumed; not hit by the init sweep) and
