@@ -260,15 +260,19 @@ make test-sim LXP_FACTORY_HEX=/path/App.hex      # convert + run everything, end
   images.
 
 The common runner only accepts a **flat `.bin`**, so a vendor Intel `.hex` is
-converted first. `make factory LXP_FACTORY_HEX=/path/App.hex` runs the same
-HEX→flat conversion as `tools/hex2bin.py` (gaps filled with `0xFF`, every byte at
-its true flash address) and writes `reference/com_flat.bin` (overridable with
-`FACTORY_BIN=`). `test-sim-factory` uses `$LXP_FACTORY_BIN` if set, else that
-file, and will auto-convert from `$LXP_FACTORY_HEX` if the `.bin` is missing.
+converted first. The factory `.bin` (`reference/com_flat.bin`, overridable with
+`FACTORY_BIN=`, which also honours `$LXP_FACTORY_BIN`) is an ordinary make target:
+its rule runs the same HEX→flat conversion as `tools/hex2bin.py` (gaps filled with
+`0xFF`, every byte at its true flash address) from `$LXP_FACTORY_HEX`, built only
+if the `.bin` is missing. `make factory` is the friendly alias, and because
+`test-sim-factory` simply *depends* on that `.bin`, it is converted on demand —
+`make test-sim-factory` and `make test-sim LXP_FACTORY_HEX=…` just work.
 
 Needs `pip install unicorn`. The factory image is never committed (it is
-proprietary); `test-sim-factory` **SKIPS** rather than fails when no factory
-`.bin` is available, so `make test-sim` is green on our firmware alone.
+proprietary). `make test-sim` runs the factory half only when an image is
+available (a `.hex` to convert, or a `.bin` already on disk), so it stays green on
+our firmware alone; run `test-sim-factory` directly without one and it tells you
+to set `LXP_FACTORY_HEX`.
 
 ## Adding a behaviour (the TDD loop)
 
