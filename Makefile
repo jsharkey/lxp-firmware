@@ -11,18 +11,23 @@ BUILD    := build
 #
 #   make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
 #   make VARIANT=18kpv   # EG4 18kPV   (App over bootloader, vectors @0x0800C800)
+#   make VARIANT=6000xp  # EG4 6000XP  (App over bootloader, vectors @0x08005000)
 #
 VARIANT ?= 12000xp
 ifeq ($(VARIANT),18kpv)
   LDSCRIPT    := ldscripts/stm32f103_18kpv_app.ld
   VARIANT_DEF := -DINV_VARIANT_18KPV
   FLASH_ADDR  := 0x0800C800
+else ifeq ($(VARIANT),6000xp)
+  LDSCRIPT    := ldscripts/stm32f103_6kxp_app.ld
+  VARIANT_DEF := -DINV_VARIANT_6000XP
+  FLASH_ADDR  := 0x08005000
 else ifeq ($(VARIANT),12000xp)
   LDSCRIPT    := ldscripts/stm32f103ve.ld
   VARIANT_DEF :=
   FLASH_ADDR  := 0x08000000
 else
-  $(error Unknown VARIANT '$(VARIANT)' (use 12000xp or 18kpv))
+  $(error Unknown VARIANT '$(VARIANT)' (use 12000xp, 18kpv or 6000xp))
 endif
 
 CROSS    := arm-none-eabi-

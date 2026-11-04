@@ -5,13 +5,14 @@ firmware (the ARM Cortex-M "com" processor) of EG4 all-in-one solar off-grid
 inverters. The goal is a codebase the community can read, build, flash, and
 extend with new features.
 
-**Supported variants: EG4 12000XP and EG4 18kPV.** Reverse-engineering both
-factory ARM images proves they are the **same codebase** on the **same MCU**
-(STM32F103 high-density, Cortex-M3), differing only in a short, enumerable set
-of ways — flash/boot layout, MPPT count (2 vs 3), and hybrid grid-tie features.
-Those deltas are captured as a **variant descriptor** (`include/inv/variant.h`),
-so the firmware is written once and branched on data, not `#ifdef`s. See
-[`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md).
+**Supported variants: EG4 12000XP, EG4 18kPV, and EG4 6000XP.**
+Reverse-engineering the factory ARM images proves they are the **same codebase**
+on the **same MCU** (STM32F103 high-density, Cortex-M3), differing only in a
+short, enumerable set of ways — flash/boot layout, MPPT count (2 vs 3), and
+hybrid grid-tie features. Those deltas are captured as a **variant descriptor**
+(`include/inv/variant.h`), so the firmware is written once and branched on data,
+not `#ifdef`s. See [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md)
+and [`docs/12-6000xp.md`](docs/12-6000xp.md).
 
 > The Modbus spec on hand is the **18kPV-12LV** map, which the 12000XP shares as
 > a **subset**: the 12000XP is non-hybrid with 2 MPPTs, so the 3rd-tracker
@@ -38,6 +39,7 @@ Honest picture of where things stand:
 - [x] Identify the product → **EG4 12000XP** (Modbus spec shared with the 18kPV-12LV superset)
 - [x] **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)
 - [x] **Track 12000XP revisions over time** → `ceaa-05xx` (2025-03) vs `ceaa-07xx` (2026-02): the 07 series moved to a **bootloader + App** layout (vectors relocated `0x08000000`→`0x08005000`), and added generator scheduling / quick-charge / smart-load / resume-SOC / buzzer menus — mapped to the vendor changelog (see [`docs/11-12000xp-revisions.md`](docs/11-12000xp-revisions.md))
+- [x] **Add a third variant → EG4 6000XP** (`ccaa`): same MCU + codebase (07-era), same bootloader + App layout as the 12000XP 07-series (vectors @`0x08005000`, 20 KB bootloader); added as a build target `make VARIANT=6000xp` (see [`docs/12-6000xp.md`](docs/12-6000xp.md))
 - [x] Recover the data model with **authoritative** values — states, faults, warnings, telemetry (see `include/inv/` and [`docs/02-recovered-model.md`](docs/02-recovered-model.md))
 - [x] **External Modbus-RTU map fully specified** → [`include/inv/modbus_map.h`](include/inv/modbus_map.h) (the comms layer is now a known interface)
 - [x] Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
@@ -91,6 +93,7 @@ explicit non-goal.
 ```bash
 make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
 make VARIANT=18kpv   # EG4 18kPV   (App over ~50 KB bootloader, vectors @0x0800C800)
+make VARIANT=6000xp  # EG4 6000XP  (App over ~20 KB bootloader, vectors @0x08005000)
 make test            # host-side unit tests (no hardware)
 ```
 
@@ -115,7 +118,7 @@ src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleto
 src/modbus/  Modbus-RTU slave engine + USART3 port
 src/hmi/     LCD/keypad menu engine + menu model + port
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
-ldscripts/   stm32f103ve.ld (12000XP) + stm32f103_18kpv_app.ld (18kPV App)
+ldscripts/   stm32f103ve.ld (12000XP) + *_18kpv_app.ld + *_6kxp_app.ld (App builds)
 tests/       host unit tests (make test)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)
 reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
@@ -134,6 +137,7 @@ place their own copy under `reference/` (gitignored). Recorded for integrity:
 | `..._ceaa-05xx_com_vE_250325.hex` (12000XP ARM, 05-series) | 587465 | `d07b6b5ddfdcddd453a3b0cc845e9659` |
 | `..._ceaa-07xx_vE_260214_Br7k5_2.hex` (12000XP ARM, 07-series App) | 574885 | `ccc5172a11ea1e1b302c83bc8e834846` |
 | `..._FAAB-1Bxx_20240528_App.hex` (18kPV ARM App) | 502737 | `7091e1ad60fa2e725a5da8d39fa5bc8c` |
+| `..._ccaa-xx15xx_260519.hex` (6000XP ARM App) | 478004 | `220f1a2fd8aa6adbdbb0a2bea6b9880d` |
 
 As the product's maintainer you own these images; whether/how to publish them is
 your call. Keeping them out of the public tree is the conventional default.

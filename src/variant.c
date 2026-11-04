@@ -70,6 +70,44 @@ static const inv_variant_t k_variants[INV_MODEL__COUNT] = {
         .vector_addr     = 0x0800C800UL,
         .sram_size       = 64U * 1024U,
     },
+    [INV_MODEL_6000XP] = {
+        /*
+         * EG4 6000XP (model code "ccaa", image signature "SNCC"), from
+         * "..._ccaa-xx15xx_260519.hex". Direct reads: same STM32F103 (RCC
+         * @0x40021000, FLASH_ACR @0x40022000), same Keil reset stub, and the
+         * same bootloader+App layout as the 12000XP 07-series — vectors
+         * relocated to 0x08005000 above a 20 KB bootloader (0x08000000..
+         * 0x08004FFF all 0xFF), SystemInit writes SCB->VTOR=0x08005000, App
+         * tops at the 256 KB boundary (signature block @0x0803F600). The shared
+         * "...POTatezLAA1SA22" marker matches the 07-era codebase.
+         *
+         * TOPOLOGY IS SPEC-DERIVED, NOT AN IN-BAND READ: like the 18kPV App,
+         * this App partition does not embed the HMI string/font tables (only
+         * ~295 mostly-noise strings extract), so MPPT count / phase / hybrid
+         * could not be confirmed from the image. Values below follow the EG4
+         * 6000XP product spec (6 kW off-grid, 2 MPPT, non-hybrid, split-phase
+         * 120/240) and should be confirmed against a resource dump or a unit.
+         */
+        .id          = INV_MODEL_6000XP,
+        .name        = "EG4 6000XP",
+        .model_code  = "ccaa",
+        .image_sig   = "SNCC",
+
+        .mppt_count  = 2,            /* spec-derived (see note)             */
+        .phase_count = 1,            /* split-phase 120/240 V               */
+        .hybrid      = false,
+
+        .feat_export_to_grid = false, /* non-hybrid off-grid unit           */
+        .feat_ac_couple      = false,
+        .feat_generator_port = true,  /* generator input + gen-charge        */
+
+        .layout          = INV_IMAGE_APP_OVER_BL,
+        .flash_base      = 0x08000000UL,
+        .flash_size      = 256U * 1024U, /* App region tops at 0x08040000    */
+        .bootloader_size = 0x5000UL,     /* 0x08000000..0x08004FFF reserved   */
+        .vector_addr     = 0x08005000UL,
+        .sram_size       = 64U * 1024U,  /* confirm part number              */
+    },
 };
 
 const inv_variant_t *inv_variant_by_model(inv_model_id_t id)
@@ -82,6 +120,8 @@ const inv_variant_t *inv_variant(void)
 {
 #if defined(INV_VARIANT_18KPV)
     return &k_variants[INV_MODEL_18KPV];
+#elif defined(INV_VARIANT_6000XP)
+    return &k_variants[INV_MODEL_6000XP];
 #else
     return &k_variants[INV_MODEL_12000XP];
 #endif

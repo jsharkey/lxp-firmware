@@ -44,6 +44,20 @@ int main(void)
     CHECK(x18->flash_base + x18->bootloader_size == x18->vector_addr,
           "18k App vectors are directly above the bootloader");
 
+    /* --- 6000XP: non-hybrid 2-MPPT, App relocated above a 20 KB bootloader --- */
+    const inv_variant_t *x6 = inv_variant_by_model(INV_MODEL_6000XP);
+    CHECK(x6->id == INV_MODEL_6000XP,          "6k id");
+    CHECK(x6->mppt_count == 2,                 "6k has 2 MPPT");
+    CHECK(x6->hybrid == false,                 "6k is non-hybrid");
+    CHECK(x6->layout == INV_IMAGE_APP_OVER_BL, "6k App-over-bootloader layout");
+    CHECK(x6->vector_addr == 0x08005000UL,     "6k vectors relocated to 0x08005000");
+    CHECK(x6->bootloader_size == 0x5000UL,     "6k reserves a 0x5000 bootloader");
+    CHECK(x6->flash_size == 256u*1024u,        "6k App region tops at 256K");
+    CHECK(strcmp(x6->model_code, "ccaa") == 0, "6k model code");
+    CHECK(strcmp(x6->image_sig,  "SNCC") == 0, "6k image signature");
+    CHECK(x6->flash_base + x6->bootloader_size == x6->vector_addr,
+          "6k App vectors are directly above the bootloader");
+
     /* --- active (build-time) variant: default is the 12000XP --- */
     CHECK(inv_variant() == x12,                "default build targets 12000XP");
     CHECK(inv_has_mppt3() == false,            "default build: no 3rd MPPT");

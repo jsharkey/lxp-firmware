@@ -2,11 +2,13 @@
  * Product-variant abstraction for the shared EG4 com-MCU codebase.
  *
  * The original "com" firmware is ONE codebase that ships on several EG4 all-in-one
- * inverters, variant-selected by the "Model" setting. Reverse-engineering two of
- * the factory ARM images proves this directly (see docs/10-18kpv-vs-12000xp.md):
+ * inverters, variant-selected by the "Model" setting. Reverse-engineering three of
+ * the factory ARM images proves this directly (see docs/10-18kpv-vs-12000xp.md
+ * and docs/12-6000xp.md):
  *
  *   - EG4 12000XP  (image "..._ceaa-05xx_com_vE_250325.hex")
  *   - EG4 18kPV    (image "..._FAAB-1Bxx_20240528_App.hex")
+ *   - EG4 6000XP   (image "..._ccaa-xx15xx_260519.hex")
  *
  * Both run the SAME MCU (STM32F103 high-density, Cortex-M3), the SAME CMSIS-F1
  * SystemInit, and the SAME Keil-armcc scatter-loaded C runtime. They differ in a
@@ -35,7 +37,8 @@
 /* ----- model identity ----------------------------------------------------- */
 typedef enum {
     INV_MODEL_12000XP = 0,   /* non-hybrid, 2 MPPT, split-phase 120/240       */
-    INV_MODEL_18KPV   = 1,    /* hybrid grid-tie, 3 MPPT, split-phase          */
+    INV_MODEL_18KPV   = 1,   /* hybrid grid-tie, 3 MPPT, split-phase          */
+    INV_MODEL_6000XP  = 2,    /* non-hybrid, 2 MPPT, split-phase (smaller sib) */
     INV_MODEL__COUNT
 } inv_model_id_t;
 
