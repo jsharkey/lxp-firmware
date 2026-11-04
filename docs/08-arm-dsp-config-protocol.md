@@ -251,6 +251,50 @@ offset to the DSP block boundaries (`DAT_0000B300` completeness bits / the
 `FUN_00092EE2` targets). That isolates reg→offset→block per field, with proof on
 both ends. Locating the holding-register store is the prerequisite.
 
+## ARM holding-register store FOUND — `0x20009854`
+
+The ARM keeps its settings in a **byte-packed struct at RAM `0x20009854`** (not a
+flat reg-indexed array — registers map to *named field offsets*). Evidence:
+
+- **`sub_080132a0` is a field-by-field validator/clamp** over `0x20009854`:
+  `field[0x0F]` clamped `<6`→1, `field[0x18]∈{0,3,4}`, `field[0x17]<3`→0,
+  `field[0x72]<0x190`, plus bitfield sanitisation of `field[0x11]`/`field[0x13]`.
+  Clamp ranges = the settings' valid ranges.
+- The **HMI menu handlers write it**: `fn_Hybrid_Setting`, `fn_Smart_Load`,
+  `fn_AC_Couple` all store into `0x20009854` (so an HMI edit lands here), and it
+  is read across ~200 functions — the central settings store.
+- The **dongle standard-Modbus** path (functions `3/4/6/0x10` only) is
+  `sub_0802afe2`, a scheduler task on **UART5** (`0x40005000`); it reads/writes
+  `0x20009854` by field.
+
+### First field proven end-to-end (ARM side)
+
+`sub_0802afe2` does `ldrh [0x20009854 + 0x0B]; cmp #2` — the exact **"is AC First?"**
+test. So **output priority lives at `settings + 0x0B`**, and:
+
+```
+Modbus reg 145 (HR_OUTPUT_PRIO_CFG, 2 = AC First)
+  → ARM settings 0x20009854 + 0x0B
+  → config frame (0x20009414 snapshot)
+  → DSP block 0 → g_outputPrio (0x00ADA8), tested == 2   (docs/07)
+```
+
+This is the full chain the project set out to prove, for one field, from the
+`.hex`. The value match (`== 2` = AC First on both the ARM field and the DSP
+target) is the cross-check.
+
+### Completing the map — the working method
+
+Now that the store (`0x20009854`) and the dongle link (UART5) are known, the
+efficient route is to **emulate Modbus reads on UART5** with the store pre-seeded
+with per-offset markers: inject a `0x03`/`0x04` read for register N, run the
+UART5 Modbus handler, and read the response — the returned value *is* the
+field offset, giving `reg N → settings offset` directly, one sweep for all
+registers. Then `settings offset → frame position → block` closes it (the frame
+is the `0x20009414` RAM snapshot; the DSP block boundaries are the `DAT_0000B300`
+completeness bits). **Status: store + method + one proven field done; the full
+reg→offset sweep is the next step (not yet run end-to-end).**
+
 ## Reference (word addresses / DSP)
 
 | symbol | addr | role |
