@@ -26,9 +26,18 @@ Requires: pip install unicorn   (capstone only if you also disassemble).
 """
 import os, struct, csv, subprocess
 from unicorn import *
-from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
-                               UC_ARM_REG_R3, UC_ARM_REG_SP, UC_ARM_REG_LR,
-                               UC_ARM_REG_PC)
+from unicorn.arm_const import *
+
+# Cortex-M registers the hardware stacks on exception entry (R0-R3, R12, LR, PC,
+# xPSR) plus the callee-saved ones -- we save/restore all of them around an
+# injected SysTick handler so it is transparent to the interrupted code.
+_SYSTICK_SAVE = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
+                 UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
+                 UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
+                 UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC,
+                 UC_ARM_REG_CPSR]
+SYST_CSR = 0xE000E010          # SysTick control/status: b0 ENABLE, b1 TICKINT, b16 COUNTFLAG
+SCB_VTOR = 0xE000ED08          # vector table base
 
 FLASH_BASE = 0x08000000
 RAM_BASE   = 0x20000000
@@ -73,7 +82,9 @@ def load_symbols_nm(elf_path, nm="arm-none-eabi-nm"):
     out = {}
     for ln in subprocess.check_output([nm, elf_path], text=True).splitlines():
         p = ln.split()
-        if len(p) == 3 and p[1] in "tTwW":          # thumb code symbols
+        # "addr type name" for defined symbols (code t/T/w/W and data b/d/r/...);
+        # undefined symbols have only "type name" and are skipped.
+        if len(p) == 3:
             try: out[p[2]] = int(p[0], 16)
             except ValueError: pass
     return out
@@ -129,6 +140,8 @@ class ArmSim:
         self.names = dict(symbols or {})
         self.shadow = {p: 0 for p in GPIO}     # per-port output latch (ODR shadow)
         self.drive_log = []                     # [(port, pin, 'HIGH'|'LOW')]
+        self._tick_interval = None             # SysTick off until enable_systick()
+        self._halt = False                     # set by stop-hooks so the tick driver breaks
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -282,18 +295,82 @@ class ArmSim:
                 return FLASH_BASE + off
         raise RuntimeError("no vector table found in image")
 
+    # ---- SysTick injection (opt-in) -------------------------------------
+    def enable_systick(self, interval=20_000):
+        """Fire the SysTick interrupt every `interval` emulated instructions.
+
+        This harness has no real timers, so a firmware's tick-driven logic (its
+        cooperative scheduler, periodic tasks, our firmware's g_ticks-gated loop)
+        otherwise never advances past boot. With SysTick on, runs proceed in
+        `interval`-instruction chunks and, between chunks, the SysTick vector
+        handler is invoked with full register save/restore -- a precise interrupt
+        at a chunk boundary. Off by default (keeps non-tick tests fast)."""
+        self._tick_interval = interval
+        return self
+
+    def disable_systick(self):
+        self._tick_interval = None
+        return self
+
+    def _fire_systick(self):
+        """Invoke the SysTick handler once, iff SysTick is enabled, its interrupt
+        is armed and interrupts are unmasked -- transparently to the running code."""
+        uc = self.uc
+        csr = self.r32(SYST_CSR)
+        if not (csr & 1):                       # ENABLE off
+            return
+        self.w32(SYST_CSR, csr | (1 << 16))     # COUNTFLAG (for polled timebases)
+        if not (csr & 2):                       # TICKINT off -> no interrupt
+            return
+        if uc.reg_read(UC_ARM_REG_PRIMASK) & 1: # interrupts masked
+            return
+        vtor = self.r32(SCB_VTOR)
+        handler = self.r32((vtor or self.vector_base()) + 0x3C)   # exception 15
+        if not handler or handler == 0xFFFFFFFF:
+            return
+        saved = {r: uc.reg_read(r) for r in _SYSTICK_SAVE}
+        uc.reg_write(UC_ARM_REG_LR, STOP | 1)   # return to the STOP sentinel
+        try:
+            uc.emu_start(handler | 1, STOP, count=1_000_000)
+        except UcError:
+            pass
+        for r, v in saved.items():              # restore the interrupted context
+            uc.reg_write(r, v)
+
+    def _run(self, start_pc, max_insn):
+        """Run from start_pc for up to max_insn instructions. With SysTick enabled,
+        run in chunks and fire the handler between them; stop early if a stop-hook
+        set self._halt or execution reached the STOP sentinel."""
+        uc = self.uc
+        self._halt = False
+        if not self._tick_interval:
+            try:
+                uc.emu_start(start_pc & ~1 | 1, 0xFFFFFFFF, count=max_insn)
+            except UcError:
+                pass
+            return self
+        uc.reg_write(UC_ARM_REG_PC, start_pc & ~1 | 1)
+        remaining = max_insn
+        while remaining > 0 and not self._halt:
+            chunk = min(self._tick_interval, remaining)
+            pc = uc.reg_read(UC_ARM_REG_PC)
+            try:
+                uc.emu_start(pc | 1, STOP, count=chunk)
+            except UcError:
+                pass
+            remaining -= chunk
+            if self._halt or (uc.reg_read(UC_ARM_REG_PC) & ~1) == STOP:
+                break
+            self._fire_systick()
+        return self
+
     def run_reset(self, max_insn=500_000, vector_base=None):
         """Boot from the image's own reset vector and run its event loop for up
         to max_insn instructions (black box: no entry address needed). A bounded
         boot stops wherever it is in the loop; callers assert on observed IO."""
         base = self.vector_base() if vector_base is None else vector_base
-        sp = self.r32(base); pc = self.r32(base + 4)
-        self.uc.reg_write(UC_ARM_REG_SP, sp)
-        try:
-            self.uc.emu_start(pc & ~1 | 1, 0xFFFFFFFF, count=max_insn)
-        except UcError:
-            pass
-        return self
+        self.uc.reg_write(UC_ARM_REG_SP, self.r32(base))
+        return self._run(self.r32(base + 4), max_insn)
 
     # ---- snapshot / restore (warm once, clone per test, hermetically) ------
     def snapshot(self):
@@ -325,13 +402,8 @@ class ArmSim:
 
     def run(self, max_insn):
         """Resume execution from the current PC for up to max_insn instructions
-        (use after restore(); does not reset)."""
-        pc = self.uc.reg_read(UC_ARM_REG_PC)
-        try:
-            self.uc.emu_start(pc | 1, 0xFFFFFFFF, count=max_insn)
-        except UcError:
-            pass
-        return self
+        (use after restore(); does not reset). Honors SysTick if enabled."""
+        return self._run(self.uc.reg_read(UC_ARM_REG_PC), max_insn)
 
     def run_until_input_read(self, pin, max_insn=8_000_000, vector_base=None):
         """Boot and stop the moment the firmware's loop first reads `pin`'s port
@@ -376,6 +448,7 @@ class ArmSim:
             elif off == R_ODR:
                 drove = (value >> ob) & 1
             if drove == level:
+                self._halt = True       # stop the tick driver too
                 uc.emu_stop()
             return True
         hooks.append(self.uc.hook_add(UC_HOOK_MEM_WRITE, _stop_on_drive,
@@ -387,6 +460,7 @@ class ArmSim:
             def _stop_on_settle(uc, access, addr, size, value, ud):
                 n[0] += 1
                 if n[0] >= settle_reads:
+                    self._halt = True
                     uc.emu_stop()
             hooks.append(self.uc.hook_add(UC_HOOK_MEM_READ, _stop_on_settle,
                                           begin=idr, end=idr + 4))

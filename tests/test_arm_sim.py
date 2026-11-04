@@ -112,6 +112,16 @@ def test_our_firmware_boots_and_configures_usart3_gpio():
     assert pb11 == 0x4, "PB11 mode nibble = 0x%x (expected 0x4 floating input)" % pb11
 
 
+def test_systick_advances_tick_counter():
+    """The harness has no real timer, so tick-driven firmware logic freezes after
+    boot -- unless SysTick injection is on. With it on, our firmware's 1 ms tick
+    counter (g_ticks) advances; with it off it stays at 0."""
+    off = _ours(); off.run_reset(max_insn=800_000)
+    assert off.r32(off.sym("g_ticks")) == 0, "g_ticks advanced without SysTick"
+    on = _ours(); on.enable_systick(20_000); on.run_reset(max_insn=800_000)
+    assert on.r32(on.sym("g_ticks")) > 0, "SysTick injection did not advance g_ticks"
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items())

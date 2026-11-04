@@ -44,6 +44,8 @@ sim.run_until_input_read("PB7")        # boot up to the first time PB7 is sample
 warm = sim.snapshot()                  # CPU + all memory + GPIO shadow
 sim.restore(warm); sim.set_input("PB7", 1); sim.run_until_output("PB7", 1, reset=False)
 
+sim.enable_systick(20_000)             # drive tick-gated logic (see below); off by default
+
 sim.get_output("PB7")                  # current driven level (shadow latch)
 sim.was_driven("PB7", level=1)         # was it driven (to a level) since clear?
 sim.r32(addr) / sim.bit(addr, n)       # peek RAM (status words, flags)
@@ -64,13 +66,28 @@ shadow), and `restore()`s it before each case. Each case resumes
 (`run_until_output(reset=False)`) and finishes in a few hundred instructions.
 Restores are hermetic: order-independent and repeatable (verified).
 
-> **Why not warm to full "steady state"?** This harness has no SysTick/timer, so
-> the factory's cooperative scheduler only advances during boot — its periodic
-> tasks (the PB7 sampler among them) run in a short **boot window** (~instr 640k
-> here) and then not again. Warming *past* that window would skip the behaviour
-> entirely. So we warm only up to the first sample of the pin under test. The day
-> we inject a timer tick (so the loop genuinely cycles), warm-to-steady-state +
-> clone becomes both correct and an even bigger win.
+> **Why not warm to full "steady state"?** By default this harness has no timer,
+> so a firmware's cooperative scheduler only advances during boot. We warm only
+> up to the first sample of the pin under test, never past it. (For PB7 that is
+> also the *right* point: see the SysTick note below — its sampler turned out to
+> be a boot-time one-shot, so there is no later "steady state" for it anyway.)
+
+## SysTick injection (tick-driven behaviours)
+
+`sim.enable_systick(interval)` fires the **SysTick interrupt** every `interval`
+emulated instructions: the run proceeds in chunks and, between them, the SysTick
+vector handler is invoked with full register save/restore (a precise interrupt at
+a chunk boundary). Both firmwares arm SysTick with `TICKINT`, so without this
+their 1 ms tick counters never advance and all tick-gated logic — the scheduler,
+periodic tasks, our firmware's `g_ticks`-gated render/DSP cadence — freezes after
+boot. `test_systick_advances_tick_counter` checks our `g_ticks` advances with it
+on and stays 0 with it off. It is **off by default** (keeps non-tick tests fast).
+
+> **Finding:** injecting SysTick did *not* make the factory re-run the **PB7**
+> sampler — so that sampler is a boot-time one-shot (a strap/config read), not a
+> periodic task. That is why the PB7 test uses warm+snapshot, not ticks. SysTick
+> is the tool for the genuinely periodic behaviours (the IR_STATE-driven relays,
+> the DSP push cadence); turn it on when testing those.
 
 ## The parity test (factory oracle == our firmware), black box
 

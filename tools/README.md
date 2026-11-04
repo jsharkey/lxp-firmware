@@ -23,7 +23,7 @@ deps with `pip install capstone pyelftools`.
 | `gpio_map.py` | **GPIO/IO map**: auto-detect the StdPeriph GPIO helpers, resolve every pin's direction/mode + driver (`docs/16`) |
 | `periph_map.py` | on-chip peripherals in use (UART/SPI/CAN/TIM/…) by base-address + bit-band scan (`docs/16`) |
 | `disres.py` | resolving Thumb disassembler: annotates pc-relative literals + `(base+offset)` RAM targets + call targets (`docs/18`) |
-| `arm_sim.py` | **GPIO-instrumented emulator** running our firmware AND the factory image through one API (set_input/get_output/call/run_reset) for behaviour tests (`docs/19`, `tests/test_arm_sim.py`, `make test-sim`) |
+| `arm_sim.py` | **GPIO-instrumented emulator** running our firmware AND the factory image through one API (set_input/get_output/run_reset, snapshot/restore, enable_systick) for behaviour tests (`docs/19`, `tests/test_arm_sim.py`, `make test-sim`) |
 | `emu_acfirst.py` | AC-First window→DSP experiment: sweep the RTC, diff RAM to show the windows are evaluated ARM-side, not pushed (`docs/08`) |
 | `emu_regrange.py` | drive a Modbus register-group read, dump reg→frame-offset (`docs/08` regs 64-89) |
 | `emu_gpio_acfirst.py` | capture GPIO level-drive writes in vs out of the AC-First window → tests the "ARM toggles a relay directly" theory (`docs/14`) |
