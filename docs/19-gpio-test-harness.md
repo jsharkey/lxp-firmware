@@ -107,16 +107,33 @@ boot. Getting there turned up two things worth recording:
   the existing HSE/PLL/USART fakes. These advance boot from an early LSE spin to
   deep into SPI device bring-up.
 
-**Still blocked (the relay app-loop is not yet reachable):** past the ready
-flags, boot does **data-dependent SPI device transactions** (e.g. a `0x05`/`0xA5`
-"read status" handshake against an SPI flash/LCD) and waits for specific
-responses. Faking the status byte gets past one handshake but others follow.
-Reaching `sub_0801b3dc` therefore needs the boot-time SPI device(s) *emulated*
-(canned, structured responses), not just ready flags — a real piece of work.
-**Until then a relay parity test cannot run its stimulus through the factory's
-own loop, so it is deliberately not added** (a test that cannot validate the
-oracle is worse than none). The groundwork above is committed so this can be
-finished; see the options discussed with the maintainer.
+**An SPI NOR config-flash is modelled.** Past the ready flags, boot does real
+SPI transactions against an external **config/settings flash** on SPI1 (opcodes
+`0x06` WREN, `0x05` RDSR, `0x03` read, `0x02` program, `0x20/0x52/0xd8` erase,
+`0xc7` chip-erase — classic SPI NOR). `sim.attach_spi_flash()` provides a
+RAM-backed `SpiNorFlash` (starts erased) so these complete. With it, boot gets
+**all the way through init**: it reaches the `cpsie i; b .` idle at `0x0801c47c`
+— i.e. the firmware is **interrupt-driven**; the main thread finishes init and
+idles, and all periodic work runs from ISRs.
+
+**Still not running the relays (next gate, honest):** with SysTick injected, the
+SysTick ISR runs the software-timer scheduler (`sub_0802f50c`), but the relay
+task (`sub_0802e2f0` → `sub_0801b3dc`) is dispatched from a scheduler slot that
+is **never registered/armed** in our run — its registration is gated behind more
+init (very likely the config-flash holding *valid* data: a blank flash makes the
+firmware treat config as absent). So reaching live relay logic needs not just the
+SPI device but a config image the firmware accepts (or more init fidelity). That
+is a sizeable sub-project — effectively booting the vendor firmware to an
+operational state in emulation.
+
+**Therefore the relay parity test is still not added** (it could not yet validate
+the oracle, and a test that can't validate the oracle is worse than none). What
+*is* committed is real groundwork: the M4 model, the peripheral-ready fakes, the
+`SpiNorFlash` model (`attach_spi_flash()`), and this map of the remaining gates.
+Options discussed with the maintainer: (A) keep going — supply a config image the
+firmware validates so the scheduler arms the relay task; (B) validate the factory
+relay *functions* directly (seed the DSP-state struct, call the resolver + relay
+updater, assert the pin) and TDD ours to match — not black-box, but doable now.
 
 ## The parity test (factory oracle == our firmware), black box
 

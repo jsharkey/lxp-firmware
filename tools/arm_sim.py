@@ -51,6 +51,65 @@ STACK_TOP  = RAM_BASE + RAM_SIZE - 0x400
 
 GPIO = {"A":0x40010800,"B":0x40010c00,"C":0x40011000,"D":0x40011400,"E":0x40011800}
 R_CRL,R_CRH,R_IDR,R_ODR,R_BSRR,R_BRR = 0x00,0x04,0x08,0x0c,0x10,0x14
+SPI_DR = 0x0C                  # SPI data register offset
+
+
+class SpiNorFlash:
+    """Minimal SPI NOR flash slave (W25Q-style), RAM-backed, starts erased
+    (0xFF). Enough of the command set for the factory's boot-time config-flash
+    bring-up: read, program, erase, read/write status, WREN, JEDEC id. One SPI
+    byte = one xfer(mosi)->miso; cs_change() frames commands."""
+    def __init__(self, size=0x200000, jedec=(0xEF, 0x40, 0x15)):  # 2 MB, W25Q16-ish
+        self.mem = bytearray(b"\xFF" * size)
+        self.size = size
+        self.jedec = bytes(jedec)
+        self.wel = 0
+        self.cmd = bytearray()
+
+    def cs_change(self, asserted):
+        self.cmd = bytearray()           # (de)assert both start a fresh command
+
+    def _addr(self):
+        return ((self.cmd[1] << 16) | (self.cmd[2] << 8) | self.cmd[3]) % self.size
+
+    def xfer(self, mosi):
+        self.cmd.append(mosi & 0xFF)
+        op = self.cmd[0]
+        pos = len(self.cmd) - 1          # 0 = opcode byte
+        if op == 0x06:                   # WREN
+            self.wel = 1; return 0xFF
+        if op == 0x04:                   # WRDI
+            self.wel = 0; return 0xFF
+        if op == 0x05:                   # RDSR1: status (WIP=0 -> ready) | WEL
+            return (self.wel << 1) if pos >= 1 else 0xFF
+        if op == 0x35 or op == 0x15:     # RDSR2/3
+            return 0x00
+        if op == 0x9F:                   # JEDEC id
+            return self.jedec[pos - 1] if 1 <= pos <= 3 else 0xFF
+        if op in (0x03, 0x0B):           # READ (0x0B fast-read has 1 dummy byte)
+            dummy = 1 if op == 0x0B else 0
+            first = 4 + dummy
+            if pos >= first:
+                a = (self._addr() + (pos - first)) % self.size
+                return self.mem[a]
+            return 0xFF
+        if op == 0x02:                   # PAGE PROGRAM
+            if pos >= 4 and self.wel:
+                a = (self._addr() + (pos - 4)) % self.size
+                self.mem[a] = mosi & 0xFF
+            return 0xFF
+        if op in (0x20, 0x52, 0xD8):     # sector/block erase (4K/32K/64K)
+            span = {0x20: 0x1000, 0x52: 0x8000, 0xD8: 0x10000}[op]
+            if pos == 3 and self.wel:
+                base = (self._addr() // span) * span
+                self.mem[base:base + span] = b"\xFF" * span
+                self.wel = 0
+            return 0xFF
+        if op in (0xC7, 0x60):           # chip erase
+            if self.wel:
+                self.mem = bytearray(b"\xFF" * self.size); self.wel = 0
+            return 0xFF
+        return 0xFF
 RCC = 0x40021000
 USARTS = {0x40013800,0x40004400,0x40004800,0x40004c00,0x40005000}
 USART_SR_READY = 0x000000C0   # TXE|TC
@@ -270,6 +329,36 @@ class ArmSim:
 
     def clear_drives(self):
         self.drive_log = []
+
+    # ---- SPI NOR flash device (opt-in) ----------------------------------
+    def attach_spi_flash(self, cs_pin="PA4", spi_base=0x40013000, flash=None):
+        """Attach a RAM-backed SPI NOR flash on `spi_base`, chip-selected by
+        `cs_pin` (active low). The factory boots a config/settings flash on SPI1;
+        without a responding device it loops re-initialising. Returns the device
+        (its .mem is the backing store). Opt-in -- off unless called."""
+        dev = flash or SpiNorFlash()
+        self.spi_flash = dev
+        dr = spi_base + SPI_DR
+        port, bit = parse_pin(cs_pin)
+        pending = [0xFF]
+        def on_cs(uc, access, addr, size, value, ud):
+            off = addr - GPIO[port]
+            asserted = None
+            if off == R_BSRR:
+                if (value >> bit) & 1: asserted = False            # set high -> deassert
+                elif (value >> (16 + bit)) & 1: asserted = True    # reset low -> assert
+            elif off == R_BRR and (value >> bit) & 1: asserted = True
+            elif off == R_ODR: asserted = not ((value >> bit) & 1)
+            if asserted is not None: dev.cs_change(asserted)
+            return True
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, on_cs, begin=GPIO[port], end=GPIO[port] + 0x18)
+        def on_dr_w(uc, access, addr, size, value, ud):
+            pending[0] = dev.xfer(value & 0xFF); return True
+        def on_dr_r(uc, access, addr, size, value, ud):
+            uc.mem_write(dr, struct.pack("<I", pending[0])); return True
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, on_dr_w, begin=dr, end=dr + 4)
+        self.uc.hook_add(UC_HOOK_MEM_READ, on_dr_r, begin=dr, end=dr + 4)
+        return dev
 
     # ---- symbols / memory / execution -----------------------------------
     def sym(self, name):
