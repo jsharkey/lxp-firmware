@@ -158,6 +158,70 @@ the ARM's registers) or (b) *initiates* a write (master: ARM pushes to the DSP).
 The blocker is matching each of the 5 links to its physical peer, which the
 schematic settles directly.
 
+## DSP side (C28x) — direction resolved, `0x21/0x22/0x23` placed
+
+With the DSP now disassembled (Ghidra + `ghidra-tms320c28x`, see
+[`docs/07`](07-dsp-ac-first-mode.md)) the link can be read from the **other end**,
+which settles the open questions above without the schematic. The DSP's
+master-facing serial link is **SCI-B**, and it runs the **same EG4 frame family
+and the same CRC-16** as the ARM — the DSP's CRC routine `FUN_00081034`
+(word `0x81034`) is the mechanical twin of the ARM's `sub_08000d98` (both
+little-endian-reflected `0xA001`). That shared CRC is the anchor that proves the
+two CPUs are on one wire. The link carries **two framings on the same transport**,
+both `addr func … CRC16`, dispatched by the function/type byte `[1]`:
+
+### 1. Firmware-update / bootloader path — uses `0x21/0x22/0x23`
+
+The DSP bootloader `FUN_00080aa8` (word `0x80AA8`, in flash sector 0) is a
+polled SCI-B receive loop that accepts **only** function codes
+`0x21`/`0x22`/`0x23` — any other byte forces a resync. The frame lengths it
+computes **match the ARM's extended table exactly**:
+
+| code | DSP handling | length | matches ARM table |
+|---|---|---|---|
+| `0x21` | session start: validates the `"EDSN"` tag (`0x4E534445`) + SN fields, erases a flash sector | **24** | ✅ 24 |
+| `0x22` | program a data block: sub-type `[14] ∈ {1,2}` (block-index → `0x80000+(n-1)*0x180`, or a direct 32-bit addr), writes flash in 8-word chunks via the RAM-resident flash API (`FUN_0000C47B`/`cb5d`) | **`byteCount + 0x13`** | ✅ bulk |
+| `0x23` | verify / commit: compares stored vs received addr/len/CRC fields, sets "done" (state 3); sub-type `[12] ∈ {1,2}` | **21** | ✅ 21 |
+
+Each command is **ACK'd** back to the ARM (`FUN_000810C5` TX). This is the
+`"EDSN"` marker noted earlier in this doc (the DSP image's shared tag),
+now explained: it is the DSP's SN-tag check on the update
+handshake. **So yes — `0x21/0x22/0x23` are the DSP protocol's firmware-update
+subset**, and they are driven by the ARM, matching the ARM-side finding that its
+USART3 `sub_08001482` path only deep-processes exactly these three.
+
+### 2. Runtime config/telemetry path — same frame family, type byte `1`
+
+The application comms task `FUN_00098F72` (word `0x98F72`) receives frames into a
+buffer at RAM `0x00AC80`, CRC-checks them with the same `FUN_00081034`, and on a
+valid frame with type byte `[1] == 1` calls `FUN_0009E309 → FUN_00092EE2`, which
+**unpacks the settings** (output priority `0x00ADA8` = Bat/PV/**AC First**, and
+the rest of the `0x00AD??` config block) out of the received buffer into DSP RAM.
+The config deserialiser is reached **only** from this receive path
+(`FUN_00092EE2` has exactly one caller), and the task runs a **link-health state
+flag** (`DAT_0000AD67` bit 2) driven by whether valid frames keep arriving. In the
+other direction the DSP **builds and sends** a ~60-word telemetry frame
+(`FUN_0009DD14`: fill `0x00ADC2` → append CRC-16 → transmit).
+
+### Direction: **ARM pushes, DSP is the slave**
+
+Every config/control path on the DSP is **reactive**: it waits for an
+ARM-initiated frame, validates CRC, and *applies* it (stores settings, programs
+flash). The DSP never polls the ARM for configuration — it only consumes pushed
+frames (and watchdogs their absence) and emits telemetry. So:
+
+- **Config (incl. "AC First" output priority): ARM → DSP, pushed.** The ARM is
+  timekeeper + config master exactly as hypothesised earlier in this doc;
+  the DSP reads the pushed value and runs the real-time rules (see
+  [`docs/07`](07-dsp-ac-first-mode.md)).
+- **Firmware update: ARM → DSP, pushed** (`0x21/0x22/0x23`, DSP ACKs).
+- **Telemetry: DSP → ARM.**
+
+This resolves the "push vs pull" question from the DSP end. The one piece still
+formally pending the schematic is the physical pin mapping ARM-USART3 ↔
+DSP-SCI-B — but the byte-exact frame-length match, the shared CRC-16, and the
+shared `"EDSN"`/`0x21-0x23` vocabulary make that pairing all but certain.
+
 ## How to finish (ranked)
 
 1. **Schematic** (you're providing): label which MCU UART → DSP, BMS, meter,
