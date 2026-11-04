@@ -126,15 +126,30 @@ by PendSV; the first task is launched by the first SysTick→PendSV after `cpsie
 (no SVC). The main thread idles at `cpsie i; b .` and the task only gets the CPU
 via that context switch.
 
-**Why the harness does not emulate the context switch (scoping).** Unicorn is a
-plain CPU emulator: it does **not** model the Cortex-M exception machinery the
-switch relies on — hardware stacking of `{r0-r3,r12,lr,pc,xpsr}` on exception
-entry, `EXC_RETURN` unstacking, the banked MSP/PSP, or `CONTROL.SPSEL`. Emulating
-the RTOS therefore means building a custom Cortex-M exception engine (entry/exit
-stacking, EXC_RETURN variants, PSP/MSP banking, PendSV-on-pending) and driving
-the vendor scheduler through it — a sizeable, quirk-heavy component. **And it
-turns out not to be needed to validate the relay behaviour** (below), so it is
-deliberately deferred to its own effort rather than block the relay tests.
+**A Cortex-M exception engine (`enable_rtos()`) — built, and it works.** Unicorn
+emulates the CPU but not the exception machinery the switch relies on, so
+`enable_rtos()` models it: exception **entry** hardware-stacks
+`{r0-r3,r12,lr,pc,xpsr}` on the active stack and vectors to the handler on MSP;
+**EXC_RETURN** (Unicorn raises `UC_HOOK_INTR` when execution branches to
+`0xFFFFFFFx`) unstacks and resumes on MSP/PSP; **SysTick** is injected between
+run-chunks and **PendSV** is tail-chained whenever a handler returns to thread
+with `PENDSVSET` pending. The firmware's own SysTick/PendSV handlers then do the
+real scheduling and the FreeRTOS-style context switch (`mrs/msr psp` + `{r4-r11}`,
+using Unicorn's native MSP/PSP banking). Verified end-to-end on the factory
+image: SysTick fires as exceptions, PendSV runs, and the engine **context-switches
+to a real PSP task** (`0x08030010`).
+
+**What still blocks the relay task specifically (honest).** With the engine
+running, the firmware only schedules a minimal task set in the harness (an
+idle-like spinner, plus one garbage TCB whose stacked PC is 0 — a sign of
+*incomplete init*). The control/relay task (`sub_0801b3dc`) is **never created /
+made ready**, because task creation is gated behind init we have not satisfied
+(the config-flash *contents* the firmware validates, and likely the DSP link).
+So running the relays end-to-end through the scheduler needs that init gate
+resolved, not more exception-engine work. The engine guards against the invalid
+switch (it halts rather than faulting). **Validating the relay behaviour does not
+need any of this** — the relay tests below run the factory's real relay code
+directly with seeded state.
 
 ### The relay parity tests (target-specific: shared contract, per-image drive)
 
@@ -176,11 +191,15 @@ Factory: seed its manual-mode flag + command word, invoke its relay updater
 override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
 (`src/relay.c`), TDD'd to match the same truth table.
 
-Committed groundwork toward the full working-mode path: the M4 model, the
-peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`), SysTick
-injection, and the RTOS finding above. **Next** for working-mode-driven relays:
-emulate the RTOS context switch so `sub_0801b3dc` runs as a task — which would
-also let these move from a seeded-state call into the common black-box file.
+Committed groundwork toward running the firmware fully end-to-end: the M4 model,
+the peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`),
+SysTick injection, and the **`enable_rtos()` exception engine** (above) — which
+now context-switches to real PSP tasks. **Next** to run the relay *task* through
+the scheduler: resolve the init gate so the firmware actually creates the
+control/relay task (supply config-flash contents it validates, and/or the DSP
+link) — an init-fidelity problem, no longer an exception-engine one. Once the
+task runs, these relay checks could move from a seeded-state call into the common
+black-box file.
 
 ## The common tests — the SAME code against both images
 
