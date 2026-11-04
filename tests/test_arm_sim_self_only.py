@@ -29,14 +29,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
 from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
+from arm_sim_runner import Skip, run_tests
 
 # Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
 _BIN = [None]
 _ELF = [None]
-
-
-class Skip(Exception):
-    pass
 
 
 def _ours():
@@ -109,22 +106,8 @@ def _main(argv):
         _BIN[0] = args[0]
     if len(args) >= 2:
         _ELF[0] = args[1]
-    print("# test_arm_sim_self_only.py: image = %s  symbols = %s"
-          % (_BIN[0] or "<none>", _ELF[0] or "<none>"))
-
-    tests = [v for k, v in sorted(globals().items())
-             if k.startswith("test_") and callable(v)]
-    rc = 0
-    for t in tests:
-        try:
-            t(); print("PASS  %s" % t.__name__)
-        except Skip as s:
-            print("SKIP  %s  (%s)" % (t.__name__, s))
-        except AssertionError as a:
-            rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
-        except Exception as e:
-            rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    return rc
+    image = "%s (+%s)" % (_BIN[0], _ELF[0]) if _BIN[0] and _ELF[0] else "<none>"
+    return run_tests("Our-firmware-only tests", image, globals())
 
 
 if __name__ == "__main__":

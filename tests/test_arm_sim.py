@@ -33,14 +33,13 @@ available. Needs `pip install unicorn`.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
+sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
+from arm_sim_runner import Skip, run_tests
 
 # Image under test. Set by the __main__ runner from argv; otherwise resolved
 # from the environment / default build so pytest and a bare run still work.
 _IMAGE = [None]
-
-class Skip(Exception):
-    pass
 
 
 def _resolve_image():
@@ -140,22 +139,8 @@ def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
     if args:
         _IMAGE[0] = args[0]
-    label = _resolve_image() or "<none>"
-    print("# test_arm_sim.py: image = %s" % label)
-
-    tests = [v for k, v in sorted(globals().items())
-             if k.startswith("test_") and callable(v)]
-    rc = 0
-    for t in tests:
-        try:
-            t(); print("PASS  %s" % t.__name__)
-        except Skip as s:
-            print("SKIP  %s  (%s)" % (t.__name__, s))
-        except AssertionError as a:
-            rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
-        except Exception as e:
-            rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    return rc
+    return run_tests("Common GPIO behaviour (both images)",
+                     _resolve_image() or "<none>", globals())
 
 
 if __name__ == "__main__":

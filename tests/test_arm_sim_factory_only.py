@@ -28,13 +28,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
 from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
+from arm_sim_runner import Skip, run_tests
 
 # Factory flat-.bin image under test. Set by the __main__ runner from argv.
 _IMAGE = [None]
-
-
-class Skip(Exception):
-    pass
 
 
 def _factory():
@@ -107,21 +104,7 @@ def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
     if args:
         _IMAGE[0] = args[0]
-    print("# test_arm_sim_factory_only.py: image = %s" % (_IMAGE[0] or "<none>"))
-
-    tests = [v for k, v in sorted(globals().items())
-             if k.startswith("test_") and callable(v)]
-    rc = 0
-    for t in tests:
-        try:
-            t(); print("PASS  %s" % t.__name__)
-        except Skip as s:
-            print("SKIP  %s  (%s)" % (t.__name__, s))
-        except AssertionError as a:
-            rc = 1; print("FAIL  %s\n        %s" % (t.__name__, a))
-        except Exception as e:
-            rc = 1; print("ERROR %s\n        %r" % (t.__name__, e))
-    return rc
+    return run_tests("Factory-image-only tests", _IMAGE[0] or "<none>", globals())
 
 
 if __name__ == "__main__":
