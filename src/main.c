@@ -14,6 +14,7 @@
 #include "inv/hmi_menu.h"
 #include "inv/dsp_link.h"
 #include "inv/variant.h"
+#include "inv/gpio_sample.h"
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -115,6 +116,8 @@ int main(void) {
     uint32_t last_render = 0, last_dsp = 0;
     for (;;) {
         mb_port_poll(g_ticks);
+
+        pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
 
         int key = hmi_keypad_poll();
         if (key >= 0) { hmi_key(&g_hmi, (hmi_key_t)key); hmi_render(&g_hmi); }

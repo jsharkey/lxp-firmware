@@ -30,11 +30,6 @@ from arm_sim import ArmSim
 FACTORY_HEX = os.environ.get("LXP_FACTORY_HEX")                      # vendor .hex (converted in-memory)
 FACTORY_BIN = os.environ.get("LXP_FACTORY_BIN", "reference/com_flat.bin")  # pre-converted flat image
 
-# --- facts about the ceaa-07xx factory image (d673c5ed-ceaa-07xx_vE_260214) ---
-PB7_SAMPLER_FN = 0x0802e452   # samples PB7 input, drives PB7 + flag on majority-high
-PB7_FLAG_ADDR  = 0x2000d890   # status word; bit 6 set when PB7 sampled high
-PB7_FLAG_BIT   = 6
-
 class Skip(Exception):
     pass
 
@@ -56,22 +51,57 @@ def _ours():
     return ArmSim.ours()
 
 
-def test_factory_pb7_input_drives_output():
-    """A GPIO input change (PB7) causes a GPIO output change (PB7 driven) + flag."""
-    for level in (1, 0):
-        sim = _factory()
-        sim.w32(PB7_FLAG_ADDR, 0)            # clean slate
-        sim.set_input("PB7", level)
+# --------------------------------------------------------------------------
+# Parity behaviours: a GPIO contract each implementation must satisfy, stated
+# as observable input->output. The SAME contract is asserted against the
+# factory image (the oracle) and against our firmware, so new behaviours are
+# added by appending to BEHAVIOURS, not by writing per-image tests.
+#
+# Each behaviour:
+#   name        - label
+#   in_pin      - the GPIO input it reacts to (docs/16 name)
+#   out_pin     - the GPIO output it drives
+#   factory     - how to invoke it on the factory image (address or symbol)
+#   ours        - how to invoke it in our firmware (symbol)
+#   expected    - {input_level: output_driven_high?} the contract
+# --------------------------------------------------------------------------
+BEHAVIOURS = [
+    dict(
+        # Factory sub_0802e452 debounce-samples PB7 (10x) and, on majority-high,
+        # drives PB7 high (sets a status flag too, but the observable contract is
+        # the GPIO drive). docs/16 PB7 = the bit-banged line; docs/18 context.
+        name="pb7_input_drives_output",
+        in_pin="PB7", out_pin="PB7",
+        factory=0x0802e452,          # ceaa-07xx d673c5ed-...-260214
+        ours="pb7_sample_poll",
+        expected={1: True, 0: False},
+    ),
+]
+
+def _observe(make_sim, in_pin, out_pin, entry, levels):
+    """Run `entry` for each input level on a fresh sim; return {level: driven-high}."""
+    obs = {}
+    for lvl in levels:
+        sim = make_sim()
+        sim.set_input(in_pin, lvl)
         sim.clear_drives()
-        sim.call(PB7_SAMPLER_FN)
-        drove_high = sim.was_driven("PB7", level=1)
-        flag = sim.bit(PB7_FLAG_ADDR, PB7_FLAG_BIT)
-        assert drove_high == bool(level), \
-            "PB7 input=%d: expected drive-high=%s, got %s" % (level, bool(level), drove_high)
-        assert sim.get_output("PB7") == level, \
-            "PB7 input=%d: output latch = %d" % (level, sim.get_output("PB7"))
-        assert flag == level, \
-            "PB7 input=%d: flag bit6 = %d" % (level, flag)
+        sim.call(entry)
+        obs[lvl] = sim.was_driven(out_pin, level=1)
+    return obs
+
+def test_behaviours_ours():
+    """Our firmware satisfies each GPIO behaviour contract."""
+    for b in BEHAVIOURS:
+        obs = _observe(_ours, b["in_pin"], b["out_pin"], b["ours"], b["expected"].keys())
+        assert obs == b["expected"], "%s: ours=%r expected=%r" % (b["name"], obs, b["expected"])
+
+def test_behaviours_factory_vs_ours_parity():
+    """Factory image and our firmware drive the output identically (the goal)."""
+    for b in BEHAVIOURS:
+        fac = _observe(_factory, b["in_pin"], b["out_pin"], b["factory"], b["expected"].keys())
+        our = _observe(_ours,    b["in_pin"], b["out_pin"], b["ours"],    b["expected"].keys())
+        assert fac == our == b["expected"], \
+            "%s: factory=%r ours=%r expected=%r" % (b["name"], fac, our, b["expected"])
 
 
 def test_our_firmware_boots_and_configures_usart3_gpio():

@@ -42,31 +42,36 @@ sim.was_driven("PB7", level=1)         # was it driven (to a level) since clear?
 sim.r32(addr) / sim.bit(addr, n)       # peek RAM (status words, flags)
 ```
 
-## The base case (first proof, against the oracle)
+## Parity behaviours (factory oracle == our firmware)
 
-`tests/test_arm_sim.py :: test_factory_pb7_input_drives_output`
+The core pattern is a **parity test**: one GPIO contract, asserted against both
+the factory image (the oracle) and our firmware, so our reimplementation is
+held to the shipped behaviour. Contracts live in the `BEHAVIOURS` list in
+`tests/test_arm_sim.py`; two tests consume it:
 
-In the `ceaa-07xx` image, **`sub_0802e452`** debounce-samples **PB7 as an input**
-(10× via `GPIO_ReadInputDataBit`) and, iff the majority read high, drives **PB7
-high** via `GPIO_SetBits` and sets status flag `0x2000d890` bit 6. The test flips
-the one input and asserts the output (and flag) follow:
+- `test_behaviours_ours` — our firmware satisfies each contract (runs always).
+- `test_behaviours_factory_vs_ours_parity` — factory and ours drive the output
+  **identically** (SKIPs when no factory image is present).
 
-| `set_input("PB7")` | `was_driven("PB7", 1)` | flag `0x2000d890` bit6 |
+The first contract, **`pb7_input_drives_output`** (the base case): in the
+`ceaa-07xx` image, **`sub_0802e452`** debounce-samples **PB7 as an input** (10×)
+and, iff the majority read high, drives **PB7 high** via `GPIO_SetBits`. Our
+`pb7_sample_poll()` (`src/gpio_sample.c`) reproduces it. The observable contract
+is the GPIO drive (internal status flags are not part of parity):
+
+| `set_input("PB7")` | `was_driven("PB7", 1)` — factory | — ours |
 |---|---|---|
-| 1 | True | 1 |
-| 0 | False | 0 |
+| 1 | True | True |
+| 0 | False | False |
 
-That is the minimal input→output causality, proven end-to-end through the real
-firmware — the harness working "in the light of day."
+Minimal input→output causality, proven end-to-end through **both** firmwares.
 
-## Running our firmware
+## Running our firmware (boot smoke test)
 
-`tests/test_arm_sim.py :: test_our_firmware_boots_and_configures_usart3_gpio`
-boots `build/firmware.bin` from its reset vector and asserts `mb_port_init`
-configured `GPIOB->CRH` for USART3 (PB10 = AF-PP `0xB`, PB11 = floating-in
-`0x4`). This is the template for future feature tests: drive inputs / call the
-subsystem, then assert the GPIO contract — ideally the *same* assertion that
-passes against the factory oracle.
+`test_our_firmware_boots_and_configures_usart3_gpio` boots `build/firmware.bin`
+from its reset vector and asserts `mb_port_init` configured `GPIOB->CRH` for
+USART3 (PB10 = AF-PP `0xB`, PB11 = floating-in `0x4`) — proof the harness runs
+our firmware through its init, not just isolated functions.
 
 ## Running the tests
 
@@ -84,10 +89,18 @@ is auto-detected by content**, so either var accepts either an Intel `.hex` (the
 harness runs the same HEX→flat conversion as `tools/hex2bin.py`, in memory) or an
 already-converted flat `.bin`. `LXP_FACTORY_HEX` takes precedence if both are set.
 
-## Adding a test
+## Adding a behaviour (the TDD loop)
 
-1. Find the behaviour in the factory image (`tools/disres.py`, `tools/gpio_map.py`).
-2. Write an oracle assertion: seed inputs / call the function, assert the GPIO
-   (and any status word) via the API above.
-3. Implement the feature in `src/`; point the *same* assertion at `ArmSim.ours()`.
-   Until it is implemented, guard the our-firmware side so the suite stays green.
+1. Find it in the factory image (`tools/disres.py`, `tools/gpio_map.py`): which
+   input pin, which output pin, and the input→output contract.
+2. Append a `dict(...)` to `BEHAVIOURS` in `tests/test_arm_sim.py` — `in_pin`,
+   `out_pin`, `factory` (address/symbol), `ours` (the symbol you will write),
+   and `expected`. Run `make test-sim`: the parity/ours tests go **red** (no
+   such symbol yet), the factory side already matches.
+3. Implement the function in `src/` and wire it in (reference it from `main`
+   so `--gc-sections` keeps it). Rebuild; `make test-sim` goes **green** on both.
+
+This is exactly how `pb7_input_drives_output` + `pb7_sample_poll()` were added.
+Behaviours whose output depends on more than one input, or on a status word,
+extend `_observe()` similarly — keep the asserted surface to *observable GPIO*
+so factory and our firmware can be compared even with different internals.
