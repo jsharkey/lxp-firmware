@@ -215,6 +215,42 @@ and read the frame assembled at `0x20007490+0x321`. Until then, blocks 1–7 fie
 semantics remain unmapped and the `src/dsp/dsp_config.c` field tables stay as
 clearly-marked stubs.
 
+## ARM-side send path — located and proven (emulation)
+
+Tracing the USART3 runtime link (`tools/emu.py`) pinned the transmit chain and,
+importantly, the *shape* of the frame — but not yet the per-register offsets.
+
+**Confirmed (emulated):**
+- The USART3-runtime **send-frame** helper is `sub_0801c370(data_ptr, len)`: it
+  copies `len` bytes into the link TX buffer at `0x20007490 + 0x321`, sets the TX
+  length at `[0x20007490 + 0x454]`, and kicks the drain (`sub_0801c672`).
+- Its **sole caller is `sub_08015094`** (a scheduler task): it calls
+  `sub_0801c370(0x20009414, len)` where `len = [0x2000a922]`, **gated on
+  change-detection** (it compares a few monitored values against saved copies and
+  only transmits when one differs — the ARM does send on change here, while the
+  DSP additionally diffs; cf. the "full snapshot" framing above).
+- **The frame is a contiguous RAM snapshot.** Capturing the `sub_0801c370` call
+  under emulation (RAM pre-seeded with per-word markers) returned the frame bytes
+  as the exact marker sequence for `0x20009414, 0x20009416, …` — i.e.
+  `sub_0801c370` copies straight from the **config image at `0x20009414`**. The
+  frame layout therefore *is* the memory layout of that image; there is no
+  separate field-packing step.
+
+**Not yet extracted (honest):** the offset of each Modbus holding register inside
+the `0x20009414` image (equivalently, the `0x20009048`-based config/telemetry
+structure it sits in, referenced by ~18 functions). The image is maintained
+incrementally by the setting-write handlers, so there is no single packer to read
+the field order from; and cold emulation doesn't exercise those writers (gated),
+while whole-RAM marker seeding corrupts the stored frame pointer.
+
+**Concrete next step to finish the register→block map:** seed only the ARM
+holding-register store (not all RAM, to keep pointers valid), drive the
+dongle/HMI write handler for one register at a time with a distinctive value, and
+read back `0x20009414` to see which offset it lands at — then correlate that
+offset to the DSP block boundaries (`DAT_0000B300` completeness bits / the
+`FUN_00092EE2` targets). That isolates reg→offset→block per field, with proof on
+both ends. Locating the holding-register store is the prerequisite.
+
 ## Reference (word addresses / DSP)
 
 | symbol | addr | role |
