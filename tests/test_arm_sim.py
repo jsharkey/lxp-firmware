@@ -112,6 +112,51 @@ def test_our_firmware_boots_and_configures_usart3_gpio():
     assert pb11 == 0x4, "PB11 mode nibble = 0x%x (expected 0x4 floating input)" % pb11
 
 
+# --- factory internals for the manual/AutoTest relay override (ceaa-07xx) -----
+# docs/18: the grid-protection self-test drives the AC transfer relays directly.
+# sub_08018a7c, in manual mode, sets PA12 <- cmd bit1 and PB3 <- cmd bit0.
+FAC_RELAY_UPDATER = 0x08018a7c
+FAC_MANUAL_FLAG   = 0x2000d0e4 + 0xa9   # 1 = manual/test mode
+FAC_RELAY_CMD     = 0x2000da6c          # override command word
+
+# contract: (cmd, manual) -> (PA12, PB3). bit1->PA12, bit0->PB3; only in manual mode.
+RELAY_TRUTH = {(0, 1): (0, 0), (1, 1): (0, 1), (2, 1): (1, 0),
+               (3, 1): (1, 1), (3, 0): (0, 0)}
+
+def _relay_factory(cmd, manual):
+    sim = _factory()
+    sim.wbytes(FAC_MANUAL_FLAG, bytes([manual]))
+    sim.wbytes(FAC_RELAY_CMD, bytes([cmd & 0xFF, (cmd >> 8) & 0xFF]))
+    sim.clear_drives()
+    sim.call(FAC_RELAY_UPDATER)
+    return (sim.get_output("PA12"), sim.get_output("PB3"))
+
+def _relay_ours(cmd, manual):
+    sim = _ours()
+    sim.call("relay_set_override", (cmd, manual))
+    sim.clear_drives()
+    sim.call("relay_poll")
+    return (sim.get_output("PA12"), sim.get_output("PB3"))
+
+
+def test_relay_override_drives_transfer_pins():
+    """Manual/AutoTest relay override (docs/18): in test mode a command word
+    drives the AC transfer relays PA12 (bit 1) and PB3 (bit 0); ignored when not
+    in manual mode. Our firmware must match the factory image.
+
+    (This exercises the real factory relay-drive code via the override path. The
+    working-mode-driven path needs the factory's RTOS scheduler running, which
+    the harness does not yet emulate -- see docs/19.)"""
+    for (cmd, manual), exp in RELAY_TRUTH.items():
+        got = _relay_ours(cmd, manual)
+        assert got == exp, "ours (cmd=%d manual=%d) = %r, expected %r" % (cmd, manual, got, exp)
+    try:
+        fac = {k: _relay_factory(*k) for k in RELAY_TRUTH}
+    except Skip:
+        return   # no factory image: our-firmware contract still verified
+    assert fac == RELAY_TRUTH, "factory relay override mismatch: %r" % fac
+
+
 def test_systick_advances_tick_counter():
     """The harness has no real timer, so tick-driven firmware logic freezes after
     boot -- unless SysTick injection is on. With it on, our firmware's 1 ms tick

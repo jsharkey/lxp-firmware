@@ -15,6 +15,7 @@
 #include "inv/dsp_link.h"
 #include "inv/variant.h"
 #include "inv/gpio_sample.h"
+#include "inv/relay.h"
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -104,6 +105,8 @@ int main(void) {
 
     systick_init_1ms();
     mb_port_init(&g_mb);
+    relay_init();
+    relay_set_override(0, 0);           /* relays idle until a mode/override drives them */
 
     hmi_lcd_init();
     hmi_keypad_init();
@@ -118,6 +121,7 @@ int main(void) {
         mb_port_poll(g_ticks);
 
         pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
+        relay_poll();           /* apply AC transfer-relay state (PA12/PB3) */
 
         int key = hmi_keypad_poll();
         if (key >= 0) { hmi_key(&g_hmi, (hmi_key_t)key); hmi_render(&g_hmi); }

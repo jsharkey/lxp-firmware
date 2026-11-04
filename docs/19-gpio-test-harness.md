@@ -116,24 +116,43 @@ RAM-backed `SpiNorFlash` (starts erased) so these complete. With it, boot gets
 — i.e. the firmware is **interrupt-driven**; the main thread finishes init and
 idles, and all periodic work runs from ISRs.
 
-**Still not running the relays (next gate, honest):** with SysTick injected, the
-SysTick ISR runs the software-timer scheduler (`sub_0802f50c`), but the relay
-task (`sub_0802e2f0` → `sub_0801b3dc`) is dispatched from a scheduler slot that
-is **never registered/armed** in our run — its registration is gated behind more
-init (very likely the config-flash holding *valid* data: a blank flash makes the
-firmware treat config as absent). So reaching live relay logic needs not just the
-SPI device but a config image the firmware accepts (or more init fidelity). That
-is a sizeable sub-project — effectively booting the vendor firmware to an
-operational state in emulation.
+**The factory runs a preemptive RTOS.** With SysTick injected, the SysTick ISR
+runs the software-timer scheduler (`sub_0802f50c`) — but the relay task
+(`sub_0802e2f0` → `sub_0801b3dc`, an *infinite loop*, not a returning callback)
+still never runs. The reason: **PendSV (`0x0801c490`) is a classic RTOS context
+switcher** (`MRS r0,PSP; stmia {r4-r11}` → save task context to its TCB, load the
+next). So `sub_0801b3dc` is a *task* that runs on its own PSP stack, switched in
+by PendSV — and the harness does not (yet) emulate the RTOS task scheduler, so the
+main thread idles and the task never gets the CPU. Fully booting the relays
+"black box" would need RTOS-scheduler emulation (PendSV switching, TCB/ready
+lists) — a real sub-project, deferred.
 
-**Therefore the relay parity test is still not added** (it could not yet validate
-the oracle, and a test that can't validate the oracle is worse than none). What
-*is* committed is real groundwork: the M4 model, the peripheral-ready fakes, the
-`SpiNorFlash` model (`attach_spi_flash()`), and this map of the remaining gates.
-Options discussed with the maintainer: (A) keep going — supply a config image the
-firmware validates so the scheduler arms the relay task; (B) validate the factory
-relay *functions* directly (seed the DSP-state struct, call the resolver + relay
-updater, assert the pin) and TDD ours to match — not black-box, but doable now.
+### The relay parity test (via the manual/AutoTest override)
+
+What *does* validate the factory's real relay code today is the **override path**
+(docs/18): the grid-protection self-test drives the AC transfer relays directly.
+`test_relay_override_drives_transfer_pins` asserts the contract on **both**
+firmwares:
+
+| command | manual? | PA12 | PB3 |
+|---|---|---|---|
+| bit1=0 bit0=0 | yes | 0 | 0 |
+| bit1=0 bit0=1 | yes | 0 | 1 |
+| bit1=1 bit0=0 | yes | 1 | 0 |
+| bit1=1 bit0=1 | yes | 1 | 1 |
+| bit1=1 bit0=1 | **no** | 0 | 0 (override ignored) |
+
+Factory: seed its manual-mode flag + command word, invoke its relay updater
+(`sub_08018a7c`) — the genuine factory drive code runs (no boot needed, the
+override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
+(`src/relay.c`), TDD'd to match. This is **not** the loop-driven black box (the
+RTOS blocks that for relays); it runs the factory's real relay-drive code with a
+seeded command, and holds our reimplementation to the same truth table.
+
+Committed groundwork toward the full working-mode path: the M4 model, the
+peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`), SysTick
+injection, and the RTOS finding above. **Next** for working-mode-driven relays:
+emulate the RTOS context switch so `sub_0801b3dc` runs as a task.
 
 ## The parity test (factory oracle == our firmware), black box
 
