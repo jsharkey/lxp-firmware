@@ -388,13 +388,41 @@ copied wholesale into a frame, and the pushed output-priority byte is the static
 the AC-First time window.** The ARM evaluates the window and *reports* "AC-First
 active now" to the app; it does not use it to rewrite what it pushes to the DSP.
 
-> This leaves a genuine architectural puzzle (unrelated to output priority): if
-> the window-active bit reaches neither the DSP config nor the output priority,
-> what makes AC-First grid-charging time-of-day aware? Candidates not yet run
-> down: the ARM actuates the window itself (outside the config push), or the
-> window feeds a grid-charge *command/enable* via a path independent of the
-> `a758`-bit24 chain traced here. The DSP gates its own AC-First handlers on the
-> static **mode** (`g_outputPrio==2`, docs/07), not on a per-minute ARM signal.
+### Resolved — the AC-charge enable word source, and how the DSP keeps time
+
+Chasing the AC-charge enable word (block 0 offset `0x1B` → DSP `0xAD84`, bit 3 =
+"AC/grid-charge enable", docs/07) answers both the gating question and the
+"how is the DSP time-aware" puzzle.
+
+**The AC-charge enable bit is static config, not window-gated.** It is one of the
+`g_outputPrio==2 && (g_acChargeFlags & 8)` pair the DSP tests — "AC First selected
+**and** grid charging enabled" — both read as configuration (docs/07). The
+AC-First window evaluation cannot drive it: that evaluation's *entire* output
+(`aa5e` → `a758` bit24 → `a8e6` bit4) is enumerated above and ends in telemetry,
+and no RTC-reading function builds a config block. So bit 3 is a plain enable flag.
+
+**How the DSP does time-of-day logic without an RTC: the ARM pushes it the clock.**
+The transmit task `sub_08015094` sends *three* frames (change-gated); the third,
+from **`0x20009754`**, is built by **`sub_08021df8`**: a `0xA5 0xA5` preamble
+followed by the six RTC bytes of `0x2000a718` packed **year, month, day, hour,
+minute, second** (`RTC+5..+0`; `+1`=minute / `+2`=hour are confirmed by the
+window evaluator). So the ARM — the sole clock owner (docs/09) — **streams its
+current date-time to the DSP every cycle.**
+
+That closes the loop and separates the two "window" features cleanly:
+
+- **Grid-charge / AC-charge schedule** (Modbus regs **64-89**, the AC-charge /
+  charge-priority / forced-discharge time-window blocks): pushed to the DSP as
+  the block 3-6 slot parameters, and evaluated **DSP-side** against the pushed
+  clock. The AC-charge *enable* bit (`0xAD84` bit 3) just arms this.
+- **AC-First output-priority windows** (Modbus regs **152-157**, this chapter's
+  subject): evaluated **ARM-side** (`sub_0801eb4c` vs the RTC) and surfaced only
+  as telemetry status. They are a *separate* feature from the grid-charge
+  schedule and do not themselves cross to the DSP.
+
+Net: nothing derived from the AC-First *time windows* modulates the DSP push; the
+time-sensitivity the DSP does have comes from the pushed clock plus the regs-64-89
+grid-charge slots, not from regs 152-157.
 
 ## ARM holding-register store FOUND — `0x20009854`
 
