@@ -201,7 +201,10 @@ The config deserialiser is reached **only** from this receive path
 (`FUN_00092EE2` has exactly one caller), and the task runs a **link-health state
 flag** (`DAT_0000AD67` bit 2) driven by whether valid frames keep arriving. In the
 other direction the DSP **builds and sends** a ~60-word telemetry frame
-(`FUN_0009DD14`: fill `0x00ADC2` → append CRC-16 → transmit).
+(`FUN_0009DD14`: fill `0x00ADC2` → append CRC-16 → transmit). The full layout of
+this config push — frame envelope, the 8 settings blocks, and the proof that the
+ARM streams *all* settings rather than deltas — is written up in
+[`docs/08-arm-dsp-config-protocol.md`](08-arm-dsp-config-protocol.md).
 
 ### Direction: **ARM pushes, DSP is the slave**
 
