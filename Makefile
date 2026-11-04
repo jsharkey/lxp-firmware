@@ -3,7 +3,27 @@
 
 TARGET   := firmware
 BUILD    := build
-LDSCRIPT := ldscripts/stm32f103ve.ld
+
+# --- Product variant -------------------------------------------------------
+# Select the target model.  Both descriptors are always linked in (see
+# src/variant.c); this picks the one the build is specialised for and the
+# matching flash/partition layout.
+#
+#   make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
+#   make VARIANT=18kpv   # EG4 18kPV   (App over bootloader, vectors @0x0800C800)
+#
+VARIANT ?= 12000xp
+ifeq ($(VARIANT),18kpv)
+  LDSCRIPT    := ldscripts/stm32f103_18kpv_app.ld
+  VARIANT_DEF := -DINV_VARIANT_18KPV
+  FLASH_ADDR  := 0x0800C800
+else ifeq ($(VARIANT),12000xp)
+  LDSCRIPT    := ldscripts/stm32f103ve.ld
+  VARIANT_DEF :=
+  FLASH_ADDR  := 0x08000000
+else
+  $(error Unknown VARIANT '$(VARIANT)' (use 12000xp or 18kpv))
+endif
 
 CROSS    := arm-none-eabi-
 CC       := $(CROSS)gcc
@@ -15,7 +35,7 @@ OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 CPU     := -mcpu=cortex-m3 -mthumb
 CFLAGS  := $(CPU) -std=c11 -Og -g3 -ffunction-sections -fdata-sections \
-           -Wall -Wextra -Iinclude
+           -Wall -Wextra -Iinclude $(VARIANT_DEF)
 LDFLAGS := $(CPU) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections \
            -Wl,-Map=$(BUILD)/$(TARGET).map --specs=nano.specs --specs=nosys.specs
 
@@ -54,12 +74,16 @@ test:
 	@./$(BUILD)/test_hmi
 	$(HOSTCC) $(HOSTFLAGS) src/dsp/dsp_config.c src/modbus/modbus.c tests/test_dsp_config.c -o $(BUILD)/test_dsp_config
 	@./$(BUILD)/test_dsp_config
+	$(HOSTCC) $(HOSTFLAGS) src/variant.c tests/test_variant.c -o $(BUILD)/test_variant
+	@./$(BUILD)/test_variant
 
-# Flashing helpers (uncomment the one matching your tooling):
+# Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
+# the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App
+# (the 18kPV bootloader below that address is NOT part of this image).
 # flash-stlink: $(BUILD)/$(TARGET).bin
-#	st-flash write $< 0x08000000
+#	st-flash write $< $(FLASH_ADDR)
 # flash-openocd: $(BUILD)/$(TARGET).bin
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
-#	  -c "program $< 0x08000000 verify reset exit"
+#	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
 .PHONY: all size clean test

@@ -5,11 +5,14 @@
  * The ARM "com" MCU implements this as a Modbus-RTU *slave*. Reproducing this
  * map exactly is a hard requirement for monitoring-tool compatibility.
  *
- * TARGET DEVICE NOTE: our firmware is the EG4 12000XP, a non-hybrid 2-MPPT
- * variant that shares this protocol. On the 12000XP the following are UNUSED:
+ * TARGET DEVICE NOTE: this map is the 18kPV-12LV SUPERSET. The firmware builds
+ * for two variants (see include/inv/variant.h): the EG4 18kPV (hybrid, 3 MPPT)
+ * uses it in full; the EG4 12000XP (non-hybrid, 2 MPPT) leaves some entries
+ * UNUSED:
  *   - IR_VPV3 / IR_PPV3 / IR_EPV3_DAY / IR_EPV3_ALL_* (no 3rd MPPT)
  *   - hybrid grid-tie-only items (e.g. AC-couple) may read 0 / be inactive.
- * Treat this map as a superset; gate per-model where behavior differs.
+ * Gate per-model at runtime with inv_ir_active() / inv_is_hybrid() rather than
+ * assuming a single target. See docs/09-18kpv-vs-12000xp.md.
  *
  * Link settings:
  *   RS-485, UART, 19200 bps, 8 data bits, no parity, 1 stop bit (8N1).

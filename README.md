@@ -1,15 +1,23 @@
 # inverter-com-fw — open-source firmware for the inverter's ARM "com" MCU
 
 An open, C-language reimplementation of the **communications / HMI / supervisor**
-firmware (the ARM Cortex-M "com" processor) of the **EG4 12000XP** all-in-one
-solar off-grid inverter. The goal is a codebase the community can read, build,
-flash, and extend with new features.
+firmware (the ARM Cortex-M "com" processor) of EG4 all-in-one solar off-grid
+inverters. The goal is a codebase the community can read, build, flash, and
+extend with new features.
 
-> The firmware is the **12000XP**; the Modbus spec on hand is the closely related
-> **18kPV-12LV** (same protocol, a superset). The 12000XP is non-hybrid with
-> 2 MPPTs, so some registers/features in the map are unused here. The com-MCU
-> codebase appears shared across EG4 models, variant-selected by the `Model`
-> setting.
+**Supported variants: EG4 12000XP and EG4 18kPV.** Reverse-engineering both
+factory ARM images proves they are the **same codebase** on the **same MCU**
+(STM32F103 high-density, Cortex-M3), differing only in a short, enumerable set
+of ways — flash/boot layout, MPPT count (2 vs 3), and hybrid grid-tie features.
+Those deltas are captured as a **variant descriptor** (`include/inv/variant.h`),
+so the firmware is written once and branched on data, not `#ifdef`s. See
+[`docs/09-18kpv-vs-12000xp.md`](docs/09-18kpv-vs-12000xp.md).
+
+> The Modbus spec on hand is the **18kPV-12LV** map, which the 12000XP shares as
+> a **subset**: the 12000XP is non-hybrid with 2 MPPTs, so the 3rd-tracker
+> registers (`Vpv3/Ppv3/Epv3*`) and hybrid-only items are inactive on it. The
+> active variant is selected at build time (and keyed in the factory image by a
+> 4-char `Model` code: `ceaa`=12000XP, `FAAB`=18kPV).
 
 The device has **three processors**: a TI C2000 **Control DSP**, this STM32
 **Communication/HMI MCU** (what this project reimplements), and a **redundant
@@ -28,6 +36,7 @@ Honest picture of where things stand:
 - [x] Confirm target MCU and memory map → **STM32F103 high-density, Cortex-M3**, flash `0x08000000`, RAM `0x20000000` (see [`docs/01-firmware-analysis.md`](docs/01-firmware-analysis.md))
 - [x] Confirm the image is **not encrypted/compressed** (reimplementation is feasible)
 - [x] Identify the product → **EG4 12000XP** (Modbus spec shared with the 18kPV-12LV superset)
+- [x] **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/09-18kpv-vs-12000xp.md`](docs/09-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)
 - [x] Recover the data model with **authoritative** values — states, faults, warnings, telemetry (see `include/inv/` and [`docs/02-recovered-model.md`](docs/02-recovered-model.md))
 - [x] **External Modbus-RTU map fully specified** → [`include/inv/modbus_map.h`](include/inv/modbus_map.h) (the comms layer is now a known interface)
 - [x] Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
@@ -77,9 +86,15 @@ explicit non-goal.
 ## Building
 
 ```bash
-make            # -> build/firmware.{elf,bin,hex} + size report
-make test       # host-side unit tests (no hardware) — currently the Modbus engine
+make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
+make VARIANT=18kpv   # EG4 18kPV   (App over ~50 KB bootloader, vectors @0x0800C800)
+make test            # host-side unit tests (no hardware)
 ```
+
+`VARIANT` selects the linker script (`ldscripts/stm32f103ve.ld` vs
+`ldscripts/stm32f103_18kpv_app.ld`) and defines the active variant; both model
+descriptors are always linked in. Flash to the variant's base: `0x08000000`
+(12000XP) or `0x0800C800` (18kPV App — the bootloader below is not ours).
 
 Requires `gcc-arm-none-eabi` (build) and a host `cc` (tests). The firmware boots,
 runs the 72 MHz clock init, starts a 1 ms SysTick, and services a Modbus-RTU
@@ -92,12 +107,12 @@ subsystems grow into, not yet a functional replacement. Flashing helpers
 ```
 docs/        analysis + recovered specification (start here)
 include/     stm32f103.h (minimal device header) + inv/ recovered data model
-include/inv/ states, faults, settings, modbus_map, hmi_menu
-src/         startup_stm32f103.c, system_stm32f103.c, main.c (skeleton)
+include/inv/ states, faults, settings, modbus_map, hmi_menu, variant
+src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleton)
 src/modbus/  Modbus-RTU slave engine + USART3 port
 src/hmi/     LCD/keypad menu engine + menu model + port
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
-ldscripts/   stm32f103ve.ld linker script
+ldscripts/   stm32f103ve.ld (12000XP) + stm32f103_18kpv_app.ld (18kPV App)
 tests/       host unit tests (make test)
 tools/       reverse-engineering scripts (read-only, operate on the .bin)
 reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
@@ -111,8 +126,10 @@ place their own copy under `reference/` (gitignored). Recorded for integrity:
 
 | File | size | md5 |
 |---|---|---|
-| `..._com_vE_250325.bin` (ARM, this project) | 244080 | `d1c1d8dedd26d59518e95668e95f06d6` |
-| `..._dsp_vE_250325.bin` (TI DSP, out of scope) | 141304 | `4e3e360ed21742275c2885cba8b69724` |
+| `..._com_vE_250325.bin` (12000XP ARM, this project) | 244080 | `d1c1d8dedd26d59518e95668e95f06d6` |
+| `..._dsp_vE_250325.bin` (12000XP TI DSP, out of scope) | 141304 | `4e3e360ed21742275c2885cba8b69724` |
+| `..._ceaa-05xx_com_vE_250325.hex` (12000XP ARM, source hex) | 587465 | `d07b6b5ddfdcddd453a3b0cc845e9659` |
+| `..._FAAB-1Bxx_20240528_App.hex` (18kPV ARM App) | 502737 | `7091e1ad60fa2e725a5da8d39fa5bc8c` |
 
 As the product's maintainer you own these images; whether/how to publish them is
 your call. Keeping them out of the public tree is the conventional default.
