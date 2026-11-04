@@ -40,15 +40,15 @@ class Skip(Exception):
 
 
 def _factory():
-    # symbols optional (we call by address). Prefer a vendor .hex if given.
-    if FACTORY_HEX:
-        if not os.path.exists(FACTORY_HEX):
-            raise Skip("LXP_FACTORY_HEX=%s not found" % FACTORY_HEX)
-        return ArmSim.from_hex(FACTORY_HEX)
-    if not os.path.exists(FACTORY_BIN):
+    # symbols optional (we call by address). Either env var accepts either an
+    # Intel HEX or a raw flat .bin -- the format is auto-detected by content.
+    path = FACTORY_HEX or (FACTORY_BIN if os.path.exists(FACTORY_BIN) else None)
+    if not path:
         raise Skip("no factory image (set $LXP_FACTORY_HEX to a vendor .hex, "
                    "or $LXP_FACTORY_BIN / reference/com_flat.bin to a flat image)")
-    return ArmSim(FACTORY_BIN)
+    if not os.path.exists(path):
+        raise Skip("factory image %s not found" % path)
+    return ArmSim.from_image(path)
 
 def _ours():
     if not (os.path.exists("build/firmware.bin") and os.path.exists("build/firmware.elf")):

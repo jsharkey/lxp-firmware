@@ -78,19 +78,26 @@ def load_symbols_nm(elf_path, nm="arm-none-eabi-nm"):
             except ValueError: pass
     return out
 
+def is_intel_hex(path):
+    """True if the file looks like Intel HEX (ASCII, first record starts ':')."""
+    with open(path, "rb") as f:
+        return f.read(64).lstrip()[:1] == b":"
+
 def hex_to_flat(hex_path, base=FLASH_BASE, fill=0xFF):
     """Intel HEX -> correctly-addressed flat image bytes (same as tools/hex2bin.py,
-    so a vendor .hex can be loaded directly without a separate convert step)."""
+    so a vendor .hex can be loaded directly without a separate convert step).
+    Read as bytes (latin-1) so a mis-pointed binary fails with a clear error,
+    not a UnicodeDecodeError."""
     mem, linbase = {}, 0
-    with open(hex_path) as f:
-        for ln in f:
-            ln = ln.strip()
-            if not ln.startswith(":"):
+    with open(hex_path, "rb") as f:
+        for raw in f.read().split(b"\n"):
+            ln = raw.strip()
+            if not ln.startswith(b":"):
                 continue
-            b = bytes.fromhex(ln[1:])
+            b = bytes.fromhex(ln[1:].decode("latin-1"))
             n, addr, typ, data = b[0], (b[1] << 8) | b[2], b[3], b[4:4+b[0]]
             if (sum(b) & 0xFF) != 0:
-                raise ValueError("bad checksum: %s" % ln)
+                raise ValueError("bad checksum: %s" % ln[:32])
             if typ == 0x00:
                 for i, by in enumerate(data):
                     mem[linbase + addr + i] = by
@@ -101,12 +108,17 @@ def hex_to_flat(hex_path, base=FLASH_BASE, fill=0xFF):
             elif typ == 0x01:
                 break
     if not mem:
-        raise ValueError("no data records in %s" % hex_path)
+        raise ValueError("%s is not an Intel HEX file (no ':' records found)" % hex_path)
     hi = max(mem)
     flat = bytearray([fill]) * (hi - base + 1)
     for a, by in mem.items():
         flat[a - base] = by
     return bytes(flat)
+
+def load_flat(path):
+    """Load a factory image from either an Intel HEX or a raw flat binary,
+    auto-detected by content. Returns flat image bytes."""
+    return hex_to_flat(path) if is_intel_hex(path) else open(path, "rb").read()
 
 
 class ArmSim:
@@ -129,6 +141,12 @@ class ArmSim:
         """Load a vendor Intel-HEX image directly (converted to flat in-memory)."""
         sym = load_symbols_csv(symbols) if isinstance(symbols, str) else symbols
         return cls(hex_to_flat(hex_path), sym)
+
+    @classmethod
+    def from_image(cls, path, symbols=None):
+        """Load a factory image, auto-detecting Intel HEX vs raw flat binary."""
+        sym = load_symbols_csv(symbols) if isinstance(symbols, str) else symbols
+        return cls(load_flat(path), sym)
 
     @classmethod
     def ours(cls, image="build/firmware.bin", elf="build/firmware.elf"):
