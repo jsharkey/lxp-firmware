@@ -180,8 +180,38 @@ enum mb_hold_reg {
     HR_ACTIVE_PCT_CMD   = 60,  /* % active power limit (also 143 in 0.1%)        */
     HR_REACTIVE_PCT_CMD = 61,  /* %                                              */
     HR_PF_CMD           = 62,  /* 0.001 PF command                               */
-    /* 64-73: AC-charge power/SOC/time-windows ; 74-81: charge-priority ;
-       82-89: forced-discharge ; see docs/04-modbus.md */
+    /* --- Battery charge/discharge schedule (regs 64-89). Each *_TIME register
+       is packed hour|minute: low byte = hour (0-23), high byte = minute (0-59)
+       -- same u16 = (minute<<8)|hour encoding as the AC-First windows. The DSP
+       pulls these by reading holding-register group 40-79 / 80-119 over the
+       link and evaluates the windows against the clock the ARM pushes (docs/08,
+       docs/09). Three parallel features, each: PowerCMD, SOCLimit, 3 windows. */
+    HR_CHG_POWER_PCT    = 64,  /* % (0-100) charge power percentage              */
+    HR_DISCHG_POWER_PCT = 65,  /* % (0-100) discharge power percentage           */
+    HR_ACCHG_POWER_PCT  = 66,  /* % (0-100) AC-charge power percentage            */
+    HR_ACCHG_SOC_LIMIT  = 67,  /* % (0-100) AC-charge SOC limit                   */
+    HR_ACCHG_START_0    = 68,  /* AC-charge window 0 start (hour|minute)          */
+    HR_ACCHG_END_0      = 69,  /* AC-charge window 0 end                          */
+    HR_ACCHG_START_1    = 70,  /* AC-charge window 1 start                        */
+    HR_ACCHG_END_1      = 71,  /* AC-charge window 1 end                          */
+    HR_ACCHG_START_2    = 72,  /* AC-charge window 2 start                        */
+    HR_ACCHG_END_2      = 73,  /* AC-charge window 2 end                          */
+    HR_CHGFIRST_POWER   = 74,  /* % (0-100) charge-priority power percentage      */
+    HR_CHGFIRST_SOC     = 75,  /* % (0-100) charge-priority SOC limit             */
+    HR_CHGFIRST_START_0 = 76,  /* charge-priority window 0 start (hour|minute)    */
+    HR_CHGFIRST_END_0   = 77,  /* charge-priority window 0 end                    */
+    HR_CHGFIRST_START_1 = 78,  /* charge-priority window 1 start                  */
+    HR_CHGFIRST_END_1   = 79,  /* charge-priority window 1 end                    */
+    HR_CHGFIRST_START_2 = 80,  /* charge-priority window 2 start                  */
+    HR_CHGFIRST_END_2   = 81,  /* charge-priority window 2 end                    */
+    HR_FDISCHG_POWER    = 82,  /* % (0-100) forced-discharge power percentage     */
+    HR_FDISCHG_SOC      = 83,  /* % (0-100) forced-discharge SOC limit            */
+    HR_FDISCHG_START_0  = 84,  /* forced-discharge window 0 start (hour|minute)   */
+    HR_FDISCHG_END_0    = 85,  /* forced-discharge window 0 end                   */
+    HR_FDISCHG_START_1  = 86,  /* forced-discharge window 1 start                 */
+    HR_FDISCHG_END_1    = 87,  /* forced-discharge window 1 end                   */
+    HR_FDISCHG_START_2  = 88,  /* forced-discharge window 2 start                 */
+    HR_FDISCHG_END_2    = 89,  /* forced-discharge window 2 end                   */
     HR_EPS_VOLT_SET     = 90,  /* 1 V (208/230/240/277) EPS output voltage       */
     HR_EPS_FREQ_SET     = 91,  /* 1 Hz (50/60) EPS output frequency              */
     HR_CHARGE_VOLT_REF  = 99,  /* 0.1 V lead-acid charge voltage (500-590)       */

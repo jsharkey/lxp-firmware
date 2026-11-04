@@ -306,6 +306,78 @@ to this repo), and the **per-group index formula** into `0x2000691c`. Until both
 are in hand, the slot assignments would be guesses — deliberately not recorded
 here.
 
+### Resolved — regs 64-89 are read by *register group*, with proof
+
+With the EG4 spec in hand both blockers clear. The spec's §2.9 states the master
+may read **at most 40 registers at a time, in fixed groups (0-39, 40-79, 80-119,
+…)** — which is exactly the register-range serializer found above. So the "config
+blocks" the DSP ingests are **holding-register group reads**, not a bespoke
+positional struct.
+
+**The register definitions (EG4 18kPV-12LV holding table), now named in
+[`modbus_map.h`](../include/inv/modbus_map.h):** regs 64-89 are three parallel
+battery-schedule features, each = `PowerCMD`, `SOCLimit`, and three start/end
+time windows (each window register packed `hour | minute<<8`, the same encoding
+as the AC-First windows):
+
+| regs | feature |
+|---|---|
+| 64-67 | charge / discharge / AC-charge power %, AC-charge SOC |
+| **68-73** | **AC-charge windows 0/1/2** (start/end hour\|minute) |
+| 74-75 | charge-priority power %, SOC |
+| **76-81** | **charge-priority windows 0/1/2** |
+| 82-83 | forced-discharge power %, SOC |
+| **84-89** | **forced-discharge windows 0/1/2** |
+
+**Frame layout, proven by emulating a group-40-79 read** (`sub_08014fec` with
+`func=3`, start=40, count=40; the per-register value is fetched via `fn_ceaa`,
+the register getter):
+
+```
+off 0x00  addr
+off 0x01  func (0x03)
+off 0x02..0x0b  SN[0..9]  (= settings+0x01)
+off 0x0c..0x0d  start register (LE)   = 40
+off 0x0e..0x0f  byte count (LE)       = 80  (= count*2)
+off 0x10..      register values, 2 bytes each, LE, in register order
+```
+
+So **register N lands at frame offset `0x10 + (N - start)*2`.** For the group-40-79
+read that puts the grid-charge schedule at:
+
+| reg | field | frame offset |
+|---|---|---|
+| 64 | `HR_CHG_POWER_PCT` | `0x40` |
+| 66 | `HR_ACCHG_POWER_PCT` | `0x44` |
+| 67 | `HR_ACCHG_SOC_LIMIT` | `0x46` |
+| **68** | **`HR_ACCHG_START_0`** | **`0x48`** |
+| 69 | `HR_ACCHG_END_0` | `0x4a` |
+| 70/71 | AC-charge win 1 start/end | `0x4c`/`0x4e` |
+| 72/73 | AC-charge win 2 start/end | `0x50`/`0x52` |
+| 76-81 | charge-priority windows | `0x58`..`0x62` |
+
+Regs 82-89 (forced-discharge) fall in the **next** group (80-119) read, at
+`0x10 + (N-80)*2`.
+
+**Honest reconciliation note with [`docs/10`](10-dsp-config-field-map.md).** The
+ARM-side frame proven here is a **Modbus read response** (`func=3`, `start`/
+`bytecount` header, values at `0x10`, positional by register number). That does
+**not** structurally match docs/10's DSP-side description (`type=1`, 18-byte
+header, **block id @ 0x14**, payload @ `0x15`, non-register "slot triplets"):
+the headers differ in length and there is no block-id byte in the read response.
+So one of two things is true and needs a DSP-side cross-check before the
+`regs 64-89 → block-3-6 slot offset` equivalence is asserted:
+1. docs/10 analysed a **different frame/path** — most likely the **func-`0x10`
+   multi-write** direction (ARM → DSP), whose header carries an extra
+   count+bytecount and whose "block id" is the write's start-address field; or
+2. the DSP reads these registers via the group read proven here, and docs/10's
+   "blocks 3-6" are a re-expression of specific register sub-ranges.
+
+What *is* proven end-to-end: **regs 64-89's meanings, their packed hour|minute
+encoding, and that they reach the DSP as positional values in the group read at
+`0x10 + (reg-start)*2`.** Mapping those onto docs/10's `0xAD8F…`/`0xAD9C…`
+DSP targets is the one remaining cross-check, and it is a DSP-side question.
+
 ## Worked example — AC-First registers 152–157 (PROVEN, ARM `.hex`)
 
 Tracing Modbus regs 152–157 (the "AC First" load-priority time windows) through
