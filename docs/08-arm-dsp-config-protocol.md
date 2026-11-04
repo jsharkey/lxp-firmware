@@ -289,15 +289,45 @@ against a saved mirror (`0x2000a330 + 0x4c/0x4e/0x50`) and, on a difference, set
 a pending flag (`0x2000a7a8 |= 0x100`) and updates the mirror — the hook that
 makes a changed AC-First window get re-pushed to the DSP.
 
-**Open (final hop):** `settings 0x64…0x6f → which block/offset in the pushed
-frame`. Per [`docs/10`](10-dsp-config-field-map.md) the AC-charge/grid-charge
-*schedule* parameters are the block 3–6 "slot triplets" (→ the DSP
-`0xAD8F…`/`0xAD9C…`/`0xADAC…` records, `docs/07`), so the AC-First windows are
-expected there — but the specific ARM packer that copies `settings+0x64` into a
-frame block offset has not been byte-traced yet (the `0x64` readers found so far
-are the Modbus handler, the window evaluator, and the change-detector, not a
-frame packer). So the register→settings-offset half is proven; the
-settings-offset→block half is the remaining step.
+**4. Final hop — the windows are NOT pushed to the DSP; the ARM evaluates them
+locally.** This was the open question ("which DSP block holds `settings+0x64`?").
+The answer, proven by exhaustive reader-enumeration, is **none** — the AC-First
+*windows* never enter the config frame. What crosses to the DSP is the *derived*
+decision, not the raw times.
+
+- **The DSP frame has exactly one builder.** A scan for every function that
+  materialises the frame buffer constant `0x20009414` returns a single hit,
+  `sub_08015094` (the USART3 config/telemetry state machine, buffer
+  `0x20007490`). No other function builds that frame.
+- **The frame builder never reads the window region.** Enumerating *every*
+  reader of `settings 0x64…0x6e` (both `[base+disp]` loads and direct
+  `0x20009854+off` address materialisation) gives a closed set:
+  `fn_ceaa` (Modbus dispatch), the per-field accessors `sub_08008d64…e40`, the
+  validator `sub_080132a0` and bulk handler `sub_080341b2`, the RTC evaluator
+  `sub_0801eb4c`, and the change-detectors/mirror writers
+  `sub_080230b6`/`23128`/`23818`/`23844`. `sub_08015094` is **not** in that set,
+  and none of the readers builds the DSP frame.
+- **Why: the DSP has no RTC** (see [`docs/09`](09-dsp-persistence-and-clock.md)),
+  so it *cannot* evaluate a time-of-day window; the ARM, which owns the clock,
+  must. It does, in `sub_0801eb4c`: read window `i` + the RTC struct
+  (`0x2000a718`, `+1`=minute `+2`=hour), compare minutes-of-day, and write a
+  per-window "inside now" bit to `0x2000aa5e`. The aggregate (any window active)
+  then sets **bit 24** of the system status word `0x2000a758`, and its caller
+  `sub_0801ece8` mirrors that into **bit 4 (`0x10`)** of `0x2000a8e6`.
+- This is corroborated by [`docs/10`](10-dsp-config-field-map.md): the full
+  byte-exact list of fields the DSP unpacks across all nine blocks contains **no
+  time-of-day window pair**. The block 3–6 "slot triplets" are grid-charge
+  schedule *values* (SOC/voltage), a different feature from the AC-First
+  load-priority windows here.
+
+**So the complete, proven answer to "where are regs 152/153 stored in the struct
+pushed to the DSP?" is: they are not.** They live in the ARM settings struct at
+`0x20009854+0x64…0x6e`; the ARM evaluates them against its own RTC and the result
+feeds the output-priority / mode decision. The one link still not byte-traced is
+whether the derived AC-First-active bit (`0x2000a758` bit 24) *overrides* the
+pushed output-priority byte (block 0 frame offset `0x1E` → DSP `0xADA8`) or only
+drives the ARM's own mode/HMI; that is the reg-145 output-priority path, a
+separate subsystem from the window storage traced here.
 
 ## ARM holding-register store FOUND — `0x20009854`
 
