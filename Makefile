@@ -82,6 +82,13 @@ test:
 	$(HOSTCC) $(HOSTFLAGS) src/variant.c tests/test_variant.c -o $(BUILD)/test_variant
 	@./$(BUILD)/test_variant
 
+# GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Builds our
+# firmware first so the "our firmware boots" test has something to load; the
+# factory-oracle test SKIPs unless $LXP_FACTORY_BIN (or reference/com_flat.bin)
+# is present. Needs: pip install unicorn.
+test-sim: $(BUILD)/$(TARGET).bin
+	python3 tests/test_arm_sim.py
+
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App
 # (the 18kPV bootloader below that address is NOT part of this image).
@@ -91,4 +98,4 @@ test:
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test
+.PHONY: all size clean test test-sim
