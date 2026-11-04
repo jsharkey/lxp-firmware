@@ -355,12 +355,46 @@ emitted.** So the window's effect stops at the ARM's own status words — a fift
 dynamic confirmation that the AC-First *times* are not pushed as frame data.
 
 > Honest caveat: `sub_0801c11c` is a gated scheduler task; a cold single-pass
-> run does not exercise every frame-writing branch (the runtime flags that open
-> them are 0 from reset). This proves the window does **not** flow to the frame
-> *as data* along the paths a cold run reaches; it does not by itself rule out a
-> deeper gated path in which the derived `0x2000a758` bit24 modulates the pushed
-> **output-priority** byte (block 0 offset `0x1E`). That reg-145 output-priority
-> question is the remaining open item — see above.
+> run does not exercise every frame-writing branch. This proves the window does
+> not flow to the frame *as data* along the paths a cold run reaches; the output-
+> priority modulation question is settled statically in the next section.
+
+### Resolved — the pushed output priority is NOT window-gated
+
+Tracing the output-priority source and the full fate of the window-active signal
+settles the last open item. Output priority is **static config**, and the
+window-active status is **telemetry, not a DSP input**.
+
+**Output-priority storage is `settings+0x17`, static.** The validator
+`sub_080132a0` clamps `settings[0x17] < 3` → a `{0,1,2}` field (0 Bat / 1 PV /
+2 AC First — reg 145). Its **only** writers are the factory-defaults init
+`sub_08012ccc` (sets `=1`), the setter, and that validator. No writer reads the
+RTC or the AC-First window status, so the configured priority never changes with
+the clock.
+
+**The window-active signal's entire downstream fate** (exhaustive data-flow,
+not cold emulation):
+
+| location | produced by | consumed by |
+|---|---|---|
+| `0x2000aa5e` per-window mask | `sub_0801eb4c` | read back **only** inside `sub_0801eb4c` (aggregation) |
+| `0x2000a758` bit24 "any window active" | `sub_0801eb4c` tail | **only** `sub_0801ece8` (the one and only bit24 consumer) |
+| `0x2000a8e6` bit4 (mirror) | `sub_0801ece8` | packed into an **app/dongle telemetry** frame by `sub_080258ca` (`'A'`,type=1,`'6'` tag, in the dongle-protocol `0x08025xxx` cluster) and sent via `sub_08024dfc` |
+
+So the signal goes window → `aa5e` → `a758` bit24 → `a8e6` bit4 → **telemetry
+status**, and stops. It is never read by the DSP config builder, `a758` is never
+copied wholesale into a frame, and the pushed output-priority byte is the static
+`settings+0x17`. **Answer: the output priority sent to the DSP is not gated by
+the AC-First time window.** The ARM evaluates the window and *reports* "AC-First
+active now" to the app; it does not use it to rewrite what it pushes to the DSP.
+
+> This leaves a genuine architectural puzzle (unrelated to output priority): if
+> the window-active bit reaches neither the DSP config nor the output priority,
+> what makes AC-First grid-charging time-of-day aware? Candidates not yet run
+> down: the ARM actuates the window itself (outside the config push), or the
+> window feeds a grid-charge *command/enable* via a path independent of the
+> `a758`-bit24 chain traced here. The DSP gates its own AC-First handlers on the
+> static **mode** (`g_outputPrio==2`, docs/07), not on a per-minute ARM signal.
 
 ## ARM holding-register store FOUND — `0x20009854`
 
