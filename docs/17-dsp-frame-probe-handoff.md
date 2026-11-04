@@ -107,3 +107,24 @@ map each block-`0x15+` slot triplet to its register. Append the resolution to
 | response frame assembled at | `0x20009414`; sent by `sub_08015094` → `sub_0801c370` |
 | clock pushed to DSP (separate frame) | `sub_08021df8` → `0x20009754` (`0xA5 0xA5` + Y/M/D h:m:s) |
 | candidate type-1 builder | `sub_080258ca` → `sub_08024dfc` |
+
+---
+
+## RESOLUTION (DSP-side + ARM 260214 image) — option 2, type-1 block protocol
+
+Settled: `FUN_00092EE2` ingests the **type-1 block frame** (block id @ `0x14`,
+big-endian values @ `0x15`), **not** the func-3 read response. Confirmed on both
+ends and written up in **`docs/10` → "ARM-side confirmation (260214 App image)"**.
+
+- The ARM builds the type-1 frame with `FUN_080273b4` (header `[0]=0x41`,
+  `[1]=1`, `[3]=0x36`) → `FUN_08026830(buf, 0x14, blockId)` (block id @ `0x14`,
+  BE values @ `0x15`); it **rotates the block id** to push the full set.
+- The ARM parses the DSP's type-1 telemetry with `FUN_08025ab8(0x14)`; its RX
+  SOF check is `0x49` (`FUN_0801bb0e`). SOF asymmetry (`0x41` down / `0x49` up) is
+  why the DSP RX never checks `0x49`.
+- The candidate `sub_080258ca`/`sub_08024dfc` was in the right region; on the
+  260214 build the type-1 builder/parser are `FUN_08026830` / `FUN_08025ab8`.
+- **The func-3 BE probe here characterizes a *different* channel** (a register-read
+  service), not the config push. The `reg N → DSP RAM` map therefore runs
+  register → ARM settings struct (`DAT_080274f0/f4`) → type-1 frame → `FUN_00092EE2`;
+  the remaining leg is struct-field → register-number (see `docs/10`).

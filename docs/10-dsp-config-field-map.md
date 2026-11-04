@@ -247,3 +247,65 @@ different headers (Modbus 16-byte `…start+count`, type-1 20-byte `…+block id
 - The frame **header** fields (`0x02..0x13`, incl. the three the DSP extracts at
   `0x05`/`0x0D`/`0x13` → `0xAD60`/`0xAD82`/`0xAD5F`) are not decoded here; they
   precede the block id and are the same for every block.
+
+## ARM-side confirmation (260214 App image): the type-1 builder/parser pinned
+
+The hand-off in `docs/17` asked the DSP side to decide whether `FUN_00092EE2`
+ingests a **func-3 read response** (values @ `0x03`) or the **type-1 block frame**
+(block id @ `0x14`). Settled from *both* ends now, using the attached ARM image
+(`…ceaa-07xx_vE_260214…`, an App-above-bootloader build based at `0x08005000`,
+imported into Ghidra as `ARM:LE:32:Cortex`). It is the **type-1 block frame**;
+the ARM builds and parses it with functions that mirror `FUN_00092EE2` exactly:
+
+| ARM function | role |
+|---|---|
+| `FUN_080273b4` (`0x080273b4`) | type-1 **build wrapper** (ARM→DSP): writes the header, then calls the per-block filler with block-id offset `0x14`; rotates the block id to push the whole set |
+| `FUN_08026830` (`0x08026830`) | per-block **builder**: `buf[0x14] = blockId`, then **big-endian** field values from the ARM settings struct starting at `buf[0x15]` — the mirror of `FUN_00092EE2` |
+| `FUN_08025ab8` (`0x08025ab8`) | per-block **parser**, called `FUN_08025ab8(0x14)`: reads `buf[0x14]` block id + values at `buf[0x15]+` into a struct (the ARM ingesting DSP telemetry) |
+| `FUN_0801bb0e` (`0x0801bb0e`) | type-1 **RX state machine**: SOF `0x49` → type `1` → length; assembles the frame |
+| `FUN_0801bbe0` (`0x0801bbe0`) | the *other* RX state machine: addr + func ∈ `{0x21,0x22,0x23}` (the extended/dongle family) — a **separate** link |
+
+### The type-1 frame, from the ARM builder `FUN_080273b4`
+
+```
+off 0x00  SOF   : 0x41 ('A') ARM→DSP   (DSP→ARM uses 0x49 'I' — see below)
+off 0x01  type  : 0x01
+off 0x02  0x00
+off 0x03  len   : 0x36 (54)
+off 0x04..0x13  fixed header: a 32-bit id/serial @0x05 (BE), status/flags, etc.
+off 0x14  block id   (rotated 0..9 → the full config set is pushed in turn)
+off 0x15  block payload: big-endian fields, per-block layout = this document
+off  …    CRC-16 trailer
+```
+
+This is byte-for-byte what §"The 9 config blocks" documents from the DSP side
+(block id @ `0x14`, BE values @ `0x15`). **It is not** `addr/func/SN[10]/start/
+bytecount/values`: there is no SN, the values are big-endian, and the ARM's own
+builder writes a fixed `0x41/01/00/0x36` header — so the earlier "Modbus read
+response / 5-byte header delta" reading was of a *different* channel.
+
+### Why both observations were right (the SOF asymmetry)
+
+The two directions use **different SOF bytes**, which is why the DSP RX
+(`FUN_00098F72`) checks `buf[1]==1` but never a `0x49`:
+
+- **ARM → DSP** (config push): SOF **`0x41`**, built by `FUN_080273b4`.
+- **DSP → ARM** (telemetry): SOF **`0x49`**, built by the DSP's `FUN_00096EE8`
+  and checked by the ARM RX `FUN_0801bb0e`.
+
+### Consequence for the regs 64-89 → DSP map
+
+The config does **not** reach the DSP through the func-3 read path the `docs/17`
+probe characterized (`reg N → 0x03+(N-start)*2`); that is a separate register-read
+service. The real path is:
+
+```
+holding register  →  ARM settings struct (DAT_080274f0 / DAT_080274f4 …)
+                  →  type-1 block frame (FUN_080273b4 / FUN_08026830, BE @0x15)
+                  →  DSP FUN_00092EE2  →  DSP RAM (0xAD??/0xAB??/0xB2??)
+```
+
+So closing `reg N → DSP RAM target` needs the **struct-field → register-number**
+leg: trace which Modbus-register write handler populates each `DAT_080274f0/f4`
+field, then compose with this document's per-block offsets. That is the remaining
+work; the transport and both endpoints are now proven.
