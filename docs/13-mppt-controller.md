@@ -247,6 +247,76 @@ Confirming those, and whether the CRC seed / `"EDSN"`-style tag match the DSP
 link, would come from a live capture — note this image carries **no** `"EDSN"`
 tag, so the session magic differs from the DSP's.
 
+## How MPPT telemetry reaches the ARM (cross-check vs the `ceaa-07xx` ARM image)
+
+Cross-correlated the MPPT image with the factory **ARM "com" image**
+(`…ceaa-07xx_vE_260214…`, md5 `ccc5172a…`, the 07-series App at `0x08005000`).
+
+**Finding: there is no direct MPPT↔ARM wire. The MPPT reports to the DSP; the ARM
+reads the consolidated PV telemetry from the DSP.** So the GPIO that carries MPPT
+statistics *into the ARM* is the **ARM↔DSP link — USART3, pins `PB10` (TX) /
+`PB11` (RX)** (docs/16), not a pin pair to the MPPT.
+
+Evidence, all from the ARM image:
+
+- **The ARM never speaks the MPPT's protocol.** The MPPT frames start with
+  `0x42`; the byte `0x42` is never materialised or compared anywhere in the ARM
+  image (nor is the DSP-telemetry SOF `0x49` an immediate — the ARM matches SOFs
+  via pooled constants, but there is simply no `0x42` path).
+- **The ARM has exactly one internal TTL inter-MCU UART.** Its configured UARTs,
+  read out of the init (`sub_08032d68` + call sites) and cross-checked to docs/16:
+
+  | ARM UART | baud | pins | transceiver | peer |
+  |---|---|---|---|---|
+  | USART3 | 19200 | PB10/PB11 | TTL (no DE pin) | **DSP control link** (internal) |
+  | USART2 | 19200 | PA2/PA3 | **RS-485** (DE on `PC2`, driven in its ISR `0x0801BDE4`) | external bus (unidentified) |
+  | UART4 | 2400 | PC10/PC11 | RS-485 (DE on `PA15`) | external (meter / BMS-UART) |
+  | UART5 | 9600 | PC12/PD2 | RS-485 (DE on `PA15`) | **external RS-485 dongle / Modbus** |
+
+  Only USART3 is a plain point-to-point TTL link — the DSP. USART2/UART4/UART5 all
+  toggle an RS-485 direction GPIO, i.e. they are external multidrop buses, not an
+  on-board link to the MPPT.
+- **The ARM does no analog metering** (docs/16: no ADC analog-in pins). It cannot
+  measure PV itself; the numbers must arrive from a measuring peer.
+- **The DSP writes the ARM's telemetry register array** (docs/05, docs/08): the
+  USART3 parser (`0x0801BA98`, ctx `0x2000AF60`) ingests DSP→ARM telemetry frames
+  (SOF `0x49`, docs/10) and populates the input-register array the Modbus slave
+  serves.
+
+So the data path is: **MPPT ⇄ DSP** (the MPPT's USART1 `0x42` link faces the DSP,
+the other power-board processor) **→ DSP ⇄ ARM over USART3** (`PB10`/`PB11`). The
+MPPT's raw per-channel records are consolidated by the DSP before the ARM sees
+them.
+
+### Field labels from the ARM side
+
+Because the ARM exposes the PV telemetry as its Modbus **input registers**, those
+give the authoritative labels + scaling for the quantities the MPPT ultimately
+feeds (`include/inv/modbus_map.h`):
+
+| quantity | IR | scale | note |
+|---|---|---|---|
+| PV1 / PV2 voltage | `IR_VPV1=1`, `IR_VPV2=2` | **0.1 V** | (`IR_VPV3=3` only on the 3-MPPT 18kPV) |
+| PV1 / PV2 power | `IR_PPV1=7`, `IR_PPV2=8` | **1 W** | |
+| DC bus voltage | `IR_VBUS1=38`, `IR_VBUS2=39` | 0.1 V | |
+| PV energy today | `IR_EPV1_DAY=28`, `IR_EPV2_DAY=29` | 0.1 kWh | |
+| PV energy total | `IR_EPV1_ALL_{L,H}=40/41`, `…=42/43` | 0.1 kWh | 32-bit L/H pair |
+
+Notable: **there is no PV-current register** in the EG4 map — the ecosystem
+publishes `Vpv` and `Ppv`, not `Ipv`. So the MPPT measures PV current internally
+(it needs it to run the tracker and to compute `Ppv = Vpv·Ipv`) and reports
+`Vpv`/`Ipv` (or `Vpv`/`Ppv`) to the DSP; only `Vpv` and `Ppv` surface at the ARM.
+
+Applying those scalings to the MPPT records decoded above (types 0/1/2 of
+big-endian `u16`s), the **likely** per-field mapping — to confirm against the DSP
+image or a live capture — is: the `0.1 V`-scaled `u16`s (raw ~2000–5000 for
+200–500 V) are `Vpv1/Vpv2` and the DC-bus voltage; a `u16` tracking their product
+is `Ppv`; a `u16` with no ARM-visible twin is `Ipv` (internal); and the `u8`
+fields are per-channel **status / fault / mode** flags (and possibly a heatsink
+temperature). A byte-exact record→register map can't be pinned from these two
+images alone because the **DSP re-packs** the data between the MPPT's framing and
+the ARM's `0x49` telemetry framing — that hop needs the C28x DSP image.
+
 ## Scope / what this means for the project
 
 This image is **out of scope** for the current reimplementation, which targets
