@@ -107,6 +107,7 @@ int main(void) {
     mb_port_init(&g_mb);
     relay_init();
     relay_set_override(0, 0);           /* relays idle until a mode/override drives them */
+    relay_set_mode(STATE_STANDBY);      /* run-enable relay follows the operating mode */
 
     hmi_lcd_init();
     hmi_keypad_init();

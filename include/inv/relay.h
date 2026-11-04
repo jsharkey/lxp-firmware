@@ -15,6 +15,11 @@ void relay_init(void);
  * grid-protection self-test (docs/18). */
 void relay_set_override(uint16_t cmd, int manual);
 
+/* Set the current operating mode (IR_STATE, inv/states.h). In normal operation
+ * the run-enable relay (PC6) follows it: closed when running, open in
+ * standby/fault/programming. */
+void relay_set_mode(uint8_t ir_state);
+
 /* Apply the current relay state (call periodically). */
 void relay_poll(void);
 

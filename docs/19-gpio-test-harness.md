@@ -122,10 +122,56 @@ runs the software-timer scheduler (`sub_0802f50c`) — but the relay task
 still never runs. The reason: **PendSV (`0x0801c490`) is a classic RTOS context
 switcher** (`MRS r0,PSP; stmia {r4-r11}` → save task context to its TCB, load the
 next). So `sub_0801b3dc` is a *task* that runs on its own PSP stack, switched in
-by PendSV — and the harness does not (yet) emulate the RTOS task scheduler, so the
-main thread idles and the task never gets the CPU. Fully booting the relays
-"black box" would need RTOS-scheduler emulation (PendSV switching, TCB/ready
-lists) — a real sub-project, deferred.
+by PendSV; the first task is launched by the first SysTick→PendSV after `cpsie`
+(no SVC). The main thread idles at `cpsie i; b .` and the task only gets the CPU
+via that context switch.
+
+**Why the harness does not emulate the context switch (scoping).** Unicorn is a
+plain CPU emulator: it does **not** model the Cortex-M exception machinery the
+switch relies on — hardware stacking of `{r0-r3,r12,lr,pc,xpsr}` on exception
+entry, `EXC_RETURN` unstacking, the banked MSP/PSP, or `CONTROL.SPSEL`. Emulating
+the RTOS therefore means building a custom Cortex-M exception engine (entry/exit
+stacking, EXC_RETURN variants, PSP/MSP banking, PendSV-on-pending) and driving
+the vendor scheduler through it — a sizeable, quirk-heavy component. **And it
+turns out not to be needed to validate the relay behaviour** (below), so it is
+deliberately deferred to its own effort rather than block the relay tests.
+
+### The relay parity tests (run the real factory relay code directly)
+
+Both relay behaviours are validated by invoking the factory's *actual* relay
+code with seeded state — the same state the RTOS task would act on — and holding
+our firmware to the identical contract. (Not the loop-driven black box: the RTOS
+blocks that, per above. But it runs the genuine factory drive code.)
+
+**1. Working mode → run-enable relay** (`test_relay_follows_working_mode`): PC6
+is closed iff the inverter is in a running operating mode. Factory: seed
+`IR_STATE` (`0x2000d0e4+0xa0`), invoke `sub_08016ec6`; ours: `relay_set_mode()` +
+`relay_poll()`.
+
+| IR_STATE | | PC6 |
+|---|---|---|
+| `0x00/0x01/0x02` | standby / fault / programming | 0 (open) |
+| `0x04/0x10/0x40/0xC0` | any running state | 1 (closed) |
+
+### The relay parity test (via the manual/AutoTest override)
+
+What *also* validates the factory's real relay code is the **override path**
+(docs/18): the grid-protection self-test drives the AC transfer relays directly.
+`test_relay_override_drives_transfer_pins` asserts the contract on **both**
+firmwares:
+
+| command | manual? | PA12 | PB3 |
+|---|---|---|---|
+| bit1=0 bit0=0 | yes | 0 | 0 |
+| bit1=0 bit0=1 | yes | 0 | 1 |
+| bit1=1 bit0=0 | yes | 1 | 0 |
+| bit1=1 bit0=1 | yes | 1 | 1 |
+| bit1=1 bit0=1 | **no** | 0 | 0 (override ignored) |
+
+Factory: seed its manual-mode flag + command word, invoke its relay updater
+(`sub_08018a7c`) — the genuine factory drive code runs (no boot needed, the
+override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
+(`src/relay.c`), TDD'd to match. This is **not** the loop-driven black box (the
 
 ### The relay parity test (via the manual/AutoTest override)
 

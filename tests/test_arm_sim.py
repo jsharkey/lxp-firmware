@@ -157,6 +157,47 @@ def test_relay_override_drives_transfer_pins():
     assert fac == RELAY_TRUTH, "factory relay override mismatch: %r" % fac
 
 
+# --- working-mode relay: the run-enable relay PC6 follows IR_STATE -------------
+FAC_RUN_RELAY_UPDATER = 0x08016ec6       # PB2/PC6 updater (docs/18)
+FAC_IR_STATE          = 0x2000d0e4 + 0xa0  # operating mode byte (= IR_STATE)
+# contract: PC6 closed (1) iff running (IR_STATE > PROGRAMMING=2); open otherwise.
+RUN_STATES    = (0x04, 0x10, 0x40, 0xC0)   # PV-ongrid, bat-ongrid, bat-offgrid, pv+bat-offgrid
+NONRUN_STATES = (0x00, 0x01, 0x02)         # standby, fault, programming
+
+def _run_relay_factory(state):
+    sim = _factory()
+    sim.wbytes(FAC_RELAY_CMD, b"\x00\x00")          # override off
+    sim.wbytes(FAC_IR_STATE, bytes([state]))
+    sim.clear_drives()
+    for _ in range(600):                            # settle the updater's debounce
+        sim.call(FAC_RUN_RELAY_UPDATER)
+    return sim.get_output("PC6")
+
+def _run_relay_ours(state):
+    sim = _ours()
+    sim.call("relay_set_override", (0, 0))
+    sim.call("relay_set_mode", (state,))
+    sim.clear_drives()
+    sim.call("relay_poll")
+    return sim.get_output("PC6")
+
+
+def test_relay_follows_working_mode():
+    """The run-enable relay (PC6) is closed when the inverter is in a running
+    operating mode (IR_STATE > PROGRAMMING) and open in standby/fault/programming
+    -- the factory's sub_08016ec6 gate (docs/18). Our firmware must match."""
+    for st in RUN_STATES:
+        assert _run_relay_ours(st) == 1, "ours: PC6 should be closed for state 0x%02x" % st
+    for st in NONRUN_STATES:
+        assert _run_relay_ours(st) == 0, "ours: PC6 should be open for state 0x%02x" % st
+    try:
+        fac = {st: _run_relay_factory(st) for st in RUN_STATES + NONRUN_STATES}
+    except Skip:
+        return
+    exp = {st: (1 if st in RUN_STATES else 0) for st in RUN_STATES + NONRUN_STATES}
+    assert fac == exp, "factory run-relay vs mode mismatch: %r" % fac
+
+
 def test_systick_advances_tick_counter():
     """The harness has no real timer, so tick-driven firmware logic freezes after
     boot -- unless SysTick injection is on. With it on, our firmware's 1 ms tick
