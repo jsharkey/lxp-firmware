@@ -75,9 +75,10 @@ come from a *different* bank, the CAN/BMS one; energy counters are ARM-accumulat
 in `0x20009954`.) So USART2 is an **inter-processor link bearing DSP telemetry**,
 confirming the mode's origin.
 
-> Residual, honest limit: firmware alone still can't prove USART2 is *physically*
-> the DSP's second SCI versus routed via the third (redundant safety) CPU — that
-> needs the schematic. But the **data is DSP-domain** (operating mode + the DSP's
+> Residual limit (as first written — **now resolved in the two notes below**:
+> relayed via the redundant safety CPU, docs/23/30): firmware alone couldn't yet
+> prove USART2 was *physically* the DSP's second SCI versus routed via the third
+> (redundant safety) CPU. But the **data is DSP-domain** (operating mode + the DSP's
 > own V/F/PV measurements, EG4-framed), which is what matters for the split below.
 > **USART3** is the confirmed DSP SCI-B (bootloader + CRC, docs/05); USART2 is the
 > complementary telemetry direction. A DSP-side cross-check to pin the physical
@@ -90,10 +91,19 @@ confirming the mode's origin.
 > the config push (`FUN_0009DD14→FUN_0009D358→`SCI-B = **USART3**). The DSP has no
 > second ARM-facing telemetry port (SCI-A carries unrelated bulk records at ~9600;
 > only SCI-B runs ~19200). So the mode's **origin on the DSP is confirmed**, but
-> **USART2 is not the DSP's second SCI** — the DSP-domain data on USART2 is relayed
-> (safety CPU) or a re-emitted copy of the SCI-B/USART3 telemetry. Likely the ARM
-> already receives this same telemetry on **USART3** (the SOF-`0x49` parser, docs/10);
-> worth confirming it populates the same quantities as the USART2 bank.
+> **USART2 is not the DSP's second SCI** — the DSP-domain data on USART2 is relayed.
+>
+> **RESOLVED (docs/30): the USART2 peer is the redundant / "safety" CPU.** The ARM
+> *reports* the safety cross-check status straight out of the USART2 frame — the
+> Modbus fault word (`STATUS+0x8c`) takes **bit 27 = E027 (`FAULT_CPU_SAMPLE_MISMATCH`)**
+> verbatim from `BANK+0xd4`, a BE u32 at USART2 frame `+9` (`sub_08024d74`/`sub_0801b480`);
+> W008 (version mismatch) and the peer version bytes also arrive on USART2; and the
+> peer-comms-loss bit `0x20000` is driven by the USART2 driver's own link-health
+> tracker. So USART2 carries the safety CPU's relayed DSP telemetry **plus** its own
+> agreement/version status. Full chain:
+> `DSP —SCI-C 9600— safety CPU —USART2 19200 RS-485— ARM` (docs/29/30). The ARM *also*
+> receives the DSP's own `0x49` telemetry directly on **USART3** (SCI-B, docs/10), but
+> the classifier builds IR_STATE + the fault word from the **USART2/safety-CPU** bank.
 
 ## The split, and why the evidence looked contradictory
 
