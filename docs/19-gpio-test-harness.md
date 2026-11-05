@@ -258,7 +258,7 @@ python3 tests/test_arm_sim.py build/firmware.bin     # our firmware
 python3 tests/test_arm_sim.py reference/com_flat.bin # the factory oracle (flat .bin)
 ```
 
-There are two common tests today:
+There are three common tests today:
 
 **1. `test_pb7_input_drives_output`** — the black-box pattern: assert a GPIO
 contract **without naming any entry point**. It only injects a GPIO input, lets
@@ -283,6 +283,30 @@ vector and asserts `GPIOB->CRH` is configured for USART3 (PB10 = AF-PP `0xB`,
 PB11 = floating-in `0x4`). Both firmwares bring the RS485/dongle Modbus link up
 the same way, so this doubles as a boot smoke test (the harness runs each image
 through its init, not just isolated functions) and a shared-behaviour check.
+
+**3. `test_modbus_charge_current_write_read`** — wire-level **dongle Modbus**
+over USART3 (docs/04): set holding register 101 (`HR_CHARGE_CURR`) to 42 with a
+`0x06` write-single, read it back with a `0x03` read-holding, then overwrite it
+with 43 and confirm the edit. It drives the image purely as a Modbus slave — it
+frames a request, feeds the bytes in on the UART, lets the firmware's own loop
+answer, and parses the reply — naming no symbol, so the one test applies to any
+image that speaks the EG4 dongle protocol (`addr func SN[10] body CRC`,
+little-endian, CRC-16/MODBUS; see `include/inv/modbus.h`). The UART plumbing is
+`tests/arm_sim_modbus.py` (`ModbusDongle`), which hooks the USART3 data/status
+registers through the sim's `uc` handle (no `tools/arm_sim.py` change) and runs
+with SysTick on so the RTU inter-frame timer advances. USART3 currently also
+carries the DSP config push (a placeholder collision — `src/dsp/dsp_link_port.c`),
+so it stops on the first contiguous, CRC-valid response frame matching the
+request rather than on a byte count.
+
+> **Expected-red for now.** This passes against our firmware (whose Modbus RX is
+> polled in `mb_port_poll`) but **fails against the factory image**, which parses
+> RX in the USART3 interrupt that the harness does not yet fire — and both
+> firmwares' dongle paths are still being built out. That is fine: the test
+> pins the target contract. Because it is a common test, a red result fails
+> `make test-sim` (and, being in the factory common block, `make` fail-fasts
+> there — run `make test-sim-ours` or the factory files directly to see the
+> rest).
 
 ## Running the tests
 

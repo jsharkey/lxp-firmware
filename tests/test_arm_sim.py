@@ -132,6 +132,32 @@ def test_boots_and_configures_usart3_gpio():
     assert pb11 == 0x4, "PB11 mode nibble = 0x%x (expected 0x4 floating input)" % pb11
 
 
+def test_modbus_charge_current_write_read():
+    """Dongle Modbus over USART3 (docs/04): set HR 101 (ChargeCurr) to 42 with a
+    0x06 write-single, read it back with a 0x03 read-holding, then overwrite it
+    with 43 and confirm the edit reads back. Pure wire-level black box -- frame a
+    request on the UART, let the firmware's own loop answer, parse the reply --
+    so the same test holds for any image that speaks the EG4 dongle protocol.
+
+    NOTE: this may fail against either image while their dongle-Modbus paths are
+    still being built out (e.g. the factory parses RX in the USART3 IRQ, which
+    the harness does not yet fire). That is expected for now."""
+    from arm_sim_modbus import ModbusDongle
+    HR_CHARGE_CURR = 101
+
+    mb = ModbusDongle(_sim())
+
+    assert mb.write_single(HR_CHARGE_CURR, 42) == 42, \
+        "0x06 write of ChargeCurr=42 was not acknowledged"
+    assert mb.read_holding(HR_CHARGE_CURR) == [42], \
+        "0x03 read did not return the written ChargeCurr=42"
+
+    assert mb.write_single(HR_CHARGE_CURR, 43) == 43, \
+        "0x06 overwrite of ChargeCurr=43 was not acknowledged"
+    assert mb.read_holding(HR_CHARGE_CURR) == [43], \
+        "0x03 read did not return the edited ChargeCurr=43"
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 def _main(argv):
     # Optional single positional arg: the image to test. (argparse would reject
