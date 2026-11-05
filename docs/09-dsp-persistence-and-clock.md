@@ -9,7 +9,9 @@ settings storage and no battery-/power-backed clock. All of its configuration
 RAM is volatile and, at boot, the DSP sits waiting for the ARM to push the
 complete settings set (see [`docs/08`](08-arm-dsp-config-protocol.md)). The ARM
 is therefore the authority for both **persistence** and **timekeeping**
-(the ARM's battery-backed STM32 RTC — [`docs/05`](05-dsp-link.md)).
+(the ARM's battery-backed STM32 RTC — [`docs/05`](05-dsp-link.md)). *Where* the
+ARM keeps those settings — a journaled 6-slot store on an external SPI NOR flash
+— is reverse-engineered in [`docs/21`](21-arm-config-flash.md).
 
 Method: static RE of the DSP image (Ghidra + `ghidra-tms320c28x`,
 [`docs/07`](07-dsp-ac-first-mode.md)) — a full peripheral/driver inventory of the
