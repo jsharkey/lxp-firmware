@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""
+String-catalog + dispatch-table resolver for the ARM 'com' firmware.
+
+Finding (see docs/03): this firmware does NOT use char* pointer arrays for HMI
+text. Menu/label strings live in packed, NUL-separated blobs in ENUM ORDER, and
+code indexes them by ordinal. No word in the image points at a menu string.
+The real pointer tables point into CODE (switch/menu-handler dispatch tables).
+
+So this tool recovers two things:
+  (A) ordered string catalogs  -> reference/string_catalog.txt
+      Each blob is a contiguous run of NUL-separated strings; the ORDER is the
+      enum/menu order the code indexes by. This reconstructs the menu structure.
+  (B) code-pointer dispatch tables -> reference/dispatch_tables.txt
+      Runs of >=3 words that are Thumb function pointers (odd, pointing at a
+      known function entry). Match a dispatch table to a catalog by element
+      count to align label[i] <-> handler[i].
+
+Inputs : FIRMWARE.bin, reference/symbols.csv (from recurse.py)
+Read-only; nothing is executed.
+Usage: python3 strtab.py FIRMWARE.bin --ref ../reference
+"""
+import os, struct, argparse, csv, collections
+
+ap = argparse.ArgumentParser()
+ap.add_argument("fw"); ap.add_argument("--base", default="0x08000000")
+ap.add_argument("--ref", default="../reference")
+ap.add_argument("--min-strings", type=int, default=4, help="min strings to report a blob")
+ap.add_argument("--max-gap", type=int, default=4, help="max NUL/pad bytes between strings in a blob")
+args = ap.parse_args()
+
+BASE = int(args.base, 0)
+data = open(args.fw, "rb").read()
+N = len(data); END = BASE + N
+def rd32(a):
+    o=a-BASE; return struct.unpack_from("<I",data,o)[0] if 0<=o<=N-4 else None
+
+# ---- function entries from recurse.py --------------------------------------
+func_entries = {}
+sp = os.path.join(args.ref, "symbols.csv")
+if os.path.exists(sp):
+    with open(sp) as f:
+        for row in csv.DictReader(f):
+            func_entries[int(row["addr"],16)] = row["name"]
+
+def read_str(off):
+    j=off
+    while j<N and 32<=data[j]<127: j+=1
+    return data[off:j].decode("ascii","replace"), j
+
+# ---- (A) ordered packed-string blobs ---------------------------------------
+blobs=[]; i=0
+while i<N:
+    if 32<=data[i]<127:
+        start=i; items=[]
+        while i<N and 32<=data[i]<127:
+            s,j=read_str(i)
+            if len(s)>=2: items.append((BASE+i,s))
+            # skip the string, then up to max-gap NUL/pad bytes
+            k=j; pad=0
+            while k<N and data[k]==0 and pad<args.max_gap: k+=1; pad+=1
+            if k<N and 32<=data[k]<127 and (k-j)>=1:
+                i=k; continue          # another string in same blob
+            else:
+                i=j; break
+        if len(items)>=args.min_strings:
+            blobs.append((start+BASE, items))
+    else:
+        i+=1
+
+# ---- (B) code-pointer dispatch tables --------------------------------------
+disp=[]; a=BASE
+def is_fp(v): return v is not None and (v&1) and ((v&~1) in func_entries)
+while a<=END-4:
+    v=rd32(a)
+    if is_fp(v):
+        run=[v]; b=a+4
+        while b<=END-4 and is_fp(rd32(b)): run.append(rd32(b)); b+=4
+        if len(run)>=3: disp.append((a,run))
+        a=b
+    else:
+        a+=4
+
+# ---- outputs ----------------------------------------------------------------
+with open(os.path.join(args.ref,"string_catalog.txt"),"w") as fo:
+    fo.write(f"# {len(blobs)} ordered string blobs (menu/label/enum catalogs)\n")
+    fo.write("# The ORDER within a blob is the ordinal the firmware indexes by.\n\n")
+    for ba,items in sorted(blobs, key=lambda t:-len(t[1])):
+        fo.write(f"=== blob 0x{ba:08x}  ({len(items)} strings) ===\n")
+        for idx,(sa,s) in enumerate(items):
+            fo.write(f"  [{idx:3}] 0x{sa:08x}  {s!r}\n")
+        fo.write("\n")
+
+with open(os.path.join(args.ref,"dispatch_tables.txt"),"w") as fo:
+    fo.write(f"# {len(disp)} code-pointer dispatch tables (>=3 function pointers)\n")
+    fo.write("# Match a table's length to a string catalog blob to align label<->handler.\n\n")
+    for ta,run in sorted(disp, key=lambda t:-len(t[1])):
+        fo.write(f"=== table 0x{ta:08x}  ({len(run)} entries) ===\n")
+        for idx,v in enumerate(run):
+            fa=v&~1
+            fo.write(f"  [{idx:3}] -> 0x{fa:08x}  {func_entries.get(fa,'')}\n")
+        fo.write("\n")
+
+# ---- (C) emit the largest blob as an ordinal enum header -------------------
+import re
+def cident(s):
+    s=re.sub(r'[^A-Za-z0-9]+','_',s.strip()).strip('_').upper()
+    if s and s[0].isdigit(): s="N_"+s
+    return s or "UNNAMED"
+if blobs:
+    main_ba, main_items = max(blobs, key=lambda t:len(t[1]))
+    hdr = os.path.join(os.path.dirname(args.ref.rstrip("/")), "include", "inv", "hmi_menu.h")
+    if os.path.isdir(os.path.dirname(hdr)):
+        used=collections.Counter()
+        with open(hdr,"w") as fo:
+            fo.write("/*\n * HMI menu item ordinals — GENERATED by tools/strtab.py (do not edit).\n")
+            fo.write(f" * Source: ordered packed-string blob @ 0x{main_ba:08x} in the EG4 12000XP\n")
+            fo.write(" * com firmware. The index IS the ordinal the firmware indexes strings by.\n")
+            fo.write(" * Some entries are 18kPV-only and unused on the 12000XP.\n */\n")
+            fo.write("#ifndef INV_HMI_MENU_H\n#define INV_HMI_MENU_H\n\ntypedef enum {\n")
+            for idx,(sa,s) in enumerate(main_items):
+                nm=cident(s); used[nm]+=1
+                if used[nm]>1: nm=f"{nm}_{used[nm]}"
+                fo.write(f"    MENU_{nm:<34} = {idx:3},  /* {s!r} */\n".replace("'",'"'))
+            fo.write(f"    MENU__COUNT = {len(main_items)}\n}} inv_menu_item_t;\n\n#endif\n")
+        print(f"emitted header              : {hdr} ({len(main_items)} items)")
+
+# clean up the earlier (wrong-assumption) outputs if present
+for junk in ("string_tables.txt","menu_bindings.csv","symbols_named.csv"):
+    p=os.path.join(args.ref,junk)
+    if os.path.exists(p): os.remove(p)
+
+print(f"string blobs (>= {args.min_strings} strings): {len(blobs)}")
+print(f"  largest blob               : {max((len(it) for _,it in blobs),default=0)} strings")
+print(f"  total strings in blobs     : {sum(len(it) for _,it in blobs)}")
+print(f"code-pointer dispatch tables : {len(disp)}")
+print(f"  largest table              : {max((len(r) for _,r in disp),default=0)} entries")
+print(f"written to                   : {os.path.abspath(args.ref)}")

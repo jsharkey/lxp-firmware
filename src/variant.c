@@ -1,0 +1,148 @@
+/*
+ * Product-variant descriptors. See include/inv/variant.h and
+ * docs/10-18kpv-vs-12000xp.md for how each field was recovered.
+ *
+ * All structural fields below are DIRECT READS from the two factory images:
+ *
+ *   field            12000XP (ceaa / "SNEC")      18kPV App (FAAB / "EAA1")
+ *   ---------------  ---------------------------  ----------------------------
+ *   layout           monolithic                   App over bootloader
+ *   vector_addr      0x08000000                   0x0800C800
+ *   bootloader_size  0                            0xC800  (51,200 B)
+ *   initial MSP      0x200008D0                   0x20000478
+ *   reset handler    0x08002980                   0x0802B788
+ *   top-of-image sig "SNEC" @0x0807F7FC           "EAA1" @0x0803F7FC
+ *
+ * The 12000XP image fills a 512 KB part (top marker at 0x0807F7FC); the 18kPV
+ * App occupies a 256 KB App region above its bootloader (top marker 0x0803F7FC).
+ *
+ * The topology fields (mppt_count, hybrid, phase_count) come from the hardware
+ * (maintainer-confirmed: 18kPV is a 3-MPPT hybrid, 12000XP a 2-MPPT non-hybrid)
+ * and are corroborated by the recovered HMI strings ("Same for 2 MPPTs",
+ * "PV1,PV2,independent" in the 12000XP) and by the Modbus superset's Vpv3/Ppv3.
+ *
+ * The feat_* flags are an INFERENCE from topology + the Modbus map, not a direct
+ * read of a per-model gate inside the image; they are the project's current
+ * best model and should be refined as the variant-selection logic is decoded.
+ */
+#include "inv/variant.h"
+
+static const inv_variant_t k_variants[INV_MODEL__COUNT] = {
+    [INV_MODEL_12000XP] = {
+        .id          = INV_MODEL_12000XP,
+        .name        = "EG4 12000XP",
+        .model_code  = "ceaa",
+        .image_sig   = "SNEC",
+
+        .mppt_count  = 2,
+        .phase_count = 1,            /* split-phase 120/240 V               */
+        .hybrid      = false,
+
+        .feat_export_to_grid = false, /* non-hybrid: no sell-to-grid        */
+        .feat_ac_couple      = false, /* menu string present but inactive    */
+        .feat_generator_port = true,  /* has generator input + gen-charge    */
+
+        .layout          = INV_IMAGE_MONOLITHIC,
+        .flash_base      = 0x08000000UL,
+        .flash_size      = 512U * 1024U,
+        .bootloader_size = 0U,
+        .vector_addr     = 0x08000000UL,
+        .sram_size       = 64U * 1024U,
+    },
+    [INV_MODEL_18KPV] = {
+        .id          = INV_MODEL_18KPV,
+        .name        = "EG4 18kPV",
+        .model_code  = "FAAB",
+        .image_sig   = "EAA1",
+
+        .mppt_count  = 3,
+        .phase_count = 1,            /* split-phase 120/240 V               */
+        .hybrid      = true,
+
+        .feat_export_to_grid = true,  /* hybrid grid-tie: export/feed-in     */
+        .feat_ac_couple      = true,  /* can AC-couple an external GT PV inv  */
+        .feat_generator_port = true,
+
+        .layout          = INV_IMAGE_APP_OVER_BL,
+        .flash_base      = 0x08000000UL,
+        .flash_size      = 256U * 1024U, /* App region tops at 0x08040000    */
+        .bootloader_size = 0xC800UL,     /* 0x08000000..0x0800C7FF reserved   */
+        .vector_addr     = 0x0800C800UL,
+        .sram_size       = 64U * 1024U,
+    },
+    [INV_MODEL_6000XP] = {
+        /*
+         * EG4 6000XP (model code "ccaa", image signature "SNCC"), from
+         * "..._ccaa-xx15xx_260519.hex". Direct reads: same STM32F103 (RCC
+         * @0x40021000, FLASH_ACR @0x40022000), same Keil reset stub, and the
+         * same bootloader+App layout as the 12000XP 07-series — vectors
+         * relocated to 0x08005000 above a 20 KB bootloader (0x08000000..
+         * 0x08004FFF all 0xFF), SystemInit writes SCB->VTOR=0x08005000, App
+         * tops at the 256 KB boundary (signature block @0x0803F600). The shared
+         * "...POTatezLAA1SA22" marker matches the 07-era codebase.
+         *
+         * TOPOLOGY IS SPEC-DERIVED, NOT AN IN-BAND READ: like the 18kPV App,
+         * this App partition does not embed the HMI string/font tables (only
+         * ~295 mostly-noise strings extract), so MPPT count / phase / hybrid
+         * could not be confirmed from the image. Values below follow the EG4
+         * 6000XP product spec (6 kW off-grid, 2 MPPT, non-hybrid, split-phase
+         * 120/240) and should be confirmed against a resource dump or a unit.
+         */
+        .id          = INV_MODEL_6000XP,
+        .name        = "EG4 6000XP",
+        .model_code  = "ccaa",
+        .image_sig   = "SNCC",
+
+        .mppt_count  = 2,            /* spec-derived (see note)             */
+        .phase_count = 1,            /* split-phase 120/240 V               */
+        .hybrid      = false,
+
+        .feat_export_to_grid = false, /* non-hybrid off-grid unit           */
+        .feat_ac_couple      = false,
+        .feat_generator_port = true,  /* generator input + gen-charge        */
+
+        .layout          = INV_IMAGE_APP_OVER_BL,
+        .flash_base      = 0x08000000UL,
+        .flash_size      = 256U * 1024U, /* App region tops at 0x08040000    */
+        .bootloader_size = 0x5000UL,     /* 0x08000000..0x08004FFF reserved   */
+        .vector_addr     = 0x08005000UL,
+        .sram_size       = 64U * 1024U,  /* confirm part number              */
+    },
+};
+
+const inv_variant_t *inv_variant_by_model(inv_model_id_t id)
+{
+    if ((unsigned)id >= (unsigned)INV_MODEL__COUNT) id = INV_MODEL_12000XP;
+    return &k_variants[id];
+}
+
+const inv_variant_t *inv_variant(void)
+{
+#if defined(INV_VARIANT_18KPV)
+    return &k_variants[INV_MODEL_18KPV];
+#elif defined(INV_VARIANT_6000XP)
+    return &k_variants[INV_MODEL_6000XP];
+#else
+    return &k_variants[INV_MODEL_12000XP];
+#endif
+}
+
+bool inv_ir_active(uint16_t input_reg)
+{
+    /* The only register deltas between the two recovered variants are the
+     * 3rd-MPPT telemetry slots. On a 2-MPPT build they are inactive. Keep this
+     * as an explicit allow/deny so new deltas get added in one place. */
+    if (inv_variant()->mppt_count < 3) {
+        switch (input_reg) {
+            case 3:   /* IR_VPV3      */
+            case 9:   /* IR_PPV3      */
+            case 30:  /* IR_EPV3_DAY  */
+            case 44:  /* IR_EPV3_ALL_L*/
+            case 45:  /* IR_EPV3_ALL_H*/
+                return false;
+            default:
+                break;
+        }
+    }
+    return true;
+}

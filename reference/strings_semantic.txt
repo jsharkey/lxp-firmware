@@ -1,0 +1,120 @@
+         Bypass
+       ACCharge
+       PVCharge
+       PVGridOn
+      BatGridOn
+      PVGridOff
+     BatGridOff
+     PVACCharge
+    PVBatGridOn
+   Fault Status
+   PVBatGridOff
+  According to time  
+  English  
+  Lithium battery  
+  Same for 2 MPPTs 
+  Update  
+ Charge
+ Fault 
+ Hybrid Setting 
+ Lead-Acid battery 
+ Meter
+ PVChargeBypass
+ PVChargeGridOn
+ Parallel Setting 
+ Update
+ update 
+(SOC 
+4.corner pixel grid
+9SOC: 
+=SOC: 
+?SOC: 
+AC Charge
+AC Charge Battery Current: 
+AC Charge Battery SOC : 
+AC Charge Battery Voltage: 
+AC Charge Time: 
+AC Couple End   SOC: 
+AC Couple End   Volt: 
+AC Couple Start SOC: 
+AC Couple Start Volt: 
+ACCharge       
+According to Bat SOC 
+According to Bat Volt
+AutoTestFail
+Bat SOC&
+BatGridOff     
+BatGridOn      
+BatReverse
+BatVoltHigh
+BatVoltLow
+Batte0
+Battery ECO Enable:    
+Battery SOC  and Time
+Battery Shared: 
+Battery Type: 
+Battery Volt and Time
+Battery Wake up: 
+Battery Warning SOC :   
+Battery Warning Volt:   
+BusSampleFail
+BusShortCircuit
+Bypass         
+CT Direction Reversed: 
+CT Sample Ratio: 
+Charge Current Limit: 
+ComLossCtrl
+ComLossMppt
+Discharge Control: 
+Discharge Current Limit: 
+Discharge Cut-off SOC : 
+Discharge Cut-off Volt: 
+EPS Frequency Set: 
+EPS Voltage Set: 
+EepsL1N_all:
+EepsL1N_day:
+EepsL2N_all:
+EepsL2N_day:
+Eeps_all:
+Eeps_day:
+EpsConnectFault
+EpsPowerReversed
+EpsShortCircuit
+Export to Grid: 
+Fault Status
+Fault Status   
+FaultCode31
+FaultCode5
+FaultCode6
+FaultCode7
+FaultCode8
+FaultCode:
+Feps:
+Fgrid:
+Gen Charge Bat Current: 
+Gen Charge End Bat SOC : 
+Gen Charge End Bat Volt: 
+Gen Charge Start Bat SOC : 
+Gen Charge Start Bat Volt: 
+Generator Charge Type: 
+Grid Always On: 
+Grid CT Connection: 
+Grid Today Import: 
+Grid Total Import: 
+Grid_OnOff_Cnt:
+HardOverCurr
+Hybrid
+KEY Ageing Test
+KEY Ageing Test OK
+LCD Ageing Test
+LED Timer: 
+Lead-Acid Charge Voltage:   
+Lead-Acid Floating Voltage: 
+Lead-acid Capacity: 
+Lithium Type: 
+MeterComFail
+MeterReversed
+Model: 
+ModelFail
+MpptLossCom
+N-PE Connect (Inner): 

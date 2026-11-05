@@ -1,0 +1,68 @@
+/* Host tests for the ARM->DSP config push (docs/08).  make test */
+#include "inv/dsp_link.h"
+#include "inv/modbus_map.h"
+#include <stdio.h>
+#include <string.h>
+
+static int g_fail = 0, g_run = 0;
+#define CHECK(c, m) do { g_run++; if (!(c)) { \
+    printf("  FAIL: %s (%s:%d)\n", m, __FILE__, __LINE__); g_fail++; } } while (0)
+
+static uint16_t holding[256];
+static bool rd(void *c, uint16_t reg, uint16_t *o) {
+    (void)c; if (reg >= 256) return false; *o = holding[reg]; return true;
+}
+
+static const uint8_t SN[10] = {'E','G','4','1','2','3','4','5','6','7'};
+
+int main(void)
+{
+    holding[HR_OUTPUT_PRIO_CFG] = 2;        /* AC First */
+    holding[HR_SYS_ENABLE]      = 0x00A5;
+    holding[HR_FUNC_EN]         = 0x0080;   /* ACChargeEn */
+    holding[HR_EOD]             = 20;
+
+    dsp_cfg_src_t src = {0};
+    src.address = 1;
+    memcpy(src.sn, SN, 10);
+    src.year=24; src.month=11; src.day=4; src.hour=13; src.minute=30; src.second=0;
+    src.read_holding = rd; src.ctx = 0;
+
+    uint8_t f[DSP_FRAME_MAX];
+
+    /* ---- block 0 frame structure ---- */
+    size_t n = dsp_build_config_frame(&src, 0, f, sizeof f);
+    CHECK(n > 0, "block0 built");
+    CHECK(f[DSP_OFF_ADDR] == 1, "addr");
+    CHECK(f[DSP_OFF_TYPE] == DSP_FRAME_TYPE_CONFIG, "type == 1");
+    CHECK(memcmp(f + DSP_OFF_HEADER, SN, 10) == 0, "SN in header");
+    CHECK(f[DSP_OFF_HEADER + 10] == 24 && f[DSP_OFF_HEADER + 13] == 13, "timestamp in header");
+    CHECK(f[DSP_OFF_BLOCKID] == 0, "block id 0");
+    CHECK(f[DSP_OFF_PAYLOAD] == 2, "payload[0] = output priority (AC First=2)");
+    /* CRC valid (little-endian trailing) */
+    uint16_t crc = dsp_crc16(f, n - 2);
+    CHECK((f[n-2] | (f[n-1] << 8)) == crc, "block0 CRC valid");
+
+    /* ---- full-snapshot rotation: 8 blocks, ids 0..7, each a valid type-1 frame ---- */
+    dsp_push_t p; dsp_push_init(&p);
+    int seen[DSP_CONFIG_NBLOCKS] = {0};
+    for (int i = 0; i < DSP_CONFIG_NBLOCKS; i++) {
+        size_t len = dsp_push_next(&p, &src, f, sizeof f);
+        CHECK(len > 0 && f[DSP_OFF_TYPE] == 1, "rotated frame is type 1");
+        CHECK(f[DSP_OFF_BLOCKID] == i, "rotation emits blocks in order 0..7");
+        uint16_t c = dsp_crc16(f, len - 2);
+        CHECK((f[len-2] | (f[len-1] << 8)) == c, "rotated frame CRC valid");
+        seen[f[DSP_OFF_BLOCKID]] = 1;
+    }
+    CHECK(p.next_block == 0, "rotation wraps back to block 0");
+    int all = 1; for (int i = 0; i < DSP_CONFIG_NBLOCKS; i++) all &= seen[i];
+    CHECK(all, "all 8 blocks emitted in one full snapshot");
+
+    /* a changed setting shows up in the next snapshot (full image, not delta) */
+    holding[HR_OUTPUT_PRIO_CFG] = 1;        /* PV First */
+    dsp_build_config_frame(&src, 0, f, sizeof f);
+    CHECK(f[DSP_OFF_PAYLOAD] == 1, "new value re-sent in full snapshot");
+
+    printf("%s: %d/%d checks passed\n", g_fail ? "FAILED" : "OK", g_run - g_fail, g_run);
+    return g_fail ? 1 : 0;
+}

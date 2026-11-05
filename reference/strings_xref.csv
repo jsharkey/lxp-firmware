@@ -1,0 +1,137 @@
+str_addr,n_refs,referenced_by,text
+0x0800299c,4,0x08000158 0x08000306 0x0800038e 0x08000e44,SNECNOTBSNFC
+0x08005800,2,0x08000e44 0x08036958,SNEC
+0x0802e7a8,1,0x0800ea54,Next, there will be four display
+0x0802efd8,2,0x0801f1a0 0x08020330,FreedWON
+0x0802f3c8,3,0x080076ce 0x0801b6b2 0x08032000,ceaa
+0x0802f3d0,1,0x08020330,eTower
+0x08031800,4,0x08000896 0x08000e44 0x0801547c 0x08036958,NOTB
+0x0803cf78,1,0x08005938,FW: 
+0x0803cf80,1,0x08005938,Model: 
+0x0803cf88,1,0x08005938,Normal/Standby: 
+0x0803cf9c,1,0x08005938,Set Time: 
+0x0803cfa8,1,0x08005938,PV Input Mode: 
+0x0803cfb8,1,0x08005938,Battery Type: 
+0x0803cfc8,1,0x08005938,Lead-acid Capacity: 
+0x0803cfe0,1,0x08005938,Customized Capacity: 
+0x0803cff8,1,0x08005938,Lithium Type: 
+0x0803d008,1,0x08005938,Green Function Enable: 
+0x0803d020,1,0x08005938,Battery ECO Enable:    
+0x0803d038,1,0x08005938,Buzzer Enable: 
+0x0803d048,1,0x08005938,ISO Enable: 
+0x0803d058,1,0x08005938,CT Power Offset: 
+0x0803d06c,1,0x08005938,Battery Wake up: 
+0x0803d080,1,0x08005938,Fan1 Max Speed: 
+0x0803d094,1,0x08005938,Fan1 Slope: 
+0x0803d0a4,1,0x08005938,Fan2 Max Speed: 
+0x0803d0b8,1,0x08005938,Fan2 Slope: 
+0x0803d0c8,1,0x08005938,Fan3 Max Speed: 
+0x0803d0dc,1,0x08005938,Fan3 Slope: 
+0x0803d0ec,1,0x08005938,Fan4 Max Speed: 
+0x0803d100,1,0x08005938,Fan4 Slope: 
+0x0803d110,1,0x08005938,Fan5 Max Speed: 
+0x0803d124,1,0x08005938,Fan5 Slope: 
+0x0803d134,1,0x08005938,PV&AC Take Load Jointly: 
+0x0803d150,1,0x08005938,Export to Grid: 
+0x0803d164,1,0x08005938,Export Power Percent: 
+0x0803d17c,1,0x08005938,Grid CT Connection: 
+0x0803d194,1,0x08005938,CT Sample Ratio: 
+0x0803d1a8,1,0x08005938,CT Direction Reversed: 
+0x0803d1c0,1,0x08005938,EPS Voltage Set: 
+0x0803d1d4,1,0x08005938,EPS Frequency Set: 
+0x0803d1e8,1,0x08005938,AC Input Range: 
+0x0803d1fc,1,0x08005938,PV Grid Off: 
+0x0803d20c,1,0x08005938,N-PE Connect (Inner): 
+0x0803d224,1,0x08005938,PV Arc: 
+0x0803d230,1,0x08005938,PV Arc Fault Clear: 
+0x0803d248,1,0x08005938,RSD Enable: 
+0x0803d258,1,0x08005938,Charge Current Limit: 
+0x0803d270,1,0x08005938,Lead-Acid Charge Voltage:   
+0x0803d290,1,0x08005938,Lead-Acid Floating Voltage: 
+0x0803d2b0,1,0x08005938,Discharge Control: 
+0x0803d2c4,1,0x08005938,Discharge Current Limit: 
+0x0803d2e0,1,0x08005938,Discharge Cut-off Volt: 
+0x0803d2fc,1,0x08005938,Discharge Cut-off SOC : 
+0x0803d318,1,0x08005938,On Grid EOD Volt:       
+0x0803d334,1,0x08005938,On Grid EOD SOC :       
+0x0803d350,1,0x08005938,Battery Warning Volt:   
+0x0803d36c,1,0x08005938,Battery Warning SOC :   
+0x0803d388,1,0x08005938,Smart Load Enable: 
+0x0803d39c,1,0x08005938,Start PV Power: 
+0x0803d3b0,1,0x08005938,Grid Always On: 
+0x0803d3c4,1,0x08005938,Smart Load Start Volt: 
+0x0803d3dc,1,0x08005938,Smart Load End   Volt: 
+0x0803d3f4,1,0x08005938,Smart Load Start SOC: 
+0x0803d40c,1,0x08005938,Smart Load End   SOC: 
+0x0803d424,1,0x08005938,AC Couple Enable: 
+0x0803d438,1,0x08005938,AC Couple Start Volt: 
+0x0803d450,1,0x08005938,AC Couple End   Volt: 
+0x0803d468,1,0x08005938,AC Couple Start SOC: 
+0x0803d480,1,0x08005938,AC Couple End   SOC: 
+0x0803d498,1,0x08005938,AC Chg Based On: 
+0x0803d4ac,1,0x08005938,AC Charge Battery Current: 
+0x0803d4c8,2,0x08005938 0x08005bec,AC Charge Time: 
+0x0803d4dc,2,0x08005938 0x08005bec,P1 Start: 
+0x0803d4e8,2,0x08005938 0x08005bec,End: 
+0x0803d4f0,2,0x08005938 0x08005bec,P2 Start: 
+0x0803d4fc,2,0x08005938 0x08005bec,P3 Start: 
+0x0803d508,2,0x08005938 0x08005bec,AC Charge Battery Voltage: 
+0x0803d524,2,0x08005938 0x08005bec,Start: 
+0x0803d52c,2,0x08005938 0x08005bec,AC Charge Battery SOC : 
+0x0803d548,1,0x08005938, AC First 
+0x0803d554,1,0x08005938,Generator Charge Type: 
+0x0803d56c,1,0x08005938,Gen Charge Bat Current: 
+0x0803d588,1,0x08005938,Gen Charge Start Bat Volt: 
+0x0803d5a4,1,0x08005938,Gen Charge End Bat Volt: 
+0x0803d5c0,1,0x08005938,Gen Charge Start Bat SOC : 
+0x0803d5dc,1,0x08005938,Gen Charge End Bat SOC : 
+0x0803d5f8,1,0x08005938,Max. Gen Input Power: 
+0x0803d610,1,0x08005938,Generator Boost Enable: 
+0x0803d62c,1,0x08005938,Set System Type: 
+0x0803d640,1,0x08005938,Set Composed Phase: 
+0x0803d658,1,0x08005938,Battery Shared: 
+0x0803d66c,1,0x08005938,LED CtrEn: 
+0x0803d678,1,0x08005938,LED Ctr: 
+0x0803d684,1,0x08005938,LED Timer: 
+0x0803d690,1,0x08005938,LED Mode: 
+0x0803d69c,1,0x08005938,Soft Timer: 
+0x0803d6ac,1,0x08005938,Language: 
+0x0803d6b8,1,0x08005938,Dry Control: 
+0x0803d6c8,1,0x08005938,Measurement: 
+0x0803d6d8,1,0x08005bec,AC First: 
+0x0803d6ec,1,0x0800a244,YES?
+0x0803d6f4,1,0x0800b5de,     Error:  
+0x0803d704,1,0x0800b5de,     Warning:
+0x0803d714,1,0x0800b5de,               
+0x0803d724,1,0x0800b884,download
+0x0803d730,1,0x0800b884, update 
+0x0803d73c,1,0x0800c9a0, Hybrid Setting 
+0x0803d750,1,0x0800caa6, Parallel Setting 
+0x0803d764,1,0x0800cf88, Smart Load 
+0x0803d774,1,0x0800d0c8, AC Couple 
+0x0803d780,1,0x0800e3f0,NO Fault
+0x0803d78c,1,0x0800e51c,NO Alarm
+0x0803d798,1,0x0800ea54,LCD Ageing Test
+0x0803d7a8,1,0x0800ea54,effects on LCD.
+0x0803d7b8,1,0x0800ea54,1.Pure black
+0x0803d7c8,1,0x0800ea54,2.Pure white
+0x0803d7d8,1,0x0800ea54,3.black and white stripes
+0x0803d7f4,1,0x0800ea54,4.corner pixel grid
+0x0803d808,1,0x0800ea54,Please Press "ENTER".
+0x0803d820,1,0x0800ea54,KEY Ageing Test
+0x0803d830,1,0x0800ea54,Please Press ESC,UP,DOWN,ENTER.
+0x0803d850,1,0x0800ea54,KEY Ageing Test OK
+0x0803d964,1,0x08005938,LED Light Factor|
+0x0803d984,1,0x08005938,Error Record: 
+0x0803d998,1,0x08005938,Alarm Record: 
+0x0803d9e8,1,0x08005bec,null: 
+0x0803dafc,1,0x08005bec,Hybrid
+0x0803db0c,1,0x08005bec,FeedIN 
+0x0803db1c,1,0x08005bec,FeedIN 
+0x0803db84,1,0x08005bec,N_PE_Connect
+0x0803db98,1,0x08005bec,AFCT
+0x0803dba4,1,0x08005bec,AFCT Clear: 
+0x0803dc80,1,0x08005bec,AC Charge
+0x0803dde0,1,0x08005bec,null: 
+0x0803ef4c,1,0x08016078,SNECSNEDEDSNDPOTLAA1SA22
+0x0807f7fc,2,0x08000e44 0x08036958,SNEC
