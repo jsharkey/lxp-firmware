@@ -19,6 +19,7 @@
 #include "inv/relay.h"
 #include "inv/bms_can.h"
 #include "inv/bms_can_map.h"
+#include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map).
@@ -188,6 +189,11 @@ int main(void) {
 
     uint32_t last_render = 0, last_dsp = 0, last_bms = 0;
     for (;;) {
+        /* Publish the safety CPU's decoded USART2 telemetry (grid/PV/bus V,
+         * frequency, temps, inverter current) into the register image before
+         * serving Modbus, so the dongle sees the latest values (docs/30/33). */
+        safety_cpu_publish(g_rt.input_reg, 160);
+
         mb_port_poll(g_ticks);
 
         can_port_poll(on_can_frame);  /* drain battery BMS telemetry -> register image */
