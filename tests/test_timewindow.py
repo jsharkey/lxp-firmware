@@ -12,8 +12,9 @@ evaluator, two ways:
 Run (from repo root):
     python3 tests/test_timewindow.py                       # ours; factory if available
     python3 tests/test_timewindow.py path/to/factory.bin   # name the factory image
-    python3 tests/test_timewindow.py --profile ceaa07 img.bin
-Or: `make test-window`.
+    python3 tests/test_timewindow.py --profile ceaa07 img.bin   # force a profile
+Or: `make test-window`. The factory image profile is auto-detected by default
+(works for the 05-series and 07-series images alike).
 
 Ours always runs (needs only host `cc`). The factory half SKIPS cleanly when
 unicorn or the (proprietary, never-committed) image is absent.
@@ -31,7 +32,7 @@ from timewindow_contract import VECTORS, OursBackend, FactoryBackend  # noqa: E4
 
 # --- argv: optional factory image + profile ---------------------------------
 def _parse(argv):
-    image, symbols, profile, positional = None, None, "com_flat", []
+    image, symbols, profile, positional = None, None, "auto", []
     i = 0
     while i < len(argv):
         a = argv[i]

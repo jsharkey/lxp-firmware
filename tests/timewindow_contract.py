@@ -25,6 +25,8 @@ OptimalChg HR126-131): give our firmware a pure evaluator the same shape as
 acfirst_window_active(), add its vectors here, and point a FactoryBackend
 profile at the corresponding factory evaluator. See docs/35.
 """
+import contextlib
+import io
 import os
 import struct
 import subprocess
@@ -48,35 +50,93 @@ def W(hs, ms, he, me):
     return (pack_window(hs, ms), pack_window(he, me))
 
 
+_EMPTY = (0, 0)
+
+
+def slot(win, idx):
+    """Three-window config with `win` in slot `idx` (0..2), others empty."""
+    w = [_EMPTY, _EMPTY, _EMPTY]
+    w[idx] = win
+    return tuple(w)
+
+
 # --- the shared vectors -----------------------------------------------------
 # Each: (name, windows, hour, minute, expected_active). `windows` is always three
-# {start,end} pairs (6 packed regs) to match HR 152-157 / ACFIRST_NUM_WINDOWS.
-# Mirrors tests/test_acfirst.c so all three layers (host C, ctypes, factory)
-# are held to one spec: start-inclusive, end-exclusive, midnight wrap, empty
-# window never active, multi-window OR.
-_EMPTY = (0, 0)
+# {start,end} pairs (6 packed regs) to match HR 152-157 / ACFIRST_NUM_WINDOWS --
+# the factory evaluator sub_080352d0 reads all three (proven: it reads config
+# +0x64/+0x66, +0x68/+0x6a, +0x6c/+0x6e). Spec: start-inclusive, end-exclusive,
+# midnight wrap when start > end, empty window (start == end) never active, OR
+# across the three windows. Every vector is checked against BOTH our firmware and
+# the factory evaluator, and they are asserted to agree.
 _W_6_8 = W(6, 0, 8, 0)      # 06:00-08:00
-_WRAP = W(22, 0, 2, 0)      # 22:00-02:00 (wraps midnight)
 
 VECTORS = [
-    # single window 06:00-08:00
-    ("05:59 off (before start)",     (_W_6_8, _EMPTY, _EMPTY), 5, 59, False),
-    ("06:00 active (start incl.)",   (_W_6_8, _EMPTY, _EMPTY), 6,  0, True),
-    ("07:30 active",                 (_W_6_8, _EMPTY, _EMPTY), 7, 30, True),
-    ("07:59 active",                 (_W_6_8, _EMPTY, _EMPTY), 7, 59, True),
-    ("08:00 off (end excl.)",        (_W_6_8, _EMPTY, _EMPTY), 8,  0, False),
-    ("09:00 off (after end)",        (_W_6_8, _EMPTY, _EMPTY), 9,  0, False),
-    # empty window (start == end) never active
-    ("empty window never active",    (W(3, 0, 3, 0), _EMPTY, _EMPTY), 3, 0, False),
-    # midnight wrap 22:00-02:00
-    ("23:00 in wrap window",         (_WRAP, _EMPTY, _EMPTY), 23, 0, True),
-    ("01:00 in wrap window",         (_WRAP, _EMPTY, _EMPTY), 1,  0, True),
-    ("02:00 off (wrap end excl.)",   (_WRAP, _EMPTY, _EMPTY), 2,  0, False),
-    ("12:00 off (outside wrap)",     (_WRAP, _EMPTY, _EMPTY), 12, 0, False),
-    # multi-window OR: window 0 empty, window 1 matches
-    ("07:00 active via window 1",    (_EMPTY, _W_6_8, _EMPTY), 7, 0, True),
-    # all windows empty -> never active
+    # --- single daytime window 06:00-08:00, edge behaviour -----------------
+    ("05:59 off (before start)",     slot(_W_6_8, 0), 5, 59, False),
+    ("06:00 active (start incl.)",   slot(_W_6_8, 0), 6,  0, True),
+    ("07:30 active",                 slot(_W_6_8, 0), 7, 30, True),
+    ("07:59 active",                 slot(_W_6_8, 0), 7, 59, True),
+    ("08:00 off (end excl.)",        slot(_W_6_8, 0), 8,  0, False),
+    ("09:00 off (after end)",        slot(_W_6_8, 0), 9,  0, False),
+
+    # --- all three window slots are honoured (same window, each slot) ------
+    ("06-08 in slot 0 @07:00 on",    slot(_W_6_8, 0), 7, 0, True),
+    ("06-08 in slot 1 @07:00 on",    slot(_W_6_8, 1), 7, 0, True),
+    ("06-08 in slot 2 @07:00 on",    slot(_W_6_8, 2), 7, 0, True),
+
+    # --- three distinct windows configured at once -------------------------
+    # w0 02:00-04:00, w1 10:00-11:00, w2 20:00-22:00
+    ("3wins @03:00 -> w0",   (W(2,0,4,0), W(10,0,11,0), W(20,0,22,0)), 3, 0, True),
+    ("3wins @10:30 -> w1",   (W(2,0,4,0), W(10,0,11,0), W(20,0,22,0)), 10, 30, True),
+    ("3wins @21:00 -> w2",   (W(2,0,4,0), W(10,0,11,0), W(20,0,22,0)), 21, 0, True),
+    ("3wins @05:00 -> gap",  (W(2,0,4,0), W(10,0,11,0), W(20,0,22,0)), 5, 0, False),
+    ("3wins @12:00 -> gap",  (W(2,0,4,0), W(10,0,11,0), W(20,0,22,0)), 12, 0, False),
+
+    # --- overlapping windows: OR semantics ---------------------------------
+    # w0 06:00-08:00, w1 07:00-09:00 (overlap 07:00-08:00)
+    ("overlap @07:30 (both)", (W(6,0,8,0), W(7,0,9,0), _EMPTY), 7, 30, True),
+    ("overlap @08:30 (w1)",   (W(6,0,8,0), W(7,0,9,0), _EMPTY), 8, 30, True),
+    ("overlap @05:30 (none)", (W(6,0,8,0), W(7,0,9,0), _EMPTY), 5, 30, False),
+
+    # --- empty / disabled windows ------------------------------------------
+    ("empty window never active",   slot(W(3, 0, 3, 0), 0), 3, 0, False),
+    ("00:00-00:00 empty @12:00",    slot(W(0, 0, 0, 0), 0), 12, 0, False),
     ("all-empty off",               (_EMPTY, _EMPTY, _EMPTY), 10, 0, False),
+
+    # --- midnight edge conditions ------------------------------------------
+    # window that STARTS at midnight: 00:00-06:00 (normal, start=0)
+    ("00:00-06:00 @00:00 on (start incl.)", slot(W(0,0,6,0), 0), 0, 0, True),
+    ("00:00-06:00 @05:59 on",               slot(W(0,0,6,0), 0), 5, 59, True),
+    ("00:00-06:00 @06:00 off (end excl.)",  slot(W(0,0,6,0), 0), 6, 0, False),
+    ("00:00-06:00 @23:59 off",              slot(W(0,0,6,0), 0), 23, 59, False),
+
+    # window that ENDS at midnight: 18:00-00:00 (end packs to 0x0000, start>end
+    # -> wrap branch; active 18:00..23:59, OFF exactly at 00:00)
+    ("18:00-00:00 @18:00 on",               slot(W(18,0,0,0), 0), 18, 0, True),
+    ("18:00-00:00 @23:59 on",               slot(W(18,0,0,0), 0), 23, 59, True),
+    ("18:00-00:00 @00:00 off",              slot(W(18,0,0,0), 0), 0, 0, False),
+    ("18:00-00:00 @17:59 off",              slot(W(18,0,0,0), 0), 17, 59, False),
+
+    # wrap straddling midnight: 23:00-01:00
+    ("23:00-01:00 @23:00 on",               slot(W(23,0,1,0), 0), 23, 0, True),
+    ("23:00-01:00 @23:59 on",               slot(W(23,0,1,0), 0), 23, 59, True),
+    ("23:00-01:00 @00:00 on",               slot(W(23,0,1,0), 0), 0, 0, True),
+    ("23:00-01:00 @00:59 on",               slot(W(23,0,1,0), 0), 0, 59, True),
+    ("23:00-01:00 @01:00 off (end excl.)",  slot(W(23,0,1,0), 0), 1, 0, False),
+    ("23:00-01:00 @12:00 off",              slot(W(23,0,1,0), 0), 12, 0, False),
+
+    # wider wrap 22:00-02:00 incl. exact midnight
+    ("22:00-02:00 @23:00 on",               slot(W(22,0,2,0), 0), 23, 0, True),
+    ("22:00-02:00 @00:00 on",               slot(W(22,0,2,0), 0), 0, 0, True),
+    ("22:00-02:00 @01:00 on",               slot(W(22,0,2,0), 0), 1, 0, True),
+    ("22:00-02:00 @02:00 off (end excl.)",  slot(W(22,0,2,0), 0), 2, 0, False),
+    ("22:00-02:00 @12:00 off",              slot(W(22,0,2,0), 0), 12, 0, False),
+
+    # minute-granularity edges on a wrap
+    ("22:30-01:15 @22:29 off",              slot(W(22,30,1,15), 0), 22, 29, False),
+    ("22:30-01:15 @22:30 on",               slot(W(22,30,1,15), 0), 22, 30, True),
+    ("22:30-01:15 @01:14 on",               slot(W(22,30,1,15), 0), 1, 14, True),
+    ("22:30-01:15 @01:15 off",              slot(W(22,30,1,15), 0), 1, 15, False),
 ]
 
 
@@ -138,14 +198,37 @@ PROFILES = {
         verified=True,
     ),
     "ceaa07": dict(
-        eval_entry=0x080352D0,   # sub_080352d0 (docs/25)
+        eval_entry=0x080352D0,   # sub_080352d0 (docs/25); reads RTC min/hour +
+                                 # the 3 AC-First windows at settings+0x64..+0x6e
         settings=0x2000C85C, win_off=0x64,
         rtc=0x2000D850,          # +1 = minute, +2 = hour (calendar 0x2000d850)
         win_timer=None,
         status_word=0x2000D890,  # bit 24 = any AC-First window active
-        verified=False,
+        verified=True,           # confirmed green on ceaa-07xx_vE_260214
     ),
 }
+
+
+def _seed_and_eval(Emu, p, image, symbols, windows, hour, minute):
+    """Seed only the RTC + window config a window evaluator reads, call it in
+    isolation, and return its 'any window active now' verdict (status bit 24)."""
+    emu = Emu(image, symbols)                   # fresh sandbox per call
+    regs = flat_regs(windows)
+    emu.wbytes(p["settings"] + 0x60, bytes(0x30))          # clear the window region
+    for i in range(len(windows)):
+        base = p["settings"] + p["win_off"] + 4 * i        # start@+0, end@+2, stride 4
+        emu.uc.mem_write(base + 0, struct.pack("<H", regs[2 * i] & 0xFFFF))
+        emu.uc.mem_write(base + 2, struct.pack("<H", regs[2 * i + 1] & 0xFFFF))
+    emu.uc.mem_write(p["settings"] + 0x0b, struct.pack("<H", 0x0100))  # enable config paths
+    emu.uc.mem_write(p["settings"] + 0x1a, bytes([0x01]))
+    emu.wbytes(p["rtc"], bytes(8))
+    emu.uc.mem_write(p["rtc"] + 1, bytes([minute & 0xFF]))
+    emu.uc.mem_write(p["rtc"] + 2, bytes([hour & 0xFF]))
+    if p["win_timer"] is not None:
+        emu.w32(p["win_timer"] & ~1, 0)                    # debounce off -> evaluate now
+    emu.w32(p["status_word"], 0)
+    emu.call(p["eval_entry"])
+    return bool((emu.r32(p["status_word"]) >> 24) & 1)
 
 
 class Skip(Exception):
@@ -153,12 +236,20 @@ class Skip(Exception):
 
 
 class FactoryBackend:
-    def __init__(self, image, symbols=None, profile="com_flat"):
+    """The factory AC-First evaluator, called in isolation under Unicorn.
+
+    profile="auto" (default) identifies the right PROFILES entry for the given
+    image by probing: the entry whose evaluator reads active at 07:00 and
+    inactive at 09:00 for a 06:00-08:00 window. So `make test-window` works for
+    either the 05-series (com_flat) or 07-series (ceaa07) image with no flag.
+    """
+    def __init__(self, image, symbols=None, profile="auto"):
         self.image = image
         self.symbols = symbols
-        self.profile_name = profile
-        self.p = PROFILES[profile]
-        self.name = "factory (%s, %s)" % (os.path.basename(image), profile)
+        self.requested = profile
+        self._p = None if profile == "auto" else PROFILES[profile]
+        self._pname = profile
+        self.name = "factory (%s, %s)" % (os.path.basename(image or "?"), profile)
         self._Emu = None
 
     def available(self):
@@ -178,26 +269,28 @@ class FactoryBackend:
             self._Emu = Emu
         return self._Emu
 
+    def _resolve(self):
+        if self._p is not None:
+            return self._p
+        Emu = self._emu()
+        probe = slot(W(6, 0, 8, 0), 0)
+        for name, p in PROFILES.items():
+            try:
+                # a wrong profile may fault; emu prints a stop line -- hush it
+                with contextlib.redirect_stdout(io.StringIO()):
+                    on = _seed_and_eval(Emu, p, self.image, self.symbols, probe, 7, 0)
+                    off = _seed_and_eval(Emu, p, self.image, self.symbols, probe, 9, 0)
+            except Exception:
+                continue
+            if on and not off:
+                self._p, self._pname = p, name
+                self.name = "factory (%s, %s)" % (os.path.basename(self.image), name)
+                return p
+        raise Skip("could not identify a factory evaluator profile for %s"
+                   % os.path.basename(self.image or "?"))
+
     def active(self, windows, hour, minute):
         if not self.available():
             raise Skip("needs unicorn + factory image (%s)" % self.image)
-        Emu = self._emu()
-        p = self.p
-        emu = Emu(self.image, self.symbols)   # fresh sandbox per vector (no state bleed)
-        regs = flat_regs(windows)
-        # seed only the window config + RTC the evaluator reads
-        emu.wbytes(p["settings"] + 0x60, bytes(0x20))          # clear window region
-        for i in range(len(windows)):
-            base = p["settings"] + p["win_off"] + 4 * i
-            emu.uc.mem_write(base + 0, struct.pack("<H", regs[2 * i] & 0xFFFF))
-            emu.uc.mem_write(base + 2, struct.pack("<H", regs[2 * i + 1] & 0xFFFF))
-        emu.uc.mem_write(p["settings"] + 0x0b, struct.pack("<H", 0x0100))  # enable config paths
-        emu.uc.mem_write(p["settings"] + 0x1a, bytes([0x01]))
-        emu.wbytes(p["rtc"], bytes(8))
-        emu.uc.mem_write(p["rtc"] + 1, bytes([minute & 0xFF]))
-        emu.uc.mem_write(p["rtc"] + 2, bytes([hour & 0xFF]))
-        if p["win_timer"] is not None:
-            emu.w32(p["win_timer"] & ~1, 0)
-        emu.w32(p["status_word"], 0)
-        emu.call(p["eval_entry"])
-        return bool((emu.r32(p["status_word"]) >> 24) & 1)
+        return _seed_and_eval(self._emu(), self._resolve(),
+                              self.image, self.symbols, windows, hour, minute)
