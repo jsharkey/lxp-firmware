@@ -81,6 +81,8 @@ test:
 	@./$(BUILD)/test_dsp_config
 	$(HOSTCC) $(HOSTFLAGS) src/variant.c tests/test_variant.c -o $(BUILD)/test_variant
 	@./$(BUILD)/test_variant
+	$(HOSTCC) $(HOSTFLAGS) src/can/bms_can.c tests/test_bms_can.c -o $(BUILD)/test_bms_can
+	@./$(BUILD)/test_bms_can
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.

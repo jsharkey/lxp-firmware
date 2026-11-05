@@ -218,9 +218,14 @@ The common test `test_can_battery_soc_soh_reaches_modbus` injects a `0x355`
 frame and checks the values surface on Modbus input register 5 (`IR_SOC_SOH`),
 pinning the full **CAN → register image → Modbus** path.
 
-It is **expected-red** today: our com-MCU reimplementation has no CAN reader yet,
-and the factory image polls CAN1 from an RTOS task the harness does not schedule.
-It is scaffolding for the battery-telemetry work, not a passing check.
+Our com-MCU reimplementation now implements the receive side: `can_port_init` /
+`can_port_poll` (`src/can/can_port.c`) bring up CAN1 (remapped to PB8/PB9) and
+drain FIFO 0 each main-loop pass, `bms_can_on_frame` (`src/can/bms_can.c`,
+host-tested by `tests/test_bms_can.c`) decodes `0x355`, and `main` publishes
+SOC/SOH to `IR_SOC_SOH` — so the test **passes against our firmware**. It still
+**fails against the factory image**, which polls CAN1 from an RTOS task the
+harness does not schedule. The ARM also sends a ~1 Hz keep-alive (`0x305`) to
+prompt the pack's telemetry.
 
 ## Reproduce the frame analysis
 

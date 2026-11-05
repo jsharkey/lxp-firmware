@@ -360,12 +360,13 @@ crossed from CAN to Modbus. The CAN plumbing is `tests/arm_sim_can.py`
 handle — no `tools/arm_sim.py` change — matching the recovered fact that the
 com-MCU polls CAN1 with no IRQ (docs/20).
 
-> **Scaffolding — expected-red.** This is a harness start, not a passing test:
-> our firmware has no CAN reader yet, and the factory polls CAN1 from an RTOS
-> task the harness does not schedule, so SOC/SOH does not reach IR 5 on either
-> image. It fails cleanly (our build reads IR 5 = 0; the factory sends no reply
-> at all) and pins the CAN → register-image → Modbus contract for when the ARM
-> battery-telemetry path lands.
+> **Green on ours; still red on the factory.** Our firmware now implements this
+> end to end: `can_port_init`/`can_port_poll` (`src/can/can_port.c`) drain CAN1
+> FIFO 0 each loop, `bms_can_on_frame` (`src/can/bms_can.c`) decodes `0x355`, and
+> `main` publishes it to `IR_SOC_SOH` — so the test passes against
+> `build/firmware.bin`. It **fails against the factory image**, which polls CAN1
+> from an RTOS task the harness does not schedule (so it sends no reply). The
+> decoder also has a host unit test (`tests/test_bms_can.c`, under `make test`).
 
 ## Running the tests
 

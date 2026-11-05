@@ -82,6 +82,49 @@ typedef struct {
 #define USART_CR1_TE  (1UL << 3)
 #define USART_CR1_RE  (1UL << 2)
 
+/* ---- AFIO (alternate-function remap) ---- */
+typedef struct {
+    __IO uint32_t EVCR; __IO uint32_t MAPR; __IO uint32_t EXTICR[4]; __IO uint32_t MAPR2;
+} AFIO_TypeDef;
+#define AFIO ((AFIO_TypeDef *)(APB2PERIPH_BASE + 0x0000UL))   /* 0x40010000 */
+#define RCC_APB2ENR_AFIOEN       (1UL << 0)
+#define AFIO_MAPR_CAN_REMAP      (3UL << 13)
+#define AFIO_MAPR_CAN_REMAP_PB89 (2UL << 13)   /* CAN1: RX=PB8, TX=PB9 (docs/16) */
+
+/* ---- bxCAN (CAN1) ---- */
+typedef struct { __IO uint32_t TIR, TDTR, TDLR, TDHR; } CAN_TxMailBox_TypeDef;
+typedef struct { __IO uint32_t RIR, RDTR, RDLR, RDHR; } CAN_FIFOMailBox_TypeDef;
+typedef struct { __IO uint32_t FR1, FR2; } CAN_FilterRegister_TypeDef;
+typedef struct {
+    __IO uint32_t MCR, MSR, TSR, RF0R, RF1R, IER, ESR, BTR;
+    uint32_t RESERVED0[88];
+    CAN_TxMailBox_TypeDef   sTxMailBox[3];
+    CAN_FIFOMailBox_TypeDef sFIFOMailBox[2];
+    uint32_t RESERVED1[12];
+    __IO uint32_t FMR, FM1R;
+    uint32_t RESERVED2;
+    __IO uint32_t FS1R;
+    uint32_t RESERVED3;
+    __IO uint32_t FFA1R;
+    uint32_t RESERVED4;
+    __IO uint32_t FA1R;
+    uint32_t RESERVED5[8];
+    CAN_FilterRegister_TypeDef sFilterRegister[14];
+} CAN_TypeDef;
+#define CAN1 ((CAN_TypeDef *)(APB1PERIPH_BASE + 0x6400UL))    /* 0x40006400 */
+#define RCC_APB1ENR_CAN1EN  (1UL << 25)
+#define CAN_MCR_INRQ        (1UL << 0)
+#define CAN_MCR_SLEEP       (1UL << 1)
+#define CAN_MSR_INAK        (1UL << 0)
+#define CAN_MSR_SLAK        (1UL << 1)
+#define CAN_TSR_TME0        (1UL << 26)
+#define CAN_RF0R_FMP0       (3UL << 0)         /* messages pending count */
+#define CAN_RF0R_RFOM0      (1UL << 5)         /* release FIFO 0 output mailbox */
+#define CAN_RIR_TXRQ        (1UL << 0)         /* (TIR) transmit request        */
+#define CAN_RIR_RTR         (1UL << 1)
+#define CAN_RIR_IDE         (1UL << 2)
+#define CAN_FMR_FINIT       (1UL << 0)
+
 /* ---- Cortex-M3 core: SysTick, SCB, NVIC ---- */
 typedef struct {
     __IO uint32_t CTRL; __IO uint32_t LOAD; __IO uint32_t VAL; __IO uint32_t CALIB;
