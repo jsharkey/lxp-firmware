@@ -145,12 +145,18 @@ PORT ?= 8080
 hmi: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 	python3 tools/hmi_app.py --bin $(BUILD)/$(TARGET).bin --elf $(BUILD)/$(TARGET).elf --port $(PORT)
 
-# The FACTORY graphic HMI on screen, driven by the real factory image executing
-# in the emulator (tools/factory_hmi_app.py, docs/23). Needs the factory .bin.
-# Override the port with PORT=... ; open http://localhost:$(PORT)/ .
-FACTORY_PORT ?= 8090
+# The interactive graphic-HMI simulator on screen (tools/factory_hmi_app.py,
+# docs/23): renders whatever firmware's real LCD output and feeds the four keys.
+# It is firmware-agnostic — defaults to the open-source build; pass FIRMWARE=path
+# to run a vendor .hex/.bin instead. Open http://localhost:$(HMI_PORT)/ .
+HMI_PORT ?= 8090
+FIRMWARE ?=
+hmi-sim: $(if $(FIRMWARE),,$(BUILD)/$(TARGET).bin)
+	python3 tools/factory_hmi_app.py $(FIRMWARE) --port $(HMI_PORT)
+
+# Convenience: the factory image specifically.
 factory-hmi: $(FACTORY_BIN)
-	python3 tools/factory_hmi_app.py --port $(FACTORY_PORT)
+	python3 tools/factory_hmi_app.py $(FACTORY_BIN) --port $(HMI_PORT)
 
 # Aggregate: build/convert whatever's needed up front (the factory .bin only when
 # an image is available), run all blocks, then fail if any did. Green on our
@@ -172,4 +178,4 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory hmi factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory hmi hmi-sim factory-hmi

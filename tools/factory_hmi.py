@@ -21,7 +21,7 @@ reference/symbols.csv.
 import os, sys, time
 import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
-from arm_sim import ArmSim
+from arm_sim import ArmSim, load_symbols_nm, load_symbols_csv
 from tft import attach_tft, mono, W, H, PANEL_W, PANEL_H
 from unicorn import UC_HOOK_MEM_READ
 
@@ -41,11 +41,32 @@ CAN_END  = 0x40006420          # doesn't burn its slice spinning (docs/19)
 TICK = 4000
 
 
+def _resolve_symbols(firmware, symbols):
+    """Best-effort symbol table (the renderer never needs it, but it's handy):
+    an explicit .elf/.csv, else the .elf beside a build/*.bin, else the factory
+    reference/symbols.csv, else none."""
+    try:
+        if symbols and symbols.endswith(".elf"): return load_symbols_nm(symbols)
+        if symbols and symbols.endswith(".csv"): return load_symbols_csv(symbols)
+        if firmware.endswith(".bin"):
+            elf = firmware[:-4] + ".elf"
+            if os.path.exists(elf): return load_symbols_nm(elf)
+        if os.path.exists("reference/symbols.csv"): return load_symbols_csv("reference/symbols.csv")
+    except Exception:
+        pass
+    return {}
+
+
 class FactoryHmi:
-    def __init__(self, image="reference/com_flat.bin", symbols="reference/symbols.csv",
-                 verbose=True, tick=TICK):
+    """Runs ANY firmware image for this MCU and renders its LCD output. Pass a
+    firmware path (a vendor .hex or a flat .bin); with none, it uses the
+    open-source build (build/firmware.bin). The harness is identical either way
+    (config flash, RTOS engine, SysTick, the LCD + key model), so the simulator
+    is agnostic about which firmware it runs."""
+    def __init__(self, firmware=None, symbols=None, verbose=True, tick=TICK):
         self.verbose = verbose
-        self.sim = ArmSim.from_image(image, symbols=symbols)
+        self.firmware = firmware or "build/firmware.bin"
+        self.sim = ArmSim.from_image(self.firmware, symbols=_resolve_symbols(self.firmware, symbols))
         self.sim.attach_config_flash(cs_pin="PA4", spi_base=0x40013000)
         self.sim.uc.hook_add(UC_HOOK_MEM_READ, self._can_ready, begin=CAN_BASE, end=CAN_END)
         self.tft = attach_tft(self.sim)
@@ -70,22 +91,27 @@ class FactoryHmi:
         """Boot through config + scheduler until the display task has painted a
         stable screen. Returns self."""
         t0 = time.time()
-        self._log("factory HMI: booting through RTOS ...")
+        self._log("booting %s ..." % os.path.basename(self.firmware))
         try: self.sim.run_reset(max_insn=warmup)
         except Exception: pass
-        self._settle(chunk=2_000_000, max_chunks=20, quiet=2, need=800)
+        # Settle on any stable non-blank screen. The floor must be low — the
+        # factory overview is ~1500 lit px but the open build's "hello world" is
+        # only tens — and the picture stabilises only after a full draw (mid-draw
+        # chunks keep changing), so a low floor doesn't stop us early.
+        self._settle(chunk=2_000_000, max_chunks=24, quiet=2, need=10)
         self._booted = True
         self._log("  booted, screen settled (%d px, %.0fs)"
                   % (int((self.tft.gram != 0).sum()), time.time() - t0))
         return self
 
-    def _settle(self, chunk=800_000, max_chunks=30, quiet=2, jitter=30, need=200):
+    def _settle(self, chunk=800_000, max_chunks=30, quiet=2, jitter=90, need=200):
         """Run until the screen goes quiet — a repaint has landed and successive
-        chunks differ by at most `jitter` pixels (the on-screen clock changes a
-        few pixels each second, which must not count as "still drawing") — then
-        stop. Stopping *promptly* matters: the emulated clock is fast, so a long
-        settle would burn enough device-time to trip the firmware's menu idle
-        timeout and bounce back to the overview before we capture the new screen."""
+        chunks differ by at most `jitter` pixels — then stop. `jitter` must be
+        large enough to ignore the ticking on-screen clock (at the fast emulated
+        clock the seconds roll several times during a boot, and a digit change is
+        tens of pixels) but far below a real repaint (hundreds+). Stopping
+        *promptly* also matters: a long settle burns enough device-time to trip
+        the firmware's menu idle timeout and bounce back to the overview."""
         prev = self.tft.gram.copy()
         still = 0
         for _ in range(max_chunks):
@@ -126,7 +152,10 @@ class FactoryHmi:
 
 
 if __name__ == "__main__":
-    h = FactoryHmi().boot()
-    out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/factory_overview.png"
+    # usage: factory_hmi.py [firmware.hex|firmware.bin] [out.png]
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    fw = next((a for a in args if a.endswith((".hex", ".bin"))), None)
+    out = next((a for a in args if a.endswith(".png")), "/tmp/hmi.png")
+    h = FactoryHmi(firmware=fw).boot()
     h.save_png(out)
     print("saved", out)
