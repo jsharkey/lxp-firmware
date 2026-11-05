@@ -31,6 +31,10 @@ typedef struct {
     /* 0x351 limits */
     uint16_t charge_volt_dv; /* charge voltage limit, 0.1 V (0x351 [0:1]) */
     bool     limits_valid;
+    /* 0x359 protection / alarm bitfields */
+    uint16_t fault_bits;     /* protection bitfield (0x359 [0:1]) */
+    uint16_t warn_bits;      /* alarm/warning bitfield (0x359 [2:3]) */
+    bool     alarms_valid;
 } bms_pack_t;
 
 /* Reset decoded state. */
