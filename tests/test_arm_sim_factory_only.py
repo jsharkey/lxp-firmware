@@ -27,7 +27,8 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
-from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
+from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
+                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B)
 from arm_sim_runner import Skip, run_tests
 
 # Factory flat-.bin image under test. Set by the __main__ runner from argv.
@@ -97,6 +98,40 @@ def test_relay_follows_working_mode():
         assert _run_relay_factory(st) == 1, "factory: PC6 should be closed for state 0x%02x" % st
     for st in NONRUN_STATES:
         assert _run_relay_factory(st) == 0, "factory: PC6 should be open for state 0x%02x" % st
+
+
+# --- safety-CPU telemetry -> Modbus input registers (docs/30, docs/33) ------
+# The factory decodes the safety CPU's USART2 telemetry into its bank at
+# 0x20009e54 (docs/33). The harness does not run the DMA+RTOS ingest task, so we
+# present the telemetry already in that bank -- where the factory's own register
+# getter reads it -- and read it back over the dongle. The getter + scaling +
+# Modbus serialisation exercised are entirely the factory's. (arm_sim_safety.py.)
+FAC_SAFETY_BANK = 0x20009e54
+
+
+def _safety_factory():
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_safety import FakeSafetyCpu
+    sim = _factory()
+    return FakeSafetyCpu(sim, FAC_SAFETY_BANK, ModbusDongle(sim))
+
+
+def test_safety_cpu_telemetry_reaches_modbus():
+    """Safety-CPU telemetry (grid/PV/bus V, frequency, radiator temps, inverter
+    current) must reach the dongle's Modbus input registers with the right
+    register and scaling, and must TRACK CHANGES over time (a second, fluctuated
+    snapshot reads back its new values -- the register image is live, not a
+    one-shot cache). The factory image is the oracle for the shared telemetry
+    contract (SAFETY_TELEMETRY); our side is in test_arm_sim_self_only.py."""
+    fake = _safety_factory()
+    for label, snapshot in (("A", SAFETY_TELEMETRY_A), ("B", SAFETY_TELEMETRY_B)):
+        fake.send(snapshot)
+        for name, raw in snapshot.items():
+            _off, ir, _sc = SAFETY_TELEMETRY[name]
+            exp = fake.expected(name, raw)
+            got = fake.served(name)
+            assert got == exp, ("factory snapshot %s: %s -> IR %d = %r, expected "
+                                "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
