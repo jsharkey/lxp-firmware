@@ -207,6 +207,21 @@ byte (`==1` / `==5` / `==6` branches).
   `0x350–0x360` core + `0x300`/`0x370–0x38c`/`0x4xx` IDs), TX `sub_0800574c`. See
   [`docs/16` → "CAN1 ↔ battery BMS"](16-arm-io-map.md).
 
+## Testing the CAN contract (harness scaffolding)
+
+A black-box test of this contract is started in the GPIO/IO harness
+([`docs/19`](19-gpio-test-harness.md)): `tests/arm_sim_can.py` (`CanBattery`)
+stands in for the pack on CAN1, injecting telemetry frames (e.g. `0x355`
+SOC/SOH) by modelling the bxCAN receive FIFO 0 at `0x40006400` — the registers
+the com-MCU's **polled** reader touches (no IRQ; see the Status bind item above).
+The common test `test_can_battery_soc_soh_reaches_modbus` injects a `0x355`
+frame and checks the values surface on Modbus input register 5 (`IR_SOC_SOH`),
+pinning the full **CAN → register image → Modbus** path.
+
+It is **expected-red** today: our com-MCU reimplementation has no CAN reader yet,
+and the factory image polls CAN1 from an RTOS task the harness does not schedule.
+It is scaffolding for the battery-telemetry work, not a passing check.
+
 ## Reproduce the frame analysis
 
 ```bash

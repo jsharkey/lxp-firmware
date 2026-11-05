@@ -44,6 +44,7 @@ DEFAULT_ADDR = 1
 DEFAULT_SN   = b"0000000000"
 
 FC_READ_HOLDING = 0x03
+FC_READ_INPUT   = 0x04
 FC_WRITE_SINGLE = 0x06
 _SN_LEN   = 10
 _HDR      = 2 + _SN_LEN             # addr + func + SN, before the body
@@ -146,12 +147,21 @@ class ModbusDongle:
         return None if resp is None else struct.unpack_from("<H", resp, _HDR + 2)[0]
 
     def read_holding(self, reg, n=1):
-        """Function 0x03. Returns a list of n register values, or None if no
-        valid read-response frame was transmitted."""
-        req = _frame(self.addr, FC_READ_HOLDING, struct.pack("<HH", reg, n), self.sn)
+        """Function 0x03 (holding registers). Returns a list of n register
+        values, or None if no valid read-response frame was transmitted."""
+        return self._read(FC_READ_HOLDING, reg, n)
 
-        def match(w):   # read response: addr func SN start nBytes data CRC
-            return (w[0] == self.addr and w[1] == FC_READ_HOLDING and _crc_ok(w)
+    def read_input(self, reg, n=1):
+        """Function 0x04 (input registers, e.g. IR_SOC_SOH = 5). Returns a list
+        of n register values, or None if no valid response frame was sent."""
+        return self._read(FC_READ_INPUT, reg, n)
+
+    def _read(self, func, reg, n):
+        # 0x03 and 0x04 share the response layout (addr func SN start nBytes data CRC).
+        req = _frame(self.addr, func, struct.pack("<HH", reg, n), self.sn)
+
+        def match(w):
+            return (w[0] == self.addr and w[1] == func and _crc_ok(w)
                     and w[_HDR + 2] == 2 * n)
 
         resp = self._txn(req, _HDR + 3 + 2 * n + _CRC, match)
