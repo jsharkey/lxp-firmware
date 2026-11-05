@@ -92,7 +92,7 @@ class ModbusDongle:
     perform one request/response transaction each."""
 
     def __init__(self, sim, addr=DEFAULT_ADDR, sn=DEFAULT_SN,
-                 systick=20_000, boot_insn=2_000_000, txn_insn=4_000_000):
+                 systick=20_000, boot_insn=1_000_000, txn_insn=4_000_000):
         self.sim = sim
         self.addr = addr
         self.sn = bytes(sn)
@@ -129,17 +129,31 @@ class ModbusDongle:
         def on_dr_read(uc, access, addr, size, value, ud):
             if self._rx:
                 uc.mem_write(MB_DR, struct.pack("<I", self._rx.pop(0)))
+                # Interrupt-driven RX: while bytes remain, re-pend the IRQ so the
+                # ISR runs again immediately -- bytes are delivered back-to-back
+                # instead of one per run-chunk, which is most of the speed-up. An
+                # ISR that takes one byte per interrupt gets one re-pend per byte;
+                # a drain-all ISR re-pends per byte too but pend_irq is idempotent,
+                # so it collapses to a single (harmless) extra delivery. (A polled
+                # firmware reads DR from its loop with RXNEIE clear -> no pend.)
+                if self._rx and (self.sim.r32(MB_CR1) & CR1_RXNEIE):
+                    self.sim.pend_irq(USART3_VEC)
             return True
 
         def on_dr_write(uc, access, addr, size, value, ud):
             self._tx.append(value & 0xFF)
+            # Interrupt-driven TX: the ISR writes one byte per TXE IRQ; while it
+            # still wants to send (TXEIE set), re-pend so the rest of the reply
+            # drains back-to-back.
+            if self.sim.r32(MB_CR1) & CR1_TXEIE:
+                self.sim.pend_irq(USART3_VEC)
             # Stop as soon as our reply appears as a contiguous tail window (the
             # DSP push shares this UART, so count-based stopping won't do).
             if self._resp is None and self._rlen and len(self._tx) >= self._rlen:
                 window = bytes(self._tx[-self._rlen:])
                 if self._match(window):
                     self._resp = window
-                    self.sim._halt = True      # break the SysTick chunk loop
+                    self.sim._halt = True      # break the run-chunk loop
                     uc.emu_stop()
             return True
 

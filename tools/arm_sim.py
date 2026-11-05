@@ -265,6 +265,7 @@ class ArmSim:
         self._insns = 0                        # instructions executed this RTOS run (block hook)
         self._tick_mark = 0                    # next _insns value at which a SysTick comes due
         self._pending_irqs = []                # peripheral IRQ vector numbers awaiting delivery
+        self._pendsv_set = False               # mirror of ICSR.PENDSVSET (cheap flag for the block hook)
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -561,27 +562,44 @@ class ArmSim:
         # block boundary (never mid-instruction, unlike a store hook) is safe: PC
         # is left on a real instruction, so nothing re-executes.
         self.uc.hook_add(UC_HOOK_BLOCK, self._on_block)
+        # Track PENDSVSET with a cheap flag set here (ICSR writes are rare) so the
+        # per-block hook never has to read ICSR from memory to notice a pending
+        # context switch.
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_icsr_write,
+                         begin=SCB_ICSR, end=SCB_ICSR + 4)
         return self
+
+    def _on_icsr_write(self, uc, access, addr, size, value, ud):
+        if value & (1 << 28):                                # PENDSVSET
+            self._pendsv_set = True
 
     def pend_irq(self, vecnum):
         """Pend a peripheral interrupt (vector number, e.g. 16+IRQn) for the RTOS
         engine to deliver as soon as it is in thread mode with interrupts enabled.
         The factory receives the RS485/dongle UART purely by RX interrupt, so a
         harness must pend that IRQ to feed it bytes; polling its SR/DR is never
-        done by the firmware. Requires enable_rtos()."""
-        self._pending_irqs.append(vecnum)
+        done by the firmware. Requires enable_rtos(). Idempotent while the IRQ is
+        still queued -- like a real NVIC pending bit, re-asserting a line that is
+        already pending does not stack a second delivery (so a drain-all-bytes ISR
+        that re-pends per byte produces one delivery, not one per byte)."""
+        if vecnum not in self._pending_irqs:
+            self._pending_irqs.append(vecnum)
         return self
 
     def _on_block(self, uc, addr, size, ud):
-        self._insns += max(1, size // 2)                     # ~thumb instructions in the block
+        # Hot path -- runs on every basic block, so it is kept to a few local
+        # operations and makes NO Unicorn calls in the common case (nothing
+        # pending). (size >> 1 approximates the thumb instruction count; exactness
+        # does not matter for the tick cadence.)
+        self._insns += size >> 1
         if self._insns >= self._tick_mark:
             self._systick_due = True
             self._tick_mark = self._insns + self._tick_interval
-        # Stop to let _run_rtos take a pending exception as soon as it is allowed
-        # (thread mode, interrupts enabled). Both SysTick and PendSV qualify.
-        if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1) \
-                and (self._pending_irqs or self._systick_due
-                     or (self.r32(SCB_ICSR) & (1 << 28))):
+        if not (self._systick_due or self._pendsv_set or self._pending_irqs):
+            return                                           # nothing pending -> done
+        # A SysTick is due, a PendSV is set, or an IRQ is queued: stop so
+        # _run_rtos can take it (only legal in thread mode with interrupts on).
+        if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1):
             uc.emu_stop()
 
     # We do NOT rely on Unicorn's CONTROL.SPSEL banking: in practice it does not
@@ -673,6 +691,7 @@ class ArmSim:
         uc.reg_write(UC_ARM_REG_PC, ret_pc | 1)
 
     def _pendsv_pending(self):
+        self._pendsv_set = False                             # consume the block-hook hint
         icsr = self.r32(SCB_ICSR)
         if (icsr & (1 << 28)) and self._exc_depth == 0:
             self.w32(SCB_ICSR, icsr & ~(1 << 28))
