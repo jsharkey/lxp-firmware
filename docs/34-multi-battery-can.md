@@ -12,7 +12,11 @@ Short answers, from static RE of both ends plus harness probes:
    already flow). The frame *ranges* are confirmed in the battery image.
 2. **But this inverter firmware does not surface them on the dongle Modbus.**
    The ARM receives and buffers the extended frames in RAM, yet publishes none of
-   them to an input/holding register — confirmed three independent ways. So the
+   them to an input/holding register — confirmed **four independent ways** (three
+   ARM-side, plus a dongle-side check added in §2). And there is **no
+   "undocumented register" path either**: the per-pack bytes never reach the
+   aligned register image the Modbus getters serve, so *no* register read — any
+   address, any function code, documented or not — can return them. So the
    per-pack data is *on the wire* but the `ceaa-07xx` inverter **aggregates to one
    logical pack** for the dongle.
 3. **Firmware-update-over-CAN is plausible and the primitives are present** (the
@@ -73,12 +77,28 @@ frames are **received and buffered** but **not published to any Modbus register*
   USART2-bank→register sweep ([`docs/33`](33-usart2-telemetry-bank.md)) list a
   **single aggregate BMS block** (IR 81–106) and nothing per-battery; the input
   map tops out around IR 152.
+- **The dongle end defines no per-pack registers — it is a transparent conduit.**
+  Checked from the *dongle's own* firmware ([`docs/26`](26-dongle-firmware.md), the
+  attached `E_V2_12` ESP32-C3 image): it carries **no inverter register map and no
+  BMS-specific command** of its own. Its RS-485 layer is a generic byte pipe —
+  `RS485Service` exposes `SendBytes(port, buf, len)` (+ `uart_wait_tx_done`) and a
+  `UartRxTask`, shuttling **opaque** EG4-Modbus frames between its cloud/BLE side
+  and the inverter; `RS485App.c` is mostly logging and queue plumbing, with **no
+  on-device function-code / register dispatch**. So nothing on the dongle asks for
+  — or could decode — a per-pack bank; it relays whatever (aggregate) registers
+  the cloud polls and the ARM serves. (The extended `0x21/0x22/0x23` family that
+  *is* a non-register path is the **DSP** bootloader/config protocol on USART3
+  [`docs/05`](05-dsp-link.md)/[`docs/08`](08-arm-dsp-config-protocol.md), reached
+  by the ARM as master — not something the UART5 dongle issues for BMS data.)
 
 **Conclusion.** The per-battery data genuinely crosses the single CAN link and
 reaches the inverter's RAM, but the `ceaa-07xx` firmware **aggregates to one
 logical battery** for the dongle Modbus — there is no per-pack register bank on
-this image. If an EG4 tool shows per-pack detail, it is via another channel (the
-battery's own RS485/BLE, or a newer inverter build), not these Modbus registers.
+this image, documented **or undocumented**. Both ends agree: the ARM never stages
+the per-pack frames into the served register image, and the dongle has no
+mechanism to pull them (it only relays aggregate register reads). If an EG4 tool
+shows per-pack detail, it is via another channel (the battery's own RS485/BLE, or
+a newer inverter build), not these Modbus registers.
 *(This also explains quirk Q1 in [`docs/31`](31-factory-quirks.md): with the real
 max-cell-voltage frame `0x373` never wired to IR 101, the `0x355` high-res SOC
 field bleeds into that slot.)*

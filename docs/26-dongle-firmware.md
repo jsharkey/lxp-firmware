@@ -89,6 +89,16 @@ dongle on UART5 is provisioned to 9600.
 > capture** on the physical dongle port would. Either way it does **not** move the
 > dongle back to USART3 — the register handler is on UART5 regardless of baud.
 
+> **The dongle is a transparent byte conduit, not a register-aware poller.** Its
+> RS-485 layer is a generic pipe — `RS485Service` → `SendBytes(port, buf, len)`
+> (+ `uart_wait_tx_done`) and a `UartRxTask` — relaying **opaque** EG4-Modbus
+> frames between its cloud/BLE side and the inverter; `RS485App.c` is mostly
+> logging and queue plumbing, with no on-device register/function-code dispatch.
+> Consequence: the dongle can only surface data the ARM already serves as a
+> register — it cannot reach anything the ARM leaves in private RAM. That is why
+> the per-battery BMS stats carried on CAN never come out this way — see
+> [`docs/34`](34-multi-battery-can.md).
+
 ## Mapping that onto the ARM
 
 From [docs/16](16-arm-io-map.md) and [docs/05](05-dsp-link.md), the ARM drives

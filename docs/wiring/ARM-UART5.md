@@ -56,6 +56,16 @@ no crossing a 40-register group boundary, else exception `0x02`.
 on USART3 (where the ARM is itself the master of the DSP link) — this is the
 decisive argument that the dongle is on UART5.
 
+The dongle is a **transparent byte conduit**, not a register-aware poller: its
+firmware exposes a generic `RS485Service` → `SendBytes(port, buf, len)` plus a
+`UartRxTask` that relay **opaque** EG4-Modbus frames between its cloud/BLE side
+and this bus, with no on-device register map or function-code dispatch
+([`docs/26`](../26-dongle-firmware.md)). So the dongle can only surface what the
+ARM already serves as a register — it cannot reach data the ARM leaves in private
+RAM. This is why the per-battery BMS stats carried on CAN1 (`0x311–0x321` /
+`0x370–0x381`) never come out here: the ARM buffers them but maps none to a
+register ([`docs/34`](../34-multi-battery-can.md)).
+
 ## Key functions / files
 
 - Factory: handler `sub_0802afe2` @ `0x40005000`, buffer `0x20008ca4`.
