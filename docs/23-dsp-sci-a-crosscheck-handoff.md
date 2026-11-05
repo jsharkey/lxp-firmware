@@ -91,3 +91,55 @@ cleanest single anchor (decoded directly from `sub_08024d74`).
 | telemetry bank | `0x20009e54` (served as input regs by `sub_0803289c`) |
 | state classifier | `sub_0801b480` → IR_STATE at `0x2000a0d8+0x90` |
 | BE u16 reader / CRC | `sub_08014db8` / `sub_08014bec` |
+
+---
+
+## RESOLUTION (DSP side): refuted — the DSP emits mode+telemetry on **SCI-B**, not a dedicated SCI-A
+
+Checked against the decoded DSP images (12000XP `CEAA`, where this hand-off's named
+functions live, and the 18kPV `fAAB` as a cross-check).
+
+**The frame content matches, and the mode is DSP-produced (confirms docs/22's core point).**
+The DSP's telemetry builder `FUN_00096EE8` emits exactly the frame the ARM parses:
+`[0]=0x49` (DSP→ARM SOF) · `[1]=0x01` (type) · `[2:3]` length · **`[4] = the operating-mode
+byte`** (`DAT_0000AD64 & 0xff`, written by the DSP state machine — e.g. the `…|0x4000/
+0x1000/0x8000` mode/status bits) · big-endian status fields · bulk telemetry from `[0x14]`
+via `FUN_00092110` (PV / grid-V / frequency) · **CRC-16/MODBUS** trailer (`FUN_00081034`,
+`0xA001`). So the mode byte at frame **`+4`** and the BE telemetry **originate in the DSP** —
+the handoff's point 3 is confirmed.
+
+**But it is transmitted on SCI-B, the config port — not a separate SCI-A.** The telemetry
+path is `FUN_0009DD14 → FUN_0009D358`, and `FUN_0009D358` drives **`DAT_0000aefe` = SCI-B**
+(the port binding is set in `FUN_0009E6D7`/`FUN_0009DB5F`: SCI-A→`aefc`, SCI-B→`aefe`).
+SCI-B is the confirmed ARM link (bootloader `0x21/0x22/0x23`, docs/05) = **ARM USART3**. So
+the DSP's mode+telemetry frame goes out the **same bidirectional SCI-B/USART3** as the
+config push.
+
+**The DSP has no second ARM-facing telemetry port.** Its other SCI ports don't match
+USART2's profile (19200, RS-485 DE on PC2):
+- **SCI-A** (`aefc`) *is* used for TX — `FUN_0009C3FD` feeds `SCIA_SCITXBUF` — but it sends
+  **unrelated bulk `LS4_RAM` records (0x1F8-byte, strided)** at ~9600 baud, **not** the
+  type-1 telemetry frame.
+- On the 18kPV, **SCI-C** is the `'T'`/`'D'` sub-controller link (docs/13), SCI-A/C run
+  ~9600; only SCI-B runs ~19200. Neither DSP writes a second `0x49`/type-1 telemetry frame
+  on another port (the 18kPV has **no `=0x49`** builder at all).
+
+### Verdict
+
+This is the hand-off's **refute** branch: *the DSP has no SCI-A TX of this frame, and SCI-A
+carries an unrelated protocol.* The DSP emits its working-state + PV/grid/freq telemetry on
+**SCI-B → ARM USART3**. Therefore the DSP-domain telemetry the ARM parses on **USART2 is not
+a direct DSP SCI-A link** — it is **relayed** (consistent with docs/22's "routed via the
+redundant safety CPU" alternative), or is a re-emitted copy of the SCI-B telemetry.
+
+**Actionable follow-up for the ARM side:** the DSP telemetry (SOF `0x49`, docs/10) is sent on
+SCI-B = **USART3** — the same port as config. So the ARM's **USART3** RX (the SOF-`0x49`
+parser `0x0801BA98` / ctx `0x2000AF60`, docs/10) should already carry this mode/PV/grid/freq
+data. Check whether USART3's parser populates the same quantities as the USART2 bank
+(`0x20009e54`); if it does, **USART3 is the direct DSP telemetry and USART2 is the relay**,
+and the `docs/22` residual limit resolves to "relayed, not a second DSP SCI."
+
+> Caveat: the hand-off's ARM shows 3-phase R/S/T (18kPV-class). The two DSP images on hand
+> each expose a single ~19200 ARM port (SCI-B); neither has a dedicated SCI-A telemetry TX.
+> If the MPPT/3-phase product pairs with a DSP build not analyzed here, a dedicated SCI-A
+> can't be excluded outright — but it is absent from both images available.

@@ -293,6 +293,13 @@ The two directions use **different SOF bytes**, which is why the DSP RX
 - **DSP → ARM** (telemetry): SOF **`0x49`**, built by the DSP's `FUN_00096EE8`
   and checked by the ARM RX `FUN_0801bb0e`.
 
+> **Physical port (docs/23):** the DSP transmits this `0x49` telemetry on **SCI-B**
+> (`FUN_0009DD14→FUN_0009D358→`SCI-B pointer `DAT_0000aefe`) — the *same* bidirectional
+> port as the config push, i.e. **ARM USART3**, not a separate SCI-A. Its `[4]` byte is
+> the DSP's operating/working-state (`DAT_0000AD64`), followed by BE PV/grid/freq from
+> `FUN_00092110`. So a second DSP-domain telemetry stream the ARM sees on **USART2**
+> (docs/22) is **relayed**, not a direct DSP SCI-A — see [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md).
+
 ### Consequence for the regs 64-89 → DSP map
 
 The config does **not** reach the DSP through the func-3 read path the `docs/17`
