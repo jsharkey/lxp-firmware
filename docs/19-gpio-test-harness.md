@@ -357,16 +357,50 @@ on the battery bus and then reads IR 5 over the dongle, asserting the values
 crossed from CAN to Modbus. The CAN plumbing is `tests/arm_sim_can.py`
 (`CanBattery`), which models just enough of the bxCAN receive FIFO 0 at
 `0x40006400` (the registers a polled reader touches) through the sim's `uc`
-handle — no `tools/arm_sim.py` change — matching the recovered fact that the
-com-MCU polls CAN1 with no IRQ (docs/20).
+handle — no `tools/arm_sim.py` change. (The FIFO-0 model fits a polled *or*
+interrupt-driven reader; the factory turns out to use the latter — below.)
 
 > **Green on ours; still red on the factory.** Our firmware now implements this
 > end to end: `can_port_init`/`can_port_poll` (`src/can/can_port.c`) drain CAN1
 > FIFO 0 each loop, `bms_can_on_frame` (`src/can/bms_can.c`) decodes `0x355`, and
 > `main` publishes it to `IR_SOC_SOH` — so the test passes against
-> `build/firmware.bin`. It **fails against the factory image**, which polls CAN1
-> from an RTOS task the harness does not schedule (so it sends no reply). The
+> `build/firmware.bin`. It **fails against the factory image** for harness
+> reasons, not a contract mismatch — see *Why the factory is red* below. The
 > decoder also has a host unit test (`tests/test_bms_can.c`, under `make test`).
+
+#### Why the factory is red (empirical diagnosis)
+
+Instrumenting the factory image's CAN1 / USART3 register access pins this down —
+none of it a contract mismatch. The **Modbus read-back half now works**:
+`ModbusDongle` brings the factory up (`attach_config_flash()` + `enable_rtos()`)
+and drives USART3 **by interrupt** (`pend_irq`), so the factory's ISR parses the
+`0x04` request and replies — `read_input(5)` returns a real `[0]` (not `None`).
+The failure is entirely on the **CAN ingest** side, and sits in three layers:
+
+1. **Unmodelled CAN init handshake.** The factory's CAN bring-up busy-waits on
+   `CAN1->MSR` — the `INRQ → INAK` (enter/leave init) acknowledge the harness
+   doesn't model: **65 537** MSR reads and no progress. Modelling *INAK follows
+   INRQ* (and *SLAK follows SLEEP*) drops that to **4** reads; init completes.
+2. **CAN RX is interrupt-driven, not polled.** The factory writes
+   `CAN1->IER = 0x2` (**FMPIE0** = FIFO-0-message-pending interrupt) and never
+   reads `RF0R`. `CanBattery` only presents a frame in the FIFO passively — it
+   doesn't pend the IRQ. With (1) modelled and `pend_irq(36)` (`CAN1_RX0`,
+   vector 16+20), the factory's ISR **does fire and drain the mailbox**
+   (`RF0R`/`RI0R` read, `RFOM0` released) — the `0x355` frame is consumed.
+   *(This corrects the docs/20 "polled, no IRQ" note — see docs/20.)*
+3. **Ingested ≠ published.** Even with (1)+(2) — the ISR confirmed draining the
+   frame — `IR_SOC_SOH` still reads `0`. The ISR only lands the frame in the
+   factory's CAN **ring** (`0x200051ac`, docs/20); a separate parser/consumer
+   (`sub_0802a760`) must process the ring and publish SOC/SOH into the Modbus
+   input-register image, and that step isn't reached/satisfied in the harness
+   (it likely gates on battery-online / keep-alive handshake state). This is the
+   real remaining blocker and needs more RE of the factory's CAN→IR path.
+
+So the Modbus plumbing is solved; closing the CAN side needs a factory-aware
+`CanBattery` (model the `MSR` handshake + `pend_irq(CAN1_RX0)`, mirroring what
+`ModbusDongle` does for USART3) **and** driving the factory far enough that its
+BMS consumer publishes to the register image. That is a harness/RE gap, not a
+gap in our firmware or the test contract.
 
 ## Running the tests
 
