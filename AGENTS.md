@@ -1,0 +1,118 @@
+# AGENTS.md — working agreement for agents (and humans) in this repo
+
+This repo is a **collaborative reverse-engineering + reimplementation** effort
+with **several agents working in parallel**, plus humans. These rules keep us
+from tripping over each other. Read this before your first commit, and skim it
+again at the start of each prompt.
+
+If a prompt tells you to do something different, the prompt wins. Otherwise,
+follow this.
+
+## Git workflow
+
+- **Commit directly to `main`.** Do **not** create working branches, and do
+  **not** open pull requests. The history on `main` *is* the shared record of
+  what's been learned.
+- **Pull the latest `main` before you start each prompt**, and **rebase (never
+  merge) before you push**:
+
+  ```bash
+  git pull --rebase origin main
+  # ...do the work, commit...
+  git pull --rebase origin main   # again, right before pushing
+  git push origin main
+  ```
+
+  Several agents are committing in parallel, so `main` very likely moved while
+  you worked. Rebasing keeps history linear and surfaces collisions early.
+- **Keep commits small and focused** — one logical change each, so another
+  agent can follow the accumulating record and rebase cleanly. Push promptly
+  rather than sitting on a large batch; the longer you hold work, the more you
+  diverge from the others.
+- **Commit message style** (match the existing log): `area: imperative summary`,
+  e.g. `docs/30: trace the FW-version fields to their per-CPU source`,
+  `firmware/tests: flow 0x359 bitfields to Modbus`, `hmi-sim: robust boot cache`.
+- **Never force-push `main`** or rewrite shared history. If a rebase gets
+  messy, stop and resolve it honestly rather than discarding others' commits.
+
+## Don't stumble over each other
+
+**The `docs/` numbering is the #1 collision point.** Docs are
+`docs/NN-slug.md`, numbered roughly in discovery order. Two agents who both
+grab "the next number" while offline will collide — this has already happened
+(`10-`, `21-`, and `23-` each exist twice).
+
+- Before creating a doc, **pull `main`** and pick the next free `NN` from the
+  *current* `ls docs/` — not from memory, not from a number you reserved
+  earlier.
+- **If you rebase and find your number is now taken on `main`, you are the
+  later arrival: renumber *your* file**, not the one already landed. Update the
+  doc's `# Title` line if it references the number, fix every cross-reference
+  (`docs/NN`) and the README links, all in the same commit. (See the existing
+  "renumber to avoid collision" commits for the pattern.)
+- **Cross-reference by slug in prose** where you can, and **always fix links
+  when a file moves.** A dead `docs/NN` link is how the next agent gets lost.
+
+**Coordinate through the README Status checklist** (`README.md`,
+"Status: bootstrapping"). It is the shared roadmap:
+
+- Pick an unchecked `[ ]` box or a `[~]` in-progress item to work on; scan the
+  checklist *and recent commits* first so you don't redo work already in flight.
+- When you finish something, **check its box and add the `docs/NN` link in the
+  same commit** that lands the work. That's how the other agents see it's done.
+
+**Hand-offs are a first-class pattern.** When your work depends on evidence you
+can't reach yourself (another firmware image, a domain you can't run), write a
+short hand-off doc that states *exactly* what's needed — see
+`docs/17`, `docs/23`, `docs/30` for the established style. Don't block; pass the
+baton.
+
+## Never commit the proprietary images
+
+The factory firmware binaries are **proprietary and must stay out of the tree.**
+`.gitignore` already excludes `reference/*.bin`, `reference/*.hex`, `*.hex`,
+`reference/com_flat.bin`, and `.hmi_cache/`.
+
+- **Never `git add -f`** any of those, and never paste large verbatim dumps of
+  proprietary code/data into docs or source. Describe findings; cite addresses.
+- The integrity record for those images is the hash table in `README.md` — keep
+  it, don't replace it with the files.
+
+## Build & test before you push
+
+Don't push red. Run what's relevant to what you touched:
+
+```bash
+make test        # host unit tests — always, if you touched src/ or include/
+make test-sim    # GPIO/HMI behaviour tests — if you touched GPIO/HMI/emulator
+make             # 12000XP build; add VARIANT=18kpv / VARIANT=6000xp if touched
+```
+
+- `tools/` are **read-only RE scripts** — they read the images in `reference/`
+  and emit analysis; they do not modify firmware. Keep them non-destructive.
+- If a test can't run because it needs a proprietary image you don't have, say
+  so explicitly in your commit/notes rather than pretending it passed.
+
+## Claims discipline (this project lives or dies on it)
+
+The whole corpus is scrupulous about **proven vs inferred vs guessed** — note
+the `[x]`/`[~]`/`[ ]` markers, phrases like "proven", "both ends proven",
+"pending the ARM image", and "corrects the docs/16 guess". Match that bar:
+
+- Label findings by confidence and **cite the evidence**: function address
+  (`FUN_...`/`sub_...`), the tool used, which image/variant, static vs dynamic.
+- **Don't upgrade a hypothesis to a fact.** "Dynamic capture on both ends"
+  outranks "two static enumerations agree" outranks "plausible from strings".
+- When you **correct** an earlier doc, say so and leave a pointer from the old
+  doc to the new finding — don't silently diverge. The next agent will trust
+  what's written.
+
+## Orientation
+
+- `README.md` — scope, strategy, status checklist, build matrix. Start here.
+- `docs/` — the recovered specification; `docs/01` and `docs/02` are the
+  baseline.
+- `include/inv/` — the recovered data model (states, faults, settings,
+  modbus_map, hmi_menu, variant). Source of truth for the reimplementation.
+- `src/` — the GCC skeleton firmware (modbus / uart / can / hmi / dsp).
+- `tests/`, `tools/` — host tests and the Unicorn emulator / on-screen HMI.
