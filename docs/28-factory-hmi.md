@@ -6,7 +6,7 @@ LCD reconstructs the picture, and the four front-panel keys drive the firmware's
 own menu navigation. Both the **overview** and the **Common settings** screens
 render pixel-faithfully and are reachable by key.
 
-This is distinct from the open-firmware HMI (`docs/22`), which is our own 20×4
+This is distinct from the open-firmware HMI (`docs/27`), which is our own 20×4
 character-LCD reimplementation. Here nothing is reimplemented: every pixel is the
 factory image's draw code executing.
 

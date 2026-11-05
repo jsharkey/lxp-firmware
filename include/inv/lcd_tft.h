@@ -1,7 +1,7 @@
 /*
  * lcd_tft — the factory HMI's graphic LCD, as a driver for our firmware.
  *
- * This targets the SAME panel the factory image drives (docs/23), so our
+ * This targets the SAME panel the factory image drives (docs/28), so our
  * firmware is a drop-in on the real hardware:
  *   - bit-banged 4-wire serial on GPIOB: PB12 SCLK, PB13 SDA, PB14 DC, PB15 /CS,
  *   - MIPI-DCS command set (CASET / RASET / RAMWR), MSB-first,

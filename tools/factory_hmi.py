@@ -40,7 +40,7 @@ for _n in ("CPSR", "CONTROL", "PRIMASK", "BASEPRI", "FAULTMASK", "MSP", "PSP", "
         _CACHE_REGS[_n] = _c
 
 # Front-panel keys (docs/16): PA8, PA11, PC8, PC9, active-low. Functional names
-# recovered by driving the factory menu (docs/23): PA11 is ENTER/select.
+# recovered by driving the factory menu (docs/28): PA11 is ENTER/select.
 KEYS = ["PA8", "PA11", "PC8", "PC9"]
 
 CAN_BASE = 0x40006400          # bxCAN; fake its "ready" bits so the CAN-poll task

@@ -9,7 +9,7 @@ on GPIOB**:
     PB12 = SCLK   PB13 = SDA   PB14 = DC (0=command, 1=data)   PB15 = /CS
 
 (docs/16 previously listed PB12/13/15 as a "status-LED bank"; dynamic RE shows
-they are the LCD bus — see docs/23.) Bytes are shifted MSB-first; the command
+they are the LCD bus — see docs/28.) Bytes are shifted MSB-first; the command
 primitive is `sub_080114d2(rs, byte)` and the byte-banger `sub_08011dd0`.
 
 The panel is **128x160, 1 byte per pixel**. The firmware draws straight into the

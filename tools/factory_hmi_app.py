@@ -23,7 +23,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))
 from factory_hmi import FactoryHmi, PANEL_W, PANEL_H
 
-# Recovered key map (docs/23). The panel has 4 keys; names are the behaviour
+# Recovered key map (docs/28). The panel has 4 keys; names are the behaviour
 # observed driving the factory menus.
 KEY_BUTTONS = [
     ("PC9",  "Up",    "▲"),
