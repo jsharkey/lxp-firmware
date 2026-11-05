@@ -173,6 +173,16 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 
+# Focused time-window micro-tests (docs/35): a cheap complement to test-sim that
+# drives ONLY the AC-First window-vs-RTC evaluator -- no boot, no Modbus. The SAME
+# vectors run against our compiled acfirst.c (via ctypes) and the factory ARM
+# evaluator called in isolation under Unicorn. The "ours" half needs only host
+# `cc`; the factory half runs when an image + unicorn are present, else skips.
+# Leaves `test` and `test-sim` unchanged -- this is an additional, narrow suite.
+test-window: $(if $(HAVE_FACTORY),$(FACTORY_BIN))
+	@mkdir -p $(BUILD)
+	python3 tests/test_timewindow.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
+
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App
 # (the 18kPV bootloader below that address is NOT part of this image).
@@ -182,4 +192,4 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory hmi hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window factory hmi hmi-sim factory-hmi

@@ -188,9 +188,16 @@ window, and re-pointing the window moves the active band with it — so the bit
 tracks the configured times, not a fixed range. Internal `0x2000d890` bit 24
 moves in lock-step.
 
-**Test:** `tests/test_arm_sim.py::test_modbus_acfirst_window_tracks_rtc` pins
-this black-box contract (TDD scaffolding for our firmware, which does not yet
-evaluate the AC-First windows against the RTC).
+**Test (full-sim):** `tests/test_arm_sim.py::test_modbus_acfirst_window_tracks_rtc`
+pins this black-box contract end-to-end over the Modbus slave.
+
+**Test (focused, cheaper):** `make test-window`
+(`tests/test_timewindow.py`) drives **only** the window-vs-RTC evaluator — our
+pure `acfirst_window_active()` via ctypes and the factory evaluator called in
+isolation under Unicorn — against the same vectors, with no boot. See
+[`docs/35`](35-focused-microtests.md) for the pattern (and how to extend it to
+the HR 64-89 / HR 126-131 schedules). This is the narrow companion to the
+full-sim test above.
 
 ## Provenance
 
