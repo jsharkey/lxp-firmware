@@ -123,8 +123,9 @@ Traced from the USART3 frame-ready flag (`0x200004b8`) and the dispatchers:
 validation on dongle writes was not found in the traced paths (frame-level
 checks are present; value bounds may be delegated to the DSP / enforced by the
 HMI's per-item min/max). And a byte-exact *DSP command frame* couldn't be pinned
-by static RE alone — which physical UART is the DSP vs the dongle is the missing
-anchor. Best evidence still says: **ARM = timekeeper + config/HMI + bridge; the
+by static RE alone. (The "which physical UART is the DSP vs the dongle" anchor is
+no longer missing — DSP = USART3, dongle = UART5; see the Update note at the end
+of this doc.) Best evidence still says: **ARM = timekeeper + config/HMI + bridge; the
 DSP evaluates the real-time time-window rules** (the protocol's `0x10` = "SN +
 time only" means time is explicitly pushed to whoever evaluates).
 
@@ -224,6 +225,16 @@ This resolves the "push vs pull" question from the DSP end. The one piece still
 formally pending the schematic is the physical pin mapping ARM-USART3 ↔
 DSP-SCI-B — but the byte-exact frame-length match, the shared CRC-16, and the
 shared `"EDSN"`/`0x21-0x23` vocabulary make that pairing all but certain.
+
+> **Update — the "DSP vs dongle" UART ambiguity raised throughout this doc is now
+> resolved.** The ARM↔DSP link is **USART3** (SCI-B) and the external dongle is a
+> **separate** link on **UART5** (`0x40005000`, handler `sub_0802afe2`): see
+> [`docs/16`](16-arm-io-map.md) (pin/peer map), [`docs/08`](08-arm-dsp-config-protocol.md)
+> (the UART5 dongle handler + the dual-mode ARM serializer), and
+> [`docs/26`](26-dongle-firmware.md) (the dongle's own firmware — an RS-485
+> half-duplex master datalogger — confirming it from the far end). So the ranked
+> steps below that aimed to *pin* the DSP UART are largely answered; (2)'s
+> data-flow trace landed on USART2 as the DSP→ARM telemetry writer (docs/22).
 
 ## How to finish (ranked)
 

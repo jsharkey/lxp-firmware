@@ -13,6 +13,31 @@ observable that motivated the dig (§3).
 > placeholder (`src/dsp/dsp_link_port.c`) for the factory. The factory uses
 > **separate UARTs**, as shown below. This file supersedes that draft.
 
+> **Superseded — dongle attribution (see [`docs/26`](26-dongle-firmware.md)).**
+> §1 below concluded the external dongle talks to a register slave on **USART3**
+> and that **"UART5 at 9600 is unlikely to be the dongle."** That attribution is
+> **retracted.** Three things overturn it:
+> 1. The dongle's *own* firmware ([`docs/26`](26-dongle-firmware.md)) shows it is
+>    an RS-485 **half-duplex master** with a **field-configurable baud** — so a
+>    9600 UART5 is exactly a dongle set to the inverter's rate. The "EG4 Modbus is
+>    19200 → not UART5" argument does not hold; baud is not a discriminator.
+> 2. Static RE ([`docs/08`](08-arm-dsp-config-protocol.md)) locates the dongle's
+>    standard-Modbus register handler `sub_0802afe2` on **UART5 `0x40005000`**
+>    (RX buffer `0x20008ca4`) — the handler is on UART5, not USART3.
+> 3. The black-box probe below saw "no reply on UART5" because that handler is a
+>    **gated scheduler task** a cold probe can't start (docs/08 says so in as many
+>    words) — a **false negative**, not evidence against UART5. What *did* answer
+>    on USART3 is the ARM's dual-mode bridge serializer in its LE+SN ("dongle")
+>    mode (`sub_0803373c`, flag `0x2000aa0b` bit 0 — docs/08) and/or simply the
+>    port our own harness is wired to (our reimplementation binds Modbus to
+>    USART3 — docs/04).
+>
+> **Corrected map: dongle = UART5; USART3 = the ARM↔DSP (SCI-B) bridge + bootloader
+> link.** The baud table, the register-space split (§2) and the AC-First
+> observable (§3) are all unaffected — note only that §3's harness reaches those
+> registers over USART3 as a *reimplementation* convenience, while the factory
+> serves the dongle on UART5.
+
 ## 1. The UARTs are five independent links — not one shared wire
 
 Proven in ceaa-07xx (dynamic, under `tools/arm_sim.py`):
@@ -41,41 +66,42 @@ Proven in ceaa-07xx (dynamic, under `tools/arm_sim.py`):
   | UART4 | PC10/PC11 | `0x61a8` | **2400** | yes | RX+TX |
   | UART5 | PC12/PD2 | `0x186a` | **9600** | yes | RX+TX |
 
-- **There is exactly one EG4-Modbus register slave, and it is USART3.** EG4
-  Modbus runs at 19200 ([`docs/04`](04-modbus.md)); the only 19200 full-duplex
-  port is USART3. A black-box probe (feed a framed `0x03` read, pend the RX IRQ,
-  capture the TX) gets a **valid EG4 reply only on USART3** (`01 03 … CRC`,
-  little-endian + 10-byte SN); the same request on USART2/UART4/UART5 draws no
-  Modbus response. A transaction on USART3 touches **only** USART3's data
-  register — it is a self-contained port, not a bus shared with another protocol.
+- **A framed EG4 `0x03` read gets a reply on USART3 in our harness** (feed the
+  read, pend the RX IRQ, capture the TX → `01 03 … CRC`, little-endian + 10-byte
+  SN); the same request on USART2/UART4/UART5 draws nothing. **This does *not*
+  mean USART3 is the dongle port** (see the Superseded banner above): the reply
+  on USART3 is the ARM's dual-mode bridge serializer in LE+SN mode and/or the
+  port our reimplementation wires Modbus to, and the UART5 silence is a false
+  negative — its dongle handler `sub_0802afe2` is a gated scheduler task the cold
+  probe can't start (docs/08). The useful, attribution-independent fact the probe
+  does establish: each UART is a **self-contained port** whose transaction touches
+  only its own data register — the links are not one shared wire.
 
 ### What this says about "dongle vs DSP on the same wire"
 
-Your intuition holds: they are **not** one wire.
+Your intuition holds: they are **not** one wire. The corrected per-link map
+(see the banner; [`docs/16`](16-arm-io-map.md)/[`docs/08`](08-arm-dsp-config-protocol.md)/[`docs/26`](26-dongle-firmware.md)):
 
-- **USART3** is the 19200 EG4-Modbus register interface, on an **RS-485** line
-  (driver-enable on PA0, [`docs/16`](16-arm-io-map.md)) that also carries the
-  firmware-update/bootloader path ([`docs/05`](05-dsp-link.md)). RS-485 is a
-  **multidrop** bus by design, so an external EG4 monitoring dongle sharing it
-  with other EG4 nodes — distinguished by Modbus address + the 10-byte SN — is
-  the **standard, stable** EG4/Luxpower topology, not a risky hack.
-- **USART2** (19200, **RX only**) is a separate TTL link carrying **DSP-domain
-  telemetry** inbound (operating mode + PV/grid V/F → `0x20009e54`), decoded in
-  [`docs/22`](22-arm-dsp-core-split.md). So the DSP's data path is its own wire,
-  distinct from the RS-485 register bus.
-- **UART4 (2400)** and **UART5 (9600)** are slower peers — a 2400 device (an
-  external energy/CT meter is the usual 2400 citizen) and a 9600 device. Because
-  EG4 Modbus is 19200, **UART5 at 9600 is unlikely to be the EG4 dongle**, which
-  refines [`docs/16`](16-arm-io-map.md)'s "UART5 = dongle" guess — it is some
-  other 9600 serial peer.
+- **USART3** (19200, RX+TX) is the **ARM↔DSP (SCI-B)** link — the ARM pushes
+  config (dual-mode serializer `sub_0803373c`, BE+block-tagged to the DSP) and
+  the firmware-update/bootloader `0x21/0x22/0x23` ([`docs/05`](05-dsp-link.md),
+  [`docs/08`](08-arm-dsp-config-protocol.md)). It is *not* the external dongle.
+- **USART2** (19200, **RX only**) carries **DSP-domain telemetry** inbound
+  (operating mode + PV/grid V/F → `0x20009e54`), decoded in
+  [`docs/22`](22-arm-dsp-core-split.md).
+- **UART5 (9600)** is the **external RS-485 dongle / EG4-Modbus register slave** —
+  handler `sub_0802afe2` at `0x40005000`, buffer `0x20008ca4`
+  ([`docs/08`](08-arm-dsp-config-protocol.md)), confirmed from the dongle side as
+  an RS-485 half-duplex **master** with configurable baud
+  ([`docs/26`](26-dongle-firmware.md)). The dongle is configured to UART5's 9600;
+  the earlier "19200 ⇒ not UART5" reasoning is void (baud is configurable).
+- **UART4 (2400)** is a slower external peer (a 2400 device — an external
+  energy/CT meter is the usual 2400 citizen); still unidentified.
 
-**Still open (defer to [`docs/16`](16-arm-io-map.md)/[`docs/22`](22-arm-dsp-core-split.md)/[`docs/23`](23-dsp-sci-a-crosscheck-handoff.md)):**
-the precise DSP-vs-external attribution of the 19200 ports (is USART3 the
-external RS-485 dongle, the DSP SCI-B that the DSP polls, or a multidrop bus the
-DSP also sits on?), the ARM→DSP command/config TX port, and the UART4/UART5 peer
-identities. These need the schematic or the DSP-side cross-check in progress. The
-narrow, solid claim here: **the ARM exposes one 19200 EG4-Modbus register slave
-(USART3), and DSP telemetry is a separate 19200 RX link (USART2).**
+**Still open:** the ARM→DSP command/config TX pin pairing (schematic-level) and
+the **UART4** peer identity. The dongle-vs-DSP attribution that §1 originally left
+open is now **resolved**: **dongle = UART5, DSP = USART3** (static handler on
+UART5 + the dongle-firmware corroboration above).
 
 ## 2. Register spaces: holding vs input (the "126" trap)
 
@@ -126,7 +152,8 @@ write lands byte-exactly there). A window is active iff **`start ≤ now < end`*
 
 `sub_08018d44` is a telemetry **value computation** into a RAM status bank
 (`0x2000d9b0…`, with float scaling) — not a UART/DSP frame builder. That bank is
-read out over the EG4-Modbus register slave (USART3). The chain:
+read out over the EG4-Modbus register slave (reached via our USART3-wired harness;
+the factory serves this to the dongle on UART5 — see the banner). The chain:
 
 ```
 sub_080352d0 → 0x2000dbc2 → 0x2000d890 bit24 → 0x2000da3a bit4 → telemetry → IR 126 bit8
@@ -162,8 +189,10 @@ evaluate the AC-First windows against the RTC).
 ## Provenance
 
 - **Proven in ceaa-07xx this round:** five independent UART ISRs; the post-boot
-  baud table (USART3/USART2 = 19200, UART4 = 2400, UART5 = 9600, USART1 off); a
-  single EG4-Modbus register slave on USART3 (probe + DR-access trace); the
+  baud table (USART3/USART2 = 19200, UART4 = 2400, UART5 = 9600, USART1 off); an
+  EG4-Modbus register slave responding over USART3 **in our harness** (probe +
+  DR-access trace) — now understood as the ARM↔DSP bridge path / our own Modbus
+  binding, **not** the dongle port, which is UART5 (banner, docs/08, docs/26); the
   input-vs-holding register-space split; and the AC-First comparison site
   `sub_080352d0` → `IR 126 bit 8` funnel, not pushed to the DSP.
 - **Inherited / cross-referenced:** the DSP SCI-B identity and bootloader/CRC

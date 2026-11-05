@@ -55,8 +55,8 @@ Honest picture of where things stand:
 - [ ] Document the **ARM↔DSP internal protocol** (the remaining hard interface)
 - [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
-- [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
-- [x] **Interrupt-driven USART3** — RX/TX ring buffers serviced from the USART3 ISR, matching the factory (its only vectored UART); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
+- [x] **Modbus-RTU slave** — engine + UART port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md)). *Port note:* the engine is currently bound to **USART3** in our skeleton; the factory serves the external dongle's EG4-Modbus on **UART5** (USART3 is the ARM↔DSP link), so the port binding is slated to move USART3→UART5 — see [`docs/26-dongle-firmware.md`](docs/26-dongle-firmware.md)
+- [x] **Interrupt-driven UART** — RX/TX ring buffers serviced from the USART3 ISR, mirroring the factory's interrupt-driven UART mechanism (USART3 is its only vectored UART — the DSP link); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
 - [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
@@ -118,8 +118,10 @@ descriptors are always linked in. Flash to the variant's base: `0x08000000`
 
 Requires `gcc-arm-none-eabi` (build) and a host `cc` (tests). The firmware boots,
 runs the 72 MHz clock init, starts a 1 ms SysTick, and services a Modbus-RTU
-slave over USART3 against a shared register model — the foundation the remaining
-subsystems grow into, not yet a functional replacement. Flashing helpers
+slave against a shared register model — the foundation the remaining
+subsystems grow into, not yet a functional replacement. (The slave is bound to
+USART3 in the skeleton; in the factory the external dongle's EG4-Modbus is on
+**UART5** while USART3 is the ARM↔DSP link — [`docs/26`](docs/26-dongle-firmware.md).) Flashing helpers
 (ST-Link / OpenOCD) are commented in the `Makefile`; flash to `0x08000000`.
 
 ## Repository layout
