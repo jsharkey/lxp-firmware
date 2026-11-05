@@ -58,7 +58,7 @@ strong inference, **?** open.
 | ARM port | peer | direction / role | conf. |
 |---|---|---|---|
 | **USART3** `0x40004800` | **DSP** (SCI-B) | ARM→DSP config push + firmware-update bootloader (`0x21/0x22/0x23`) | ✔ |
-| **USART2** `0x40004400` | DSP-domain telemetry, **relayed** (not a direct DSP SCI) | DSP→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) — the ARM's core input registers | ✔ data; **port resolved (docs/23): NOT a direct DSP SCI** — the DSP's only 19200 serial port is SCI-B/USART3; its telemetry is TX'd on SCI-B, so USART2 is a relay (candidate: the redundant/safety CPU) |
+| **USART2** `0x40004400` | DSP-domain telemetry, **relayed** (not a direct DSP SCI) | DSP→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) — the ARM's core input registers | ✔ data; **port resolved (docs/23): NOT a direct DSP SCI** — the DSP's only 19200 serial port is SCI-B/USART3; its telemetry is TX'd on SCI-B, so USART2 is a relay (candidate: the redundant/safety CPU — see [`docs/29`](29-safety-cpu.md)) |
 | **CAN1** `0x40006400` (PB8/PB9) | **battery BMS** | ARM↔BMS, polled (`docs/20`) | ✔ |
 | **UART5** `0x40005000` | external **dongle** | EG4 Modbus (LE + SN), external RS-485 | ✔ |
 | **USART1** `0x40013800`, **UART4** `0x40004c00` | meter / console / ? | not pinned from firmware (needs schematic) | ? |
