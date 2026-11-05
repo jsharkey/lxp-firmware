@@ -1,5 +1,7 @@
 # Modbus register spaces, the UART links, and the one EG4-Modbus bus
 
+> **Dongle registers:** the per-register docs and the full register index live in [`docs/modbus-dongle/`](modbus-dongle/README.md) (authoritative). This doc keeps the register-space discussion (the "126 trap") and the AC-First worked example.
+
 > **Authoritative wiring:** the per-UART link details live in [`docs/wiring/`](wiring/README.md). **Note:** §1's "USART2 carries DSP-domain telemetry" is superseded — USART2's peer is the safety CPU, and the bank's measured values are its own (see [`ARM-USART2.md`](wiring/ARM-USART2.md)).
 
 Two recurring confusions, with the evidence-based answers for the ceaa-07xx

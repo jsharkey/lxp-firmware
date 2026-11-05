@@ -5,6 +5,11 @@
  * The ARM "com" MCU implements this as a Modbus-RTU *slave*. Reproducing this
  * map exactly is a hard requirement for monitoring-tool compatibility.
  *
+ * Per-register prose — what each register means, where its data comes from
+ * (for inputs) and the side-effects of writing it (for holdings) — lives in
+ * docs/modbus-dongle/ (authoritative for the dongle surface). This header is
+ * the machine-readable companion to that tree.
+ *
  * TARGET DEVICE NOTE: this map is the 18kPV-12LV SUPERSET. The firmware builds
  * for two variants (see include/inv/variant.h): the EG4 18kPV (hybrid, 3 MPPT)
  * uses it in full; the EG4 12000XP (non-hybrid, 2 MPPT) leaves some entries

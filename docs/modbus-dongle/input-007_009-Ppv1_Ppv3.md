@@ -1,0 +1,17 @@
+# IR 7-9 — Ppv1 / Ppv2 / Ppv3 (PV power)
+
+> **Dongle Modbus**, input register (func `0x04`, read-only). Authoritative. See the [index](README.md).
+
+| reg | name | unit | range | note |
+|---|---|---|---|---|
+| IR 7 | Ppv1 | 1 W | 0-65535 | PV1 power |
+| IR 8 | Ppv2 | 1 W | 0-65535 | PV2 power |
+| IR 9 | Ppv3 | 1 W | 0-65535 | PV3 power — **18kPV only** |
+
+## Where the data comes from
+
+**Computed inside the ARM** — it is *not* a bank field. The ARM multiplies the
+relayed PV voltage (IR 1/2, from the USART2 bank) by PV current as a float
+(`sub_0801b034`, `V·I`) — see [`docs/22`](../22-arm-dsp-core-split.md) and the
+"PV power is ARM-computed" note in [`docs/33`](../33-usart2-telemetry-bank.md).
+Vpv3/Ppv3 are inactive on the 12000XP (2-MPPT).

@@ -1,5 +1,7 @@
 # The battery BMS image (`BATT`) — a fifth processor, and the far end of CAN1
 
+> **Dongle registers:** for the dongle-facing view of the BMS registers (IR 81-106) see [`docs/modbus-dongle/input-081_106-BMS.md`](modbus-dongle/input-081_106-BMS.md). This doc remains the BMS image analysis + CAN frame contract.
+
 > **Authoritative wiring:** the ARM-side CAN1↔BMS link is distilled in [`docs/wiring/ARM-CAN1.md`](wiring/ARM-CAN1.md). This doc remains the BMS image analysis and frame contract.
 
 Analysis of the attached firmware `BATT_IN280-Z03T13.bin`

@@ -1,5 +1,7 @@
 # Modbus-RTU slave
 
+> **Dongle registers:** per-register facts for the dongle Modbus surface (what each register means, where its data comes from, side-effects of writes) now live in [`docs/modbus-dongle/`](modbus-dongle/README.md) (authoritative). This doc keeps the slave engine, framing and 40-register query-rule contract.
+
 > **Authoritative wiring:** the external Modbus port (pins, peer, framing) is now specified in [`docs/wiring/ARM-UART5.md`](wiring/ARM-UART5.md). This doc keeps the register/framing contract and the engine design.
 
 The com MCU is a Modbus-RTU **slave** on RS-485. This is the first real
