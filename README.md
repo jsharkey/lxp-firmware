@@ -58,6 +58,7 @@ Honest picture of where things stand:
 - [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
 - [x] **Interrupt-driven USART3** — RX/TX ring buffers serviced from the USART3 ISR, matching the factory (its only vectored UART); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
+- [x] **HMI runs on screen** — the firmware's LCD + keypad **port implemented** (20×4 HD44780 over a bit-banged PCF8574 I²C backpack; keys on the factory pins PA8/PA11/PC8/PC9) and driven end-to-end in the emulator by an **interactive app** (`make hmi`): it renders what the running firmware draws and feeds the four front-panel keys as on-screen buttons via the real GPIOs. Host-tested key→LCD path (`tests/test_hmi_panel.py`). The factory SPI1 panel protocol is still undecoded (`docs/16`); this clean, observable panel stands in until then (see [`docs/22-hmi-emulator-app.md`](docs/22-hmi-emulator-app.md))
 - [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
 - [ ] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — needs schematic or data-flow trace
@@ -109,7 +110,16 @@ make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
 make VARIANT=18kpv   # EG4 18kPV   (App over ~50 KB bootloader, vectors @0x0800C800)
 make VARIANT=6000xp  # EG4 6000XP  (App over ~20 KB bootloader, vectors @0x08005000)
 make test            # host-side unit tests (no hardware)
+make test-sim        # GPIO/HMI behaviour tests on the Unicorn harness
+make hmi             # interactive on-screen HMI (LCD + keys) in a browser
 ```
+
+`make hmi` boots the firmware in the emulator and serves its HMI — a 20×4
+character LCD plus the four front-panel keys — at `http://localhost:8080/`
+(`PORT=…` to change). Every keypress drives the real key GPIOs; the firmware
+renders the new screen over I²C to a modelled LCD. See
+[`docs/22-hmi-emulator-app.md`](docs/22-hmi-emulator-app.md). Needs
+`pip install unicorn`.
 
 `VARIANT` selects the linker script (`ldscripts/stm32f103ve.ld` vs
 `ldscripts/stm32f103_18kpv_app.ld`) and defines the active variant; both model
@@ -132,11 +142,11 @@ src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleto
 src/modbus/  Modbus-RTU slave engine + USART3 port
 src/uart/    interrupt-driven USART3 driver (RX/TX rings)
 src/can/     CAN1 port (polled RX, as the factory) + BMS frame decoder
-src/hmi/     LCD/keypad menu engine + menu model + port
+src/hmi/     LCD/keypad menu engine + menu model + port (I²C 20×4 HD44780)
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
 ldscripts/   stm32f103ve.ld (12000XP) + *_18kpv_app.ld + *_6kxp_app.ld (App builds)
 tests/       host unit tests (make test)
-tools/       reverse-engineering scripts (read-only, operate on the .bin)
+tools/       RE scripts (read-only) + the Unicorn emulator & on-screen HMI app
 reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
 Makefile     build -> flashable .bin ; make test
 ```

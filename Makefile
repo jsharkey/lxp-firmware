@@ -124,6 +124,7 @@ factory: $(FACTORY_BIN)
 # convenience targets, so the command lines live in one place).
 SIM_OURS_COMMON = python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
 SIM_OURS_SELF   = python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
+SIM_OURS_HMI    = python3 tests/test_hmi_panel.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 SIM_FAC_COMMON  = python3 tests/test_arm_sim.py $(FACTORY_BIN)
 SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
 
@@ -132,10 +133,17 @@ SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
 # never hides the blocks after it. Each file @-prints its own banner header,
 # which stays the sole block delimiter (the recipes are @-silent).
 test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; exit $$rc
+	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_OURS_HMI) || rc=1; exit $$rc
 
 test-sim-factory: $(FACTORY_BIN)
 	@rc=0; $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; exit $$rc
+
+# Interactive on-screen HMI: runs the firmware in the emulator and serves the
+# LCD + 4 front-panel keys in a browser (tools/hmi_app.py). Override the port
+# with PORT=... ; open http://localhost:$(PORT)/ . Needs `pip install unicorn`.
+PORT ?= 8080
+hmi: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
+	python3 tools/hmi_app.py --bin $(BUILD)/$(TARGET).bin --elf $(BUILD)/$(TARGET).elf --port $(PORT)
 
 # Aggregate: build/convert whatever's needed up front (the factory .bin only when
 # an image is available), run all blocks, then fail if any did. Green on our
@@ -144,6 +152,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	@rc=0; \
 	$(SIM_OURS_COMMON) || rc=1; \
 	$(SIM_OURS_SELF) || rc=1; \
+	$(SIM_OURS_HMI) || rc=1; \
 	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 
@@ -156,4 +165,4 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory factory hmi
