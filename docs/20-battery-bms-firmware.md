@@ -126,6 +126,12 @@ core:     0x351 charge V/I limits   0x355 SOC/SOH      0x356 V/I/T
 extended: 0x311–0x321, 0x370–0x381, 0x373/0x379  (per-cell, per-string, extras)
 ```
 
+The **extended ranges carry the per-pack / stack-detail telemetry** (per-battery
+summary, min/max cell voltage & temp, module counts, capacity, version, serial).
+This inverter emits them but does **not** surface them on the dongle Modbus — it
+aggregates to one logical pack. Evidence, and CAN firmware-update findings, in
+[`docs/34` — multi-battery CAN](34-multi-battery-can.md).
+
 Immediately after the table sits the manufacturer-name payload `EG4/LUX`
 (the `0x35E`/`0x370` frame data). The `0x351/0x355/0x356/0x359` core is exactly
 what a Victron/SMA/Deye/EG4 inverter expects to auto-configure charge limits and
