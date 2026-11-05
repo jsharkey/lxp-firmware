@@ -63,7 +63,7 @@ Treat the 18kPV map as a **superset**.
 
 The system has **three processors**, each with a firmware-version byte in the Modbus
 map (HR 9/10). Where each byte actually comes from is traced in
-[`docs/31`](31-firmware-version-registers.md):
+[`docs/32`](32-firmware-version-registers.md):
 
 | Modbus version field | reg · byte | Role | This project? | ARM-side source |
 |---|---|---|---|---|

@@ -169,7 +169,7 @@ enum mb_hold_reg {
          - Communication CPU = this STM32F103 com/HMI MCU  << THIS PROJECT >>
          - Redundant CPU     = the 3rd on-board "safety" MCU (docs/29)
        Traced to source in the factory ARM image (12000XP `ceaa`) via the holding
-       getter `fn_ceaa` @0x08032000 — see docs/31:
+       getter `fn_ceaa` @0x08032000 — see docs/32:
          reg 9  = mov #0x0500                 -> low=0x00, high=0x05
          reg 10 = [0x20009e54+2] | (0x01<<8)  -> low=USART2 bank, high=0x01       */
     HR_SLAVE_COM_VER    = 9,   /* low  = REDUNDANT CPU ver: const 0x00 — not populated
