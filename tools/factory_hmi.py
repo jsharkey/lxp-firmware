@@ -126,8 +126,11 @@ class FactoryHmi:
                 still = 0
             prev = cur.copy()
 
-    def press(self, key, hold=3_000_000):
-        """Press one key (active-low) and run until the screen settles."""
+    def press(self, key, hold=2_000_000):
+        """Press one key (active-low) and run until the screen settles. `hold` is
+        how long the key is held down (in instructions): it must span enough of
+        the firmware's debounced key samples to latch — measured minimum ~1M, so
+        1.2M gives margin while being ~3x shorter than a naive hold."""
         if key not in KEYS:
             raise ValueError("unknown key %r (use %s)" % (key, KEYS))
         self.sim.set_input(key, 0)

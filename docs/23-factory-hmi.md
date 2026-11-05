@@ -80,20 +80,31 @@ Home/Info/Notice/Setting menu, **Down** (PA8) ×3 highlights *Setting*, **Enter*
 
 ## Speed
 
-A full boot executes tens of millions of instructions, so two things make it
-usable (see `tools/arm_sim.py` and `tools/factory_hmi.py`):
+A full boot executes tens of millions of instructions — most of them the
+faithfully-run preemptive RTOS switching tasks while the display waits on timers
+— so several accuracy-preserving tricks make it usable (see `tools/arm_sim.py`
+and `tools/factory_hmi.py`):
 
 - **Scoped STOP hook** (`arm_sim.py`): the harness's `UC_HOOK_CODE` used to fire
   on every instruction; scoping it to the STOP page removes that per-step tax
   with no behaviour change.
+- **PendSV tracked by a flag** (`arm_sim.py`): the RTOS engine must stop at a
+  block boundary the instant a PendSV becomes takeable, which meant reading the
+  `ICSR` register from emulated memory on *every* basic block. Instead a small
+  write-hook mirrors `ICSR.PENDSVSET` into a Python flag the block hook tests for
+  free — behaviour-identical (the write still lands in memory), ~25% off boot.
 - **Fast emulated clock** (`TICK=4000`): the firmware's waits are measured in
   SysTick ticks, so a faster injected clock finishes them in far fewer
   instructions. Combined with a **prompt, jitter-tolerant settle** (stop as soon
   as the frame is quiet apart from the ticking on-screen clock — a long settle
   would burn enough emulated time to trip the menu idle-timeout).
+- A **right-sized key hold**: a press holds the key only as long as the firmware
+  needs to latch it (~2 M instructions, measured), not an arbitrary long press.
 
-Result: boot ~18 s, each keypress ~6 s, ~50 s to drive from reset to the Common
-settings screen (down from ~75 s / ~30 s / ~225 s).
+Result: factory boot ~29 s, each keypress a few seconds; the open-source build
+boots in ~14 s. All of it runs the real firmware — none of these shortcuts skip
+or fake any of its logic (what stays faked is only what the harness always
+models: peripheral-ready flags, the config flash, the bxCAN FIFO).
 
 ## Using it
 

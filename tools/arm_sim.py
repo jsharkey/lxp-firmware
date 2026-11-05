@@ -265,6 +265,9 @@ class ArmSim:
         self._insns = 0                        # instructions executed this RTOS run (block hook)
         self._tick_mark = 0                    # next _insns value at which a SysTick comes due
         self._pending_irqs = []                # peripheral IRQ vector numbers awaiting delivery
+        self._pendsv_req = False                # mirror of ICSR.PENDSVSET, tracked via a write
+                                                # hook so the block hook needn't re-read ICSR memory
+                                                # every block (that read dominated long RTOS runs)
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -316,6 +319,11 @@ class ArmSim:
         # code hook that fires on *every* instruction is the dominant per-step cost
         # (a full factory boot more than halves without it).
         uc.hook_add(UC_HOOK_CODE, self._on_code, begin=STOP, end=STOP + 0x1000)
+        # Track ICSR.PENDSVSET (b28) / PENDSVCLR (b27) as a flag so _on_block can
+        # test pending-PendSV without reading ICSR memory on every basic block.
+        # The write still lands in memory (we return True), so a firmware read of
+        # ICSR stays correct.
+        uc.hook_add(UC_HOOK_MEM_WRITE, self._on_icsr_write, begin=SCB_ICSR, end=SCB_ICSR + 4)
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._on_unmapped)
         self.uc = uc
 
@@ -578,6 +586,11 @@ class ArmSim:
         self._pending_irqs.append(vecnum)
         return self
 
+    def _on_icsr_write(self, uc, access, addr, size, value, ud):
+        if (value >> 28) & 1: self._pendsv_req = True      # PENDSVSET
+        if (value >> 27) & 1: self._pendsv_req = False     # PENDSVCLR
+        return True
+
     def _on_block(self, uc, addr, size, ud):
         self._insns += max(1, size // 2)                     # ~thumb instructions in the block
         if self._insns >= self._tick_mark:
@@ -585,9 +598,10 @@ class ArmSim:
             self._tick_mark = self._insns + self._tick_interval
         # Stop to let _run_rtos take a pending exception as soon as it is allowed
         # (thread mode, interrupts enabled). Both SysTick and PendSV qualify.
+        # `_pendsv_req` mirrors ICSR.PENDSVSET (set by the write hook), so this
+        # runs no per-block memory read.
         if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1) \
-                and (self._pending_irqs or self._systick_due
-                     or (self.r32(SCB_ICSR) & (1 << 28))):
+                and (self._pending_irqs or self._systick_due or self._pendsv_req):
             uc.emu_stop()
 
     # We do NOT rely on Unicorn's CONTROL.SPSEL banking: in practice it does not
@@ -679,9 +693,9 @@ class ArmSim:
         uc.reg_write(UC_ARM_REG_PC, ret_pc | 1)
 
     def _pendsv_pending(self):
-        icsr = self.r32(SCB_ICSR)
-        if (icsr & (1 << 28)) and self._exc_depth == 0:
-            self.w32(SCB_ICSR, icsr & ~(1 << 28))
+        if self._pendsv_req and self._exc_depth == 0:
+            self._pendsv_req = False
+            self.w32(SCB_ICSR, self.r32(SCB_ICSR) & ~(1 << 28))   # keep memory consistent
             return True
         return False
 
