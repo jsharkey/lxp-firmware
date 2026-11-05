@@ -128,11 +128,18 @@ protocol and exposes register data for another processor to read/parse:
   pulls fields from fixed frame offsets (bytes 4, 5, 9, 0xC–0xF, payload from
   0x14).
 
-So the MPPT controller behaves as a **Modbus(-family) slave**: a master (the com
-MCU and/or the control DSP) polls it over UART, and it answers with CRC-checked,
-big-endian register frames carrying its telemetry (PV voltage/current/power,
-status) — i.e. it **publishes statistics for another firmware to read and parse**,
-exactly as hypothesised.
+So the MPPT controller behaves as a **Modbus(-family) slave**: a master polls it
+over UART, and it answers with CRC-checked, big-endian register frames carrying
+its telemetry (PV voltage/current/power, status) — i.e. it **publishes statistics
+for another firmware to read and parse**, exactly as hypothesised.
+
+> **The master is the DSP, not the com MCU** (resolved from the ARM side — see
+> [`docs/22`](22-arm-dsp-core-split.md)). The com MCU's PV registers are fed by
+> the **DSP** over USART2 (PV **voltage** verbatim; PV **power** the ARM computes
+> from the DSP-supplied V·I), and the com MCU configures no analog inputs and has
+> no UART carrying raw MPPT frames. So the path is **MPPT → DSP → ARM**: the MPPT
+> publishes to the DSP, the DSP aggregates PV/grid telemetry and forwards it to
+> the com MCU.
 
 One nuance: the CRC-16 and big-endian registers are pure Modbus, but the frame has
 a **fixed-offset layout** (header bytes 0x00–0x13, data from 0x14) rather than the

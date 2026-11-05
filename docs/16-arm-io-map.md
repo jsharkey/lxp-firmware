@@ -7,6 +7,75 @@ assignments are **proven** from the STM32F103 alternate-function map plus the
 active-peripheral scan; the **silkscreen purpose of the bare relay/LED/control
 outputs is inferred** from the driver logic and flagged by confidence.
 
+## System block diagram — the processors and their links
+
+The inverter is a **multi-processor system**; this project reimplements only the
+ARM "com" MCU. Five processors have been identified (the first four are on-board;
+the BMS is in the battery pack). Confidence: **✔** proven from firmware, **~**
+strong inference, **?** open.
+
+```
+                           +------------------------------+
+                           |  EG4 datalogger / cloud      |
+                           |  "dongle"  (external)        |
+                           +---------------+--------------+
+                                           | UART5 0x40005000        [✔]
+                                           | EG4 Modbus, LE + 10-byte SN
+   battery pack(s)                         |
+  +--------------------+   CAN1  PB8/PB9    |
+  | BMS   HC32F460     |<------------------>|
+  | (docs/20)          |   0x40006400 [✔]   |
+  +--------+-----------+   polled           |
+           | RS-485 pack-to-pack            |
+           : (daisy chain, auto-address)    v
+  meter /                       +-----------------------------------------+
+  console? --- USART1/UART4 --->|   ARM "com" MCU   (STM32F103VE)          |
+  (peers [?])   (unpinned)      |   comms . HMI . supervisor . relays      |
+                                |   << THIS PROJECT >>  no analog metering  |
+                                +----+--------------------------------+-----+
+             USART3 0x40004800  |                                    |  USART2 0x40004400
+             [✔] ARM --> DSP:   |                                    |  [✔ data] DSP --> ARM:
+             config push +      |                                    |  operating mode + PV/grid
+             bootloader 21/22/23|  (= DSP SCI-B)                     |  V/F telemetry (BE, type-1,
+                                v                                    |   EG4 CRC). port SCI-A vs
+                           +----------------------------------------+-----+ relay = [?]
+                           |   TI C2000 Control DSP   (F2837x)            |
+                           |   real-time power FSM (docs/07);             |
+                           |   measures PV & grid, runs the power stage    |
+                           +----+----------------------------+------------+
+             EG4 Modbus UART     | DSP polls as master  [~]   |  [?] role / link
+             (same framing  [~]  v                            v     not yet imaged
+              as the DSP link)  +------------------+   +----------------------+
+                                | MPPT controller  |   | redundant safety CPU |
+                                | CBAA, GD32-class |   | (3rd on-board MCU)    |
+                                | (docs/13)        |   +----------------------+
+                                | PV V/I/P telem   |
+                                +------------------+
+```
+
+**The ARM's links (what connects to each port):**
+
+| ARM port | peer | direction / role | conf. |
+|---|---|---|---|
+| **USART3** `0x40004800` | **DSP** (SCI-B) | ARM→DSP config push + firmware-update bootloader (`0x21/0x22/0x23`) | ✔ |
+| **USART2** `0x40004400` | **DSP** (telemetry) | DSP→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) — the ARM's core input registers | ✔ data (port SCI-A vs via safety CPU: [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md)) |
+| **CAN1** `0x40006400` (PB8/PB9) | **battery BMS** | ARM↔BMS, polled (`docs/20`) | ✔ |
+| **UART5** `0x40005000` | external **dongle** | EG4 Modbus (LE + SN), external RS-485 | ✔ |
+| **USART1** `0x40013800`, **UART4** `0x40004c00` | meter / console / ? | not pinned from firmware (needs schematic) | ? |
+
+**Key data-flow facts (established this session):**
+
+- **PV voltage & power come from the DSP, not a direct MPPT link.** The MPPT chip
+  publishes PV V/I/P on *its* EG4-Modbus UART, and the **DSP** is the master that
+  polls it (resolving docs/13's "com MCU and/or DSP"). The DSP forwards PV/grid
+  measurements to the ARM over USART2; the ARM serves **PV voltage verbatim**
+  (IR 1/2 ← `0x20009e54`) and **computes PV power itself** (IR 7/8, `sub_0801b034`,
+  float `V·I`) — see [`docs/22`](22-arm-dsp-core-split.md).
+- **Operating state** (IR 0) is likewise classified by the ARM from DSP telemetry
+  (docs/22); the real-time power FSM is on the **DSP**.
+- **Battery** telemetry comes **directly** to the ARM over CAN1 (docs/20) — the one
+  peer the ARM reads first-hand (it still does no analog metering itself).
+
 ## MCU and method
 
 - **STM32F103VE**, Cortex-M3, 100-pin, 512 KB flash @ `0x08000000`, RAM
