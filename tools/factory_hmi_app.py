@@ -43,12 +43,19 @@ _FIRMWARE = None              # set by main(); None => open-source build/firmwar
 
 
 def _render_png(mono_img):
-    """mono HxW (0/255) -> colorized PNG bytes (RGB, FSTN tint)."""
-    rgb = np.zeros((mono_img.shape[0], mono_img.shape[1], 3), dtype=np.uint8)
-    ink = mono_img == 0
-    rgb[...] = BG
-    rgb[ink] = INK
-    im = Image.fromarray(rgb, "RGB")
+    """mono HxW -> FSTN-tinted RGB PNG bytes.
+
+    `mono_img` is NOT pure black/white: `mono()` fits the 640-px-wide GRAM to the
+    240-px panel with a LANCZOS resize, which anti-aliases, so ink pixels arrive
+    as a grayscale ramp (0 = full ink .. 255 = panel background). We blend the two
+    FSTN colours across that ramp. A hard `== 0` threshold (the old code) kept only
+    the handful of pixels that happened to be *exactly* black and painted every
+    anti-aliased edge as background — which thinned the menu text and icon outlines
+    into the sparse, "fragmented" screen. Blending renders them fully, matching the
+    headless save_png()."""
+    t = (mono_img.astype(np.float32) / 255.0)[..., None]      # 0 at ink, 1 at bg
+    rgb = np.array(INK, np.float32) * (1.0 - t) + np.array(BG, np.float32) * t
+    im = Image.fromarray(np.clip(rgb + 0.5, 0, 255).astype(np.uint8), "RGB")
     buf = io.BytesIO(); im.save(buf, "PNG")
     return buf.getvalue()
 
