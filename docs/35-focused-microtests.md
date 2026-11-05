@@ -78,34 +78,53 @@ python3 tests/test_timewindow.py IMG.bin  # point at a factory flat .bin
 This suite is **separate from `test` and `test-sim`** — it adds coverage without
 touching the existing ones.
 
-## Per-image addresses (a caveat)
+## Per-image addresses (auto-detected)
 
 The factory evaluator and the RAM it reads live at **different addresses in
-different images**. `tests/timewindow_contract.py` keeps a `PROFILES` table:
+different images**. `tests/timewindow_contract.py` keeps a `PROFILES` table and,
+by default (`profile="auto"`), **identifies the right one by probing** the image
+(the profile whose evaluator reads active at 07:00 and inactive at 09:00 for a
+06:00-08:00 window). So `make test-window` works for either image with no flag;
+`--profile` forces one.
 
-| profile | image | evaluator | RTC | windows | status bit |
-|---|---|---|---|---|---|
-| `com_flat` *(default, verified)* | `reference/com_flat.bin` (05-series) | `0x0801ece8` → `sub_0801eb4c` | `0x2000a718` (+1 min, +2 hr) | `0x20009854+0x64` | bit 24 of `0x2000a758` |
-| `ceaa07` *(from docs/25, unverified here)* | ceaa-07xx (07-series) | `sub_080352d0` | `0x2000d850` | `0x2000c85c+0x64` | bit 24 of `0x2000d890` |
+| profile | image | evaluator | RTC | windows | status bit | verified |
+|---|---|---|---|---|---|---|
+| `com_flat` | `reference/com_flat.bin` (05-series) | `0x0801ece8` → `sub_0801eb4c` | `0x2000a718` (+1 min, +2 hr) | `0x20009854+0x64` | bit 24 of `0x2000a758` | via `tools/emu_acfirst.py` |
+| `ceaa07` | ceaa-07xx (07-series) | `sub_080352d0` | `0x2000d850` | `0x2000c85c+0x64` | bit 24 of `0x2000d890` | **✔ green on `ceaa-07xx_vE_260214`** |
 
-Select with `--profile`. The `com_flat` profile mirrors the committed
-`tools/emu_acfirst.py` experiment; the `ceaa07` addresses are from
-[`docs/25`](25-modbus-register-spaces.md) §3 and should be confirmed with an
-isolated call before being trusted (good first contribution).
+## Does the AC-First evaluator test any other windows? No.
+
+Proven by tracing which config bytes `sub_080352d0` reads during an isolated
+call (`reference/com_flat.bin` = ceaa-07xx): it reads RTC `+1`/`+2` (minute,
+hour) and **exactly the three AC-First window pairs** —
+config `+0x64/+0x66`, `+0x68/+0x6a`, `+0x6c/+0x6e` (= HR 152-157) — **and no
+other config offset**. So it evaluates all **three** AC-First windows (the suite
+exercises each slot) but nothing else.
 
 ## Extending the pattern to the other time windows
 
-The same recipe fits every RTC-vs-window feature on the dongle surface:
+The other RTC-vs-window features each have their **own** evaluator (not a shared
+one). Confirmed statically for AC-charge: **`sub_0801d8dc` reads the RTC and the
+AC-charge windows** at config `+0x3a..+0x44` (= HR 68-73, per
+[`docs/23`](23-arm-config-writer.md)); charge-priority / forced-discharge
+(HR 74-89) and OptimalChg (HR 126-131) will have theirs.
 
-- **AC-charge / charge-priority / forced-discharge schedule** (HR 64-89,
-  [`docs/modbus-dongle/holding-064_089-charge-discharge-schedule.md`](modbus-dongle/holding-064_089-charge-discharge-schedule.md))
-- **OptimalChg_DisChg** 48-slot table (HR 126-131,
-  [`docs/modbus-dongle/holding-126_131-OptimalChg_DisChg.md`](modbus-dongle/holding-126_131-OptimalChg_DisChg.md))
+To add one:
 
-For each: give our firmware a pure evaluator shaped like
-`acfirst_window_active()`, add its vectors to `timewindow_contract.py`, and add a
-`FactoryBackend` profile pointing at the matching factory evaluator (find it the
-way `tools/emu_acfirst.py` found the AC-First one). The test body doesn't change.
+1. Find its evaluator (`tools/ramxref.py <config-offset> load` on the window's
+   config byte names the readers; cross-check it also reads the RTC).
+2. Resolve its **isolated-call setup** and **result location** — this is the real
+   work. The AC-First evaluator happens to be self-contained (computes its own
+   base pointers), so a cold `Emu.call()` just works. **`sub_0801d8dc` does not**:
+   a context-free call faults (branches to `pc=0`), so it needs some initialized
+   state (a function-pointer/table) seeded first. Find the result flag by diffing
+   RAM in-window vs out (the method in `tools/emu_acfirst.py`).
+3. Add a `FactoryBackend` profile for it and its vectors. Our
+   `acfirst_window_active()` is a **generic** start-incl/end-excl/wrap predicate,
+   so it is the oracle for every one of these window types — reuse it (or add a
+   thin wrapper) rather than writing new window logic.
+
+The test body never changes; only the backend profile + vectors grow.
 
 See also: [`docs/25`](25-modbus-register-spaces.md) (the AC-First observable and
 the IR 126 funnel), [`docs/19`](19-gpio-test-harness.md) (the full-sim harness
