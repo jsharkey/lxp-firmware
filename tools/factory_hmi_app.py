@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))
-from factory_hmi import FactoryHmi, W, H
+from factory_hmi import FactoryHmi, PANEL_W, PANEL_H
 
 # Recovered key map (docs/23). The panel has 4 keys; names are the behaviour
 # observed driving the factory menus.
@@ -81,7 +81,7 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  .device{background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:20px;
   width:min(440px,96vw);box-shadow:0 10px 40px rgba(0,0,0,.45)}
  .bezel{background:#0a0d11;border:1px solid #05070a;border-radius:10px;padding:12px;position:relative}
- .screen{width:100%;aspect-ratio:128/160;image-rendering:pixelated;border-radius:3px;display:block;
+ .screen{width:100%;aspect-ratio:240/160;image-rendering:pixelated;border-radius:3px;display:block;
   background:#a9c2c0}
  .overlay{position:absolute;inset:12px;display:none;align-items:center;justify-content:center;
   flex-direction:column;gap:12px;background:rgba(10,13,17,.72);border-radius:3px;color:#cfe}

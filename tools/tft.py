@@ -28,7 +28,17 @@ from unicorn import UC_HOOK_MEM_WRITE
 
 GB = GPIO["B"]
 PIN_CLK, PIN_DATA, PIN_DC, PIN_CS = 12, 13, 14, 15
-W, H = 128, 160            # columns (X), rows (Y)
+
+# The controller is addressed in *bytes* across (CASET) and pixel rows down
+# (RASET). Each data byte is 8 packed monochrome pixels, MSB-first (bit set =
+# ink). So the GRAM is W byte-columns x H rows; the picture is W*8 x H pixels.
+W, H = 128, 160            # byte-columns (X), pixel rows (Y)
+
+# The firmware clears a 128-byte-wide GRAM but the physical panel shows only
+# byte-columns PANEL_X0..127 — the columns left of that are off-panel (they were
+# the "phantom" left margin). The visible panel is 240x160.
+PANEL_X0 = 48              # first visible byte-column (left edge of the panel)
+PANEL_W, PANEL_H = 240, 160
 
 
 class Tft:
@@ -118,10 +128,19 @@ def attach_tft(sim):
     return t
 
 
-def mono(gram, invert=False):
-    """Render the GRAM as the physical monochrome panel reads it: the dominant
-    pixel value is the background (white); everything else is ink (black).
-    Returns a uint8 HxW image (0 or 255)."""
-    bg = int(np.bincount(gram.ravel()).argmax())
-    img = np.where(gram == bg, 255, 0).astype(np.uint8)
-    return (255 - img) if invert else img
+def unpack(gram):
+    """Expand the byte-column GRAM into the full 1bpp picture: each byte -> 8
+    horizontal pixels (MSB first). Returns a uint8 (H x W*8) array, 255=ink."""
+    return np.unpackbits(gram, axis=1).astype(np.uint8) * 255
+
+
+def mono(gram, invert=True):
+    """Render the panel exactly as it reads: unpack each byte to 8 pixels, keep
+    only the visible byte-columns (PANEL_X0..), and fit to the 240x160 panel.
+    Default `invert=True` gives dark ink on a light panel (like the device).
+    Returns a uint8 PANEL_H x PANEL_W image."""
+    from PIL import Image
+    pic = unpack(gram)[:, PANEL_X0 * 8:]          # drop the off-panel left margin
+    img = Image.fromarray(pic).resize((PANEL_W, PANEL_H), Image.LANCZOS)
+    a = np.asarray(img)
+    return (255 - a) if invert else a
