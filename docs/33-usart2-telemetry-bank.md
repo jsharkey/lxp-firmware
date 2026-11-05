@@ -1,5 +1,10 @@
 # The USART2 telemetry bank (`0x20009e54`) — format and dongle exposure
 
+> **Authoritative wiring:** the USART2↔safety-CPU link itself (pins, electrical,
+> direction) is in [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md), which
+> cites this doc for the bank field map. This doc is the authoritative **bank
+> format + dongle-register** reference.
+
 The ARM's richest single telemetry structure is the **USART2 bank at `0x20009e54`**.
 It holds the operating mode, the grid/PV measurements, and the fault/warn status the
 **safety CPU sends to the ARM over USART2** (docs/30). Per the DSP-side follow-up

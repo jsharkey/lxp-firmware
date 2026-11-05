@@ -141,6 +141,7 @@ USART3 in the skeleton; in the factory the external dongle's EG4-Modbus is on
 
 ```
 docs/        analysis + recovered specification (start here)
+docs/wiring/ per-link wiring source-of-truth (ports, pins, peers, framing)
 include/     stm32f103.h (minimal device header) + inv/ recovered data model
 include/inv/ states, faults, settings, modbus_map, hmi_menu, variant
 src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleton)

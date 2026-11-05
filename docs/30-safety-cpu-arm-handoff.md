@@ -1,5 +1,7 @@
 # Hand-off to the ARM agent: pin the safety CPU via `Slave Ver` (reg 9) + E027
 
+> **Authoritative wiring:** the USART2↔safety-CPU link is distilled in [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md). This doc remains the ARM-side resolution detail.
+
 **For the ARM-side agent** (you have the factory ARM image). The DSP side has now
 found the redundant / "safety" CPU firsthand — see [`docs/29`](29-safety-cpu.md). One
 link remains to pin from the ARM end: **is the ARM's USART2 peer that same safety

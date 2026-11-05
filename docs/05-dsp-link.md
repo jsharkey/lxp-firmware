@@ -1,5 +1,7 @@
 # Inter-processor / DSP link
 
+> **Authoritative wiring:** the ARM↔DSP link identity and the `0x21/0x22/0x23` bootloader are distilled in [`docs/wiring/ARM-USART3.md`](wiring/ARM-USART3.md). This doc is the research trail.
+
 Status: **framing decoded from the ARM side; physical UART→peer mapping pending
 the schematic.** The TI C2000 DSP image is a **C28x** binary, which no tool in
 this environment can disassemble, and its strings don't extract cleanly — so the

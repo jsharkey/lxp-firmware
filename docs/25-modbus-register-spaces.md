@@ -1,5 +1,7 @@
 # Modbus register spaces, the UART links, and the one EG4-Modbus bus
 
+> **Authoritative wiring:** the per-UART link details live in [`docs/wiring/`](wiring/README.md). **Note:** §1's "USART2 carries DSP-domain telemetry" is superseded — USART2's peer is the safety CPU, and the bank's measured values are its own (see [`ARM-USART2.md`](wiring/ARM-USART2.md)).
+
 Two recurring confusions, with the evidence-based answers for the ceaa-07xx
 factory image. This note complements — and defers to — the UART/peer map in
 [`docs/16`](16-arm-io-map.md) and the ARM/DSP split in

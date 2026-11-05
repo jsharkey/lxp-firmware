@@ -1,5 +1,7 @@
 # ARM config storage — the SPI NOR settings flash (journaled, 6 slots)
 
+> **Authoritative wiring:** the SPI1↔config-flash link is distilled in [`docs/wiring/ARM-SPI1.md`](wiring/ARM-SPI1.md). This doc remains the read-side detail.
+
 [`docs/09`](09-dsp-persistence-and-clock.md) established that the **ARM owns
 persistence** — the DSP keeps nothing across a power cycle and is re-seeded by
 the ARM every boot. This note answers the follow-up: *where and how* does the ARM

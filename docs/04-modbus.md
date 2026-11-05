@@ -1,5 +1,7 @@
 # Modbus-RTU slave
 
+> **Authoritative wiring:** the external Modbus port (pins, peer, framing) is now specified in [`docs/wiring/ARM-UART5.md`](wiring/ARM-UART5.md). This doc keeps the register/framing contract and the engine design.
+
 The com MCU is a Modbus-RTU **slave** on RS-485. This is the first real
 subsystem of the reimplementation and the most fully specified one (the public
 EG4 18kPV-12LV protocol doc is the authority; the 12000XP shares it).

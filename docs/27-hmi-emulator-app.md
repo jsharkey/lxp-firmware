@@ -1,5 +1,7 @@
 # HMI emulator app — the running firmware's LCD + keys, on screen
 
+> **Authoritative wiring:** the panels are specified in [`docs/wiring/ARM-LCD.md`](wiring/ARM-LCD.md). **Note:** this doc's description of the factory panel as "a SPI1 controller / undecoded" is stale — it is a bit-banged GPIOB bus (docs/28). The HD44780 stand-in content here is still valid.
+
 Status: **built and host-tested.** An interactive app runs our firmware in the
 emulator and renders what it draws to a character LCD, with the four
 front-panel keys as on-screen buttons that drive the real key GPIOs — the

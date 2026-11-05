@@ -1,5 +1,7 @@
 # ARM config storage — the writer side & per-slot field map
 
+> **Authoritative wiring:** the SPI1↔config-flash link is distilled in [`docs/wiring/ARM-SPI1.md`](wiring/ARM-SPI1.md). This doc remains the write-side detail and per-slot field map.
+
 [`docs/21`](21-arm-config-flash.md) reversed the **read** side of the factory
 ARM's settings store: an external SPI NOR flash holding a journaled, wear-levelled
 set of **six 8 KB slots**, each a ring of 256-byte CRC-protected records, loaded

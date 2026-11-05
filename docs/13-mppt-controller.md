@@ -1,5 +1,7 @@
 # The `mppt` image (`CBAA`) — a fourth, distinct processor
 
+> **Authoritative wiring:** the MPPT↔DSP serial link is distilled in [`docs/wiring/MPPT-USART1.md`](wiring/MPPT-USART1.md). This doc remains the full characterization of the MPPT processor.
+
 Analysis of the attached firmware `169a5158-CBAA-1Cxxxx_mppt_250805.hex`.
 
 **Verdict: this is NOT another flavour of the "com" MCU.** It is a *different,
