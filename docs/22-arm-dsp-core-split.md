@@ -145,7 +145,13 @@ The input-register getter `sub_0803289c` sources the PV registers thus:
 | 7 / 8 | PV1 / PV2 **power** | `0x2000a0d8+0x28/0x2c` — **computed on the ARM** |
 | 9 | PV3 power | hardcoded `0` |
 
-- **Voltage** is the DSP's own measurement, forwarded over USART2 and served as-is.
+- **Voltage** is served verbatim from the USART2 bank.
+  > **Correction (DSP-side, [`docs/29`](29-safety-cpu.md)):** USART2's peer is the
+  > **safety CPU** (docs/30), and the DSP forwards it **no** grid/PV — over SCI-C the
+  > DSP sends the safety CPU only its operating-state byte. So this PV voltage is the
+  > **safety CPU's own measurement**, not a DSP value relayed. Only `BANK+0` (the
+  > mode byte) is DSP-originated; the measured V/F/PV in this bank are the safety
+  > CPU's independent samples.
 - **Power** is *not* a copied field: `sub_0801a678` does the float `V·I` (with the
   `0.5f` averaging term) into accumulators `0x2000a818`/`0x2000a81c`, and
   `sub_0801b034` converts and stores them to `STATUS+0x28/0x2c` (alongside

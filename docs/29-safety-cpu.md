@@ -128,3 +128,40 @@ unresolved detail.
 > the precise leads — the `Slave Ver` (reg 9 low byte) source and the E027 raise
 > point — to confirm whether **USART2 ⇔ safety CPU** (pinning it on both ends) or
 > the DSP merely relays its version/status.
+
+## Does the ARM's telemetry bank (`0x20009e54`) come from the DSP? — **No, except the mode byte**
+
+The ARM agent proved (docs/30) that the ARM's input-register **telemetry bank
+`0x20009e54` is the safety CPU's USART2 frame, copied verbatim** (mode at `+4`,
+status/fault words at `BANK+0xd0/0xd4`, incl. E027 bit 27 — the ARM does not
+recompute them). The natural follow-up — *do those numbers originate in the DSP?*
+— is answered from the DSP side, and the answer is **mostly no**:
+
+- **The DSP feeds the safety CPU no measurements.** The DSP↔safety-CPU link is
+  **SCI-C** only (on the 18kPV, SCI-A is init-only — no active feed). Over SCI-C
+  the DSP **sends just a state byte + a 2-bit flag** (`'D'` frame: `[1]=DAT_0001230E`
+  = the DSP's working-state, read 208×; `[2]=(DAT_00011205&0xC)>>2`). It sends **no**
+  grid/PV/frequency values.
+- **The DSP sends the ARM no rich telemetry either.** The 18kPV DSP emits **no
+  `0x49`/type-1 telemetry frame** on SCI-B (that link is ARM→DSP config-push +
+  bootloader). So the DSP's own measurements never leave for the ARM directly.
+- **The safety CPU is the one measuring.** The DSP *receives* the safety CPU's ~7
+  independent BE16 samples (`'T'` frame) and cross-checks them (docs/29 above).
+
+⟹ The bank's **measured quantities — grid voltage R/S/T, frequency, PV voltage —
+are the safety CPU's own independent measurements**, not the DSP's. The **only
+DSP-originated field** in the bank is the **operating-mode/state byte** (`BANK+0`
+= frame `+4` = `DAT_0001230E`): the DSP computes it and hands it to the safety CPU
+on SCI-C, which relays it to the ARM.
+
+**Correction to docs/22.** Its "PV1/PV2 voltage = *DSP telemetry, verbatim*,
+forwarded over USART2" is the right *bank* but the wrong *source*: USART2 is the
+safety CPU (docs/30), and the DSP forwards it no PV — so the served PV voltage is
+the **safety CPU's** measurement, not a DSP value relayed. (This is exactly the
+dual-redundant design: an independent sampler measures grid/PV, the DSP cross-checks
+it, and the ARM publishes the sampler's numbers.)
+
+**Limit (honest):** the DSP image proves the DSP does *not* forward grid/PV to the
+safety CPU; whether the safety CPU reads PV on its own ADC or shares the DSP's sense
+lines is a hardware question outside this image. Either way the *served* value is
+the safety CPU's reading, not DSP-relayed.
