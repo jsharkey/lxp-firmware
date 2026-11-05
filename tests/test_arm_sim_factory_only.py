@@ -123,6 +123,53 @@ def test_safety_cpu_telemetry_reaches_modbus():
                                 "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
+# --- per-pack battery telemetry on the undocumented 5000+ range (docs/34) ---
+# Per-pack frames arrive on CAN as id = 0x400 | (subtype<<5) | pack_index; the
+# parser sub_080205d4 stores them in a per-pack array (0x2000691c, stride 0x36)
+# and marks the pack present (0x2000a770 / count 0x2000a8ae). The serializer
+# routes INPUT registers 5000-5126 to a *separate* getter (sub_08020cc0) that
+# serves that array -- 30 register slots per pack (bases 5000/5030/5060/5090),
+# paged for >4 packs. This range is undocumented and ABOVE the IR 0-239 sweep
+# that first concluded "no per-pack register" (docs/34), so it was missed.
+def _inject_pack(bat, pack, subtype, data8):
+    bat.send(0x400 | (subtype << 5) | (pack & 0x1F), bytes(data8))
+
+
+def test_per_pack_telemetry_reaches_modbus():
+    """Per-pack battery telemetry DOES reach the dongle -- on undocumented input
+    registers 5000+ (docs/34). Inject per-pack CAN frames (id 0x400|sub<<5|pack)
+    for two packs, and read them back over the dongle: pack 0 in the 5000 block,
+    pack 1 in the 5030 block, with the fields in frame order (reg 5000 = pack-0
+    subtype-0 bytes[0:2], 5001 = bytes[2:4], 5004 = subtype-1 bytes[0:2]). A
+    second, changed snapshot must read back its new values (live, not cached).
+    Factory-only: this is a factory superset our build does not implement."""
+    import struct as _s
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_can import CanBattery
+
+    def snapshot(p0s0_a, p0s0_b, p0s1, p1s0):
+        sim = _factory()
+        bat = CanBattery(sim)
+        mb = ModbusDongle(sim)
+        bat.send_soc_soh(77, 96)                       # keep the aggregate block alive
+        _inject_pack(bat, 0, 0, _s.pack("<HH", p0s0_a, p0s0_b) + b"\x00\x00\x00\x00")
+        _inject_pack(bat, 0, 1, _s.pack("<H", p0s1) + b"\x00" * 6)
+        _inject_pack(bat, 1, 0, _s.pack("<H", p1s0) + b"\x00" * 6)
+        bat.settle()
+        return mb.read_input(5000, 8), mb.read_input(5030, 8)
+
+    p0, p1 = snapshot(0x1234, 0xABCD, 0x5678, 0x9ABC)
+    assert p0[0] == 0x1234, "pack0 subtype0[0:2] -> IR 5000 = %r" % (p0[0],)
+    assert p0[1] == 0xABCD, "pack0 subtype0[2:4] -> IR 5001 = %r" % (p0[1],)
+    assert p0[4] == 0x5678, "pack0 subtype1[0:2] -> IR 5004 = %r" % (p0[4],)
+    assert p1[0] == 0x9ABC, "pack1 subtype0[0:2] -> IR 5030 = %r" % (p1[0],)
+
+    # Live, not cached: a changed snapshot reads back the new values.
+    q0, _q1 = snapshot(0x1111, 0x2222, 0x3333, 0x4444)
+    assert q0[0] == 0x1111 and q0[1] == 0x2222, \
+        "per-pack registers did not track a change: IR 5000/5001 = %r" % (q0[:2],)
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
