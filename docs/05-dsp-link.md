@@ -236,7 +236,11 @@ shared `"EDSN"`/`0x21-0x23` vocabulary make that pairing all but certain.
 > [`docs/26`](26-dongle-firmware.md) (the dongle's own firmware — an RS-485
 > half-duplex master datalogger — confirming it from the far end). So the ranked
 > steps below that aimed to *pin* the DSP UART are largely answered; (2)'s
-> data-flow trace landed on USART2 as the DSP→ARM telemetry writer (docs/22).
+> data-flow trace landed on USART2 as the ARM's telemetry input — since
+> identified as the **redundant/safety-CPU** link (its grid/PV values are the
+> safety CPU's *own* samples; only the operating-mode byte is DSP-relayed), **not**
+> a DSP→ARM link. See [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) and
+> [`docs/30`](30-safety-cpu-arm-handoff.md).
 
 ## How to finish (ranked)
 
