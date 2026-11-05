@@ -255,11 +255,28 @@ enum mb_hold_reg {
     HR_LINE_MODE        = 146, /* 0 APL, 1 UPS, 2 GEN                            */
     HR_BAT_CAPACITY_AH  = 147, /* Ah (unmatched batteries)                       */
     HR_BAT_NOMINAL_VOLT = 148, /* 0.1 V (400-590)                                */
+    /* AC-First load-priority time windows: three {start,end} pairs, each packed
+       u16 = (minute<<8)|hour (docs/08, docs/25). Evaluated against the ARM RTC;
+       the "active now" verdict surfaces at IR 126 bit 8 (IR_ACFIRST_STATUS). */
+    HR_ACFIRST_START_0  = 152,
+    HR_ACFIRST_END_0    = 153,
+    HR_ACFIRST_START_1  = 154,
+    HR_ACFIRST_END_1    = 155,
+    HR_ACFIRST_START_2  = 156,
+    HR_ACFIRST_END_2    = 157,
     HR_GEN_CHG_START_V  = 194, /* 0.1 V (384-520)                                */
     HR_GEN_CHG_END_V    = 195, /* 0.1 V (480-590)                                */
     HR_GEN_CHG_START_SOC= 196, /* % (0-90)                                       */
     HR_GEN_CHG_END_SOC  = 197, /* % (20-100)                                     */
     HR_MAX_GEN_CHG_CURR = 198  /* A (0-60)                                       */
 };
+
+/* AC-First "window active now" status. The factory overloads *input* register
+ * 126 as a status word and reports the AC-First-window verdict in bit 8 (docs/25
+ * -- note this is the input-register space, distinct from the OptimalChg_DisChg
+ * *holding* registers 126-131). IR 126 is also IR_EGEN_ALL_H in the register
+ * map; the status bit lives alongside that overload, matching the oracle. */
+#define IR_ACFIRST_STATUS      126u
+#define IR_ACFIRST_WIN_ACTIVE  (1u << 8)
 
 #endif /* INV_MODBUS_MAP_H */

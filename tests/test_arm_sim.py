@@ -230,9 +230,9 @@ def test_modbus_acfirst_window_tracks_rtc():
     holding registers 126-131 (the OptimalChg_DisChg config table): same number,
     different space, different meaning -- see docs/25.
 
-    TDD scaffolding: proven on the factory oracle; our firmware does not yet
-    evaluate the AC-First windows against the RTC, so this is expected to fail on
-    our build until we implement it (cf. the CAN->Modbus test above)."""
+    Runs green on both images: the factory oracle and our firmware, whose
+    AC-First evaluator is src/sched/acfirst.c (pure logic host-tested in
+    tests/test_acfirst.c), wired to IR 126 bit 8 in main.c."""
     from arm_sim_modbus import ModbusDongle
     HR_ACFIRST_START_0, HR_ACFIRST_END_0 = 152, 153
     HR_TIME_DATE_HOUR, HR_TIME_MIN_SEC   = 13, 14
