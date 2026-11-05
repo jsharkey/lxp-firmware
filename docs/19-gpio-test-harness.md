@@ -345,10 +345,9 @@ request rather than on a byte count.
 > polled in `mb_port_poll`) but **fails against the factory image**, which parses
 > RX in the USART3 interrupt that the harness does not yet fire — and both
 > firmwares' dongle paths are still being built out. That is fine: the test
-> pins the target contract. Because it is a common test, a red result fails
-> `make test-sim` (and, being in the factory common block, `make` fail-fasts
-> there — run `make test-sim-ours` or the factory files directly to see the
-> rest).
+> pins the target contract. A red common test fails `make test-sim`, which runs
+> every block regardless and reports the failure at the end (see *Running the
+> tests*), so the other blocks still show.
 
 **4. `test_can_battery_soc_soh_reaches_modbus`** — end-to-end **battery BMS CAN →
 Modbus** (docs/20). The pack reports SOC/SOH on CAN1 ID `0x355`; the ARM polls
@@ -378,13 +377,19 @@ make test-sim-factory                            # common + factory-only tests o
 make test-sim LXP_FACTORY_HEX=/path/App.hex      # convert + run everything, end to end
 ```
 
-`make test-sim` runs two sub-targets:
+`make test-sim` runs two halves:
 
 - **`test-sim-ours`** builds our firmware, runs the common file against
   `build/firmware.bin`, then `test_arm_sim_self_only.py`.
 - **`test-sim-factory`** runs the common file against the factory `.bin`, then
   `test_arm_sim_factory_only.py` — so the common code is executed against both
   images.
+
+Every block runs even if an earlier one fails; `make test-sim` reports the
+failure only at the end (exit non-zero). This keeps the whole green/red picture
+visible when an expected-red test (e.g. the dongle/CAN scaffolding) is present,
+rather than stopping at the first failure. Each block's banner header is the
+delimiter.
 
 The common runner only accepts a **flat `.bin`**, so a vendor Intel `.hex` is
 converted first. The factory `.bin` (`reference/com_flat.bin`, overridable with
