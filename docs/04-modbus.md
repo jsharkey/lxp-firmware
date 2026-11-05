@@ -60,8 +60,15 @@ group boundary** (groups 0–39, 40–79, 80–119, …). Violations return exce
 - [x] 0x03/0x04/0x06/0x10 handlers, exception responses, 40-reg group rule
 - [x] Host unit tests (`make test`, 19 checks)
 - [x] USART3 port (19200 8N1) with inter-frame gap framing
-- [ ] **Confirm from schematic**: USART3 = RS-485 Modbus port (vs DSP link); the
-      RS-485 driver-enable (DE/RE) GPIO → implement `mb_port_set_tx()`
+- [x] **Which UART is the external Modbus/dongle port — resolved to UART5, not
+      USART3.** The external dongle firmware ([`docs/26`](26-dongle-firmware.md))
+      proves the dongle is an **RS-485 half-duplex master** (datalogger), so it
+      sits on the ARM link where the ARM is the **slave** — **UART5** (PC12/PD2,
+      DE≈PA15), per [`docs/16`](16-arm-io-map.md). **USART3 is the ARM→DSP control
+      link**, not the dongle; it reuses the same EG4 frame family, which is why
+      this engine was first ported there. The transport-agnostic engine is
+      unaffected; only the *port* binding moves (USART3→UART5). The RS-485 DE/RE
+      GPIO (PA15) still needs wiring into `mb_port_set_tx()`.
 - [ ] Populate input registers from live telemetry (needs the DSP link)
 - [ ] Holding-register range validation + persistence (EEPROM/flash layout)
 - [ ] Hardware bring-up test against a real monitoring tool

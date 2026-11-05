@@ -60,7 +60,7 @@ Honest picture of where things stand:
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
 - [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
-- [ ] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — needs schematic or data-flow trace
+- [~] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — **dongle=UART5, DSP=USART3/USART2, BMS=CAN1 confirmed**; meter/MPPT/console (USART1/UART4) still open. The external dongle's own firmware (ESP32-C3 RS-485 **master** datalogger) pins the dongle to **UART5** and rules out USART3 — see [`docs/26-dongle-firmware.md`](docs/26-dongle-firmware.md)
 - [ ] Decode the `0x21/0x22/0x23` payloads; populate live telemetry from the DSP link
 - [x] **Disassemble the TI C28x control DSP** → Ghidra 12.1.2 + `ghidra-tms320c28x` SLEIGH module; F2837x-class, image byte-swapped, ~650 functions recovered. First decode: the **"AC First" output-priority logic** (see [`docs/07-dsp-ac-first-mode.md`](docs/07-dsp-ac-first-mode.md))
 - [x] **ARM→DSP config protocol** → direction + framing resolved from the DSP side: ARM **pushes all settings** as 9 positionally-packed blocks (not Modbus register writes, not deltas); DSP is the reactive slave (see [`docs/08-arm-dsp-config-protocol.md`](docs/08-arm-dsp-config-protocol.md))
