@@ -260,6 +260,69 @@ def test_modbus_acfirst_window_tracks_rtc():
             "expected %s" % (h, m, active, reg, exp))
 
 
+def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
+    """Write `reg`=`value` over Modbus, let the firmware journal it to the SPI
+    config flash, then COLD BOOT -- a brand-new ArmSim (fresh CPU + fresh RAM)
+    whose ONLY carry-over is the flash device itself (its .mem is non-volatile
+    across the power cycle, nothing else is) -- and read `reg` back.
+
+    Returns (write_echo, flushed_to_flash, readback). `flushed_to_flash` is True
+    once the firmware has programmed *something* new into the six-slot config
+    region (0x0000-0xBFFF) after the write -- a black-box "a save happened"
+    signal that needs no knowledge of which slot/offset the value lands in.
+
+    SysTick is run fast (2000 insn/tick) so the firmware's debounced flush
+    completes in a few million instructions instead of tens of millions."""
+    from arm_sim_modbus import ModbusDongle
+    path = _resolve_image()
+    if not path:
+        raise Skip("no image (pass one on the command line or set $LXP_SIM_IMAGE)")
+    if not os.path.exists(path):
+        raise Skip("image %s not found" % path)
+    if is_intel_hex(path):
+        raise ValueError("%s is an Intel .hex; pass a flat .bin (make factory)" % path)
+    CONFIG_END = 0xC000                       # the six 8 KB slots live in 0x0..0xBFFF
+
+    # --- cold boot #1: factory-provisioned config flash; write, let it flush ---
+    sim1 = ArmSim(path)
+    dev = sim1.attach_config_flash()          # a valid record per slot, as a programmed unit ships
+    mb1 = ModbusDongle(sim1, systick=systick)
+    baseline = bytes(dev.mem[:CONFIG_END])
+    echo = mb1.write_single(reg, value)
+    used = 0
+    while used < settle and bytes(dev.mem[:CONFIG_END]) == baseline:
+        sim1.run(1_000_000)
+        used += 1_000_000
+    flushed = bytes(dev.mem[:CONFIG_END]) != baseline
+
+    # --- cold boot #2: fresh CPU + RAM, SAME flash device (the only NV state) ---
+    sim2 = ArmSim(path)
+    sim2.attach_spi_flash(flash=dev)
+    mb2 = ModbusDongle(sim2, systick=systick)
+    return echo, flushed, mb2.read_holding(reg)
+
+
+def test_settings_persist_across_cold_boot():
+    """A settings write must survive a power cycle through the SPI config flash.
+
+    Black box, same contract for both images: write HR 101 (ChargeCurr), let the
+    firmware journal it to flash, then cold-boot a fresh CPU/RAM against *only*
+    the persisted flash and read it back -- it must still be there. This is the
+    whole persistence loop (Modbus write -> settings struct -> flash record ->
+    reboot -> loader -> Modbus read), end to end.
+
+    The factory image passes. Our firmware must implement the same flash
+    persistence to pass (TDD target)."""
+    HR_CHARGE_CURR, value = 101, 55
+    echo, flushed, got = _persist_roundtrip(HR_CHARGE_CURR, value)
+    assert echo == value, \
+        "0x06 write of ChargeCurr=%d was not acknowledged (echo=%r)" % (value, echo)
+    assert flushed, \
+        "the write never reached the config flash -- nothing was persisted"
+    assert got == [value], \
+        "after a cold boot, ChargeCurr read back as %r, not [%d]" % (got, value)
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 def _main(argv):
     # Optional single positional arg: the image to test. (argparse would reject
