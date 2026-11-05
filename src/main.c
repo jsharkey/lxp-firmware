@@ -21,6 +21,7 @@
 #include "inv/bms_can_map.h"
 #include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
+#include "inv/acfirst.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map).
  * The wire value is scaled to the on-flash units the factory uses so a record
@@ -205,6 +206,21 @@ int main(void) {
 
         pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
         relay_poll();           /* apply AC transfer-relay state (PA12/PB3) */
+
+        /* AC-First load-priority windows vs. the RTC (docs/25). The ARM owns the
+         * clock: derive the minute-of-day from the time registers (HR 13/14) and
+         * publish "any AC-First window active now" as IR 126 bit 8 -- the
+         * externally observable verdict. (A hardware build syncs HR 13/14 to the
+         * STM32 RTC and advances it; here the set time is the clock.) */
+        {
+            uint16_t now_min = acfirst_clock_minutes(g_rt.holding_reg[HR_TIME_DATE_HOUR],
+                                                     g_rt.holding_reg[HR_TIME_MIN_SEC]);
+            if (acfirst_window_active(&g_rt.holding_reg[HR_ACFIRST_START_0],
+                                      ACFIRST_NUM_WINDOWS, now_min))
+                g_rt.input_reg[IR_ACFIRST_STATUS] |= IR_ACFIRST_WIN_ACTIVE;
+            else
+                g_rt.input_reg[IR_ACFIRST_STATUS] &= (uint16_t)~IR_ACFIRST_WIN_ACTIVE;
+        }
 
         int key = hmi_keypad_poll();
         if (key >= 0) { hmi_key(&g_hmi, (hmi_key_t)key); hmi_render(&g_hmi); }
