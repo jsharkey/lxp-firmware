@@ -310,7 +310,13 @@ class ArmSim:
         for b in USARTS: uc.mem_write(b, struct.pack("<I", USART_SR_READY))
         uc.hook_add(UC_HOOK_MEM_WRITE, self._on_write, begin=PERIPH, end=PERIPH+PERIPH_SZ)
         uc.hook_add(UC_HOOK_MEM_READ,  self._on_read,  begin=PERIPH, end=PERIPH+PERIPH_SZ)
-        uc.hook_add(UC_HOOK_CODE, self._on_code)
+        # Scope the STOP-sentinel code hook to the STOP page only. Every run path
+        # stops at STOP via emu_start's native `until` (call/_run_rtos/_fire_systick
+        # all pass STOP; the one no-`until` path, a from-reset boot, never reaches
+        # STOP), so this hook never needs to fire on ordinary instructions — and a
+        # code hook that fires on *every* instruction is the dominant per-step cost
+        # (a full factory boot more than halves without it).
+        uc.hook_add(UC_HOOK_CODE, self._on_code, begin=STOP, end=STOP + 0x1000)
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._on_unmapped)
         self.uc = uc
 
