@@ -83,6 +83,18 @@ confirming the mode's origin.
 > complementary telemetry direction. A DSP-side cross-check to pin the physical
 > port (SCI-A vs relayed) is specced in [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md).
 
+> **DSP-side cross-check result (docs/23): relayed, not a direct DSP SCI-A.** The DSP
+> *does* produce this exact frame — its builder `FUN_00096EE8` emits `type=1`,
+> big-endian, `0xA001`-CRC with the **operating-mode byte at `+4`** (from the DSP
+> state machine) + PV/grid/freq — but it transmits it on **SCI-B**, the same port as
+> the config push (`FUN_0009DD14→FUN_0009D358→`SCI-B = **USART3**). The DSP has no
+> second ARM-facing telemetry port (SCI-A carries unrelated bulk records at ~9600;
+> only SCI-B runs ~19200). So the mode's **origin on the DSP is confirmed**, but
+> **USART2 is not the DSP's second SCI** — the DSP-domain data on USART2 is relayed
+> (safety CPU) or a re-emitted copy of the SCI-B/USART3 telemetry. Likely the ARM
+> already receives this same telemetry on **USART3** (the SOF-`0x49` parser, docs/10);
+> worth confirming it populates the same quantities as the USART2 bank.
+
 ## The split, and why the evidence looked contradictory
 
 | Responsibility | Lives on | Mechanism |
