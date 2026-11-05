@@ -47,57 +47,46 @@ def _factory():
     return ArmSim(path)
 
 
-# --- factory internals for the manual/AutoTest relay override (ceaa-07xx) ---
-# docs/18: the grid-protection self-test drives the AC transfer relays directly.
-# sub_08018a7c, in manual mode, sets PA12 <- cmd bit1 and PB3 <- cmd bit0.
-FAC_RELAY_UPDATER = 0x08018a7c
-FAC_MANUAL_FLAG   = 0x2000d0e4 + 0xa9   # 1 = manual/test mode
-FAC_RELAY_CMD     = 0x2000da6c          # override command word
-
-
-def _relay_override_factory(cmd, manual):
-    sim = _factory()
-    sim.wbytes(FAC_MANUAL_FLAG, bytes([manual]))
-    sim.wbytes(FAC_RELAY_CMD, bytes([cmd & 0xFF, (cmd >> 8) & 0xFF]))
-    sim.clear_drives()
-    sim.call(FAC_RELAY_UPDATER)
-    return (sim.get_output("PA12"), sim.get_output("PB3"))
+# --- factory relay drive: re-pin needed before these can run (docs/18) ------
+# These two tests were written against docs/18's first relay analysis, which has
+# since been retracted: the addresses they used -- the manual-mode flag
+# `0x2000d0e4+0xa9`, the override command word `0x2000da6c`, and IR_STATE at
+# `0x2000d0e4+0xa0` -- are the phantom addresses docs/18 now flags as *not
+# materialized anywhere in the image* (the real IR_STATE byte is `0x2000a0d8+0x90`,
+# docs/22/30). The "updaters" they called (`sub_08018a7c`, `sub_08016ec6`) are
+# also not callable entry points: `sub_08016ec6` is a tail inside the 20-byte bit
+# helper `sub_08016ebc`, and `sub_08018a7c` is a mid-function branch of the large
+# decider `sub_08018518` (it reads `r10`/`sl` and faults when entered cold). The
+# real relay deciders are big multi-input control functions (they read IR_STATE
+# *and* the DSP grid/fault status, debounce counters and config enables), so they
+# can't be exercised as the isolated updaters assumed here without seeding that
+# whole context -- the "re-pin the relay state source" item docs/18 leaves open.
+#
+# Until that re-pin lands, these SKIP rather than assert against stale addresses
+# (where they previously crashed / failed). The same override + working-mode
+# contracts (RELAY_OVERRIDE_TRUTH / RUN_STATES / NONRUN_STATES) are still enforced
+# on our implementation by tests/test_arm_sim_self_only.py, so the behaviour is
+# covered; only the factory-oracle cross-check is paused.
+_RELAY_REPIN = ("factory relay deciders need re-pinning (docs/18): the addresses "
+                "these drove (0x2000d0e4+0xa0/0xa9, 0x2000da6c) are retracted "
+                "phantoms and sub_08018a7c/sub_08016ec6 are not callable entry "
+                "points -- see the comment above. Contract still enforced in "
+                "test_arm_sim_self_only.py.")
 
 
 def test_relay_override_drives_transfer_pins():
-    """Manual/AutoTest relay override (docs/18), run against the factory's real
-    relay-drive code (sub_08018a7c): a command word drives PA12 (bit 1) and PB3
-    (bit 0) in manual mode, and is ignored otherwise. The factory image is the
-    oracle for the shared override contract."""
-    for (cmd, manual), exp in RELAY_OVERRIDE_TRUTH.items():
-        got = _relay_override_factory(cmd, manual)
-        assert got == exp, "factory (cmd=%d manual=%d) = %r, expected %r" % (cmd, manual, got, exp)
-
-
-# --- working-mode relay: the run-enable relay PC6 follows IR_STATE ----------
-FAC_RUN_RELAY_UPDATER = 0x08016ec6         # PB2/PC6 updater (docs/18)
-FAC_IR_STATE          = 0x2000d0e4 + 0xa0  # operating mode byte (= IR_STATE)
-
-
-def _run_relay_factory(state):
-    sim = _factory()
-    sim.wbytes(FAC_RELAY_CMD, b"\x00\x00")          # override off
-    sim.wbytes(FAC_IR_STATE, bytes([state]))
-    sim.clear_drives()
-    for _ in range(600):                            # settle the updater's debounce
-        sim.call(FAC_RUN_RELAY_UPDATER)
-    return sim.get_output("PC6")
+    """Manual/AutoTest relay override (docs/18): a command word drives PA12 (bit 1)
+    and PB3 (bit 0) in manual mode, ignored otherwise. SKIPPED on the factory side
+    pending a relay-decider re-pin (see above); enforced on ours in the self-only
+    suite."""
+    raise Skip(_RELAY_REPIN)
 
 
 def test_relay_follows_working_mode():
-    """The run-enable relay (PC6) is closed when the inverter is in a running
-    operating mode (IR_STATE > PROGRAMMING) and open in standby/fault/programming
-    -- the factory's sub_08016ec6 gate (docs/18). The factory image is the oracle
-    for the shared working-mode contract."""
-    for st in RUN_STATES:
-        assert _run_relay_factory(st) == 1, "factory: PC6 should be closed for state 0x%02x" % st
-    for st in NONRUN_STATES:
-        assert _run_relay_factory(st) == 0, "factory: PC6 should be open for state 0x%02x" % st
+    """The run-enable relay (PC6) is closed in a running operating mode and open in
+    standby/fault/programming (docs/18). SKIPPED on the factory side pending a
+    relay-decider re-pin (see above); enforced on ours in the self-only suite."""
+    raise Skip(_RELAY_REPIN)
 
 
 # --- safety-CPU telemetry -> Modbus input registers (docs/30, docs/33) ------
