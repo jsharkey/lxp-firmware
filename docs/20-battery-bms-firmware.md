@@ -128,9 +128,11 @@ extended: 0x311–0x321, 0x370–0x381, 0x373/0x379  (per-cell, per-string, extr
 
 The **extended ranges carry the per-pack / stack-detail telemetry** (per-battery
 summary, min/max cell voltage & temp, module counts, capacity, version, serial).
-This inverter emits them but does **not** surface them on the dongle Modbus — it
-aggregates to one logical pack. Evidence, and CAN firmware-update findings, in
-[`docs/34` — multi-battery CAN](34-multi-battery-can.md).
+This inverter **does** surface them on the dongle Modbus — not in the aggregate
+IR 0–239 block, but on an **undocumented high range, input registers 5000–5126**
+(per-pack getter `sub_08020cc0`, array `0x2000691c`, fed from CAN `0x400|sub<<5|pack`
+by `sub_080205d4`). Full mechanism + proof, and CAN firmware-update findings, in
+[`docs/34` — multi-battery CAN](34-multi-battery-can.md) (§2b).
 
 Immediately after the table sits the manufacturer-name payload `EG4/LUX`
 (the `0x35E`/`0x370` frame data). The `0x351/0x355/0x356/0x359` core is exactly

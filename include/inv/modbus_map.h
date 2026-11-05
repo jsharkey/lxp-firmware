@@ -160,6 +160,19 @@ enum mb_input_reg {
     IR_AFCI_MAXARC_CH1  = 149  /* max arc CH1..CH4 at 149..152                   */
 };
 
+/* --- Undocumented per-pack battery range (input registers 5000-5126) --------
+ * Beyond the aggregate map above, the factory serves PER-PACK battery telemetry
+ * on a separate high range (not in any public EG4 map). The serializer routes
+ * input registers 5000-5126 to a dedicated getter (factory sub_08020cc0) backed
+ * by a per-pack array filled from the CAN per-pack frames (id 0x400|sub<<5|pack,
+ * parser sub_080205d4): 30 register slots per pack (bases 5000/5030/5060/5090,
+ * 27 u16 fields used), paged for >4 packs. See docs/34 (§2b) and
+ * tests/test_arm_sim_factory_only.py::test_per_pack_telemetry_reaches_modbus.
+ * Our firmware does not implement this range yet (a per-pack superset). */
+#define IR_PERPACK_BASE   5000u   /* first per-pack input register               */
+#define IR_PERPACK_STRIDE 30u     /* register slots per pack                      */
+#define IR_PERPACK_FIELDS 27u     /* u16 fields used of each slot                 */
+
 /* ============================ HOLDING REGISTERS (0x03/0x06/0x10) ========== */
 /* Settings / commands. Only the most load-bearing entries are named here;
  * the full table (incl. grid-code protection curves 25-62, the AC-charge /
