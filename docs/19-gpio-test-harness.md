@@ -282,7 +282,7 @@ python3 tests/test_arm_sim.py build/firmware.bin     # our firmware
 python3 tests/test_arm_sim.py reference/com_flat.bin # the factory oracle (flat .bin)
 ```
 
-There are three common tests today:
+There are four common tests today:
 
 **1. `test_pb7_input_drives_output`** — the black-box pattern: assert a GPIO
 contract **without naming any entry point**. It only injects a GPIO input, lets
@@ -331,6 +331,24 @@ request rather than on a byte count.
 > `make test-sim` (and, being in the factory common block, `make` fail-fasts
 > there — run `make test-sim-ours` or the factory files directly to see the
 > rest).
+
+**4. `test_can_battery_soc_soh_reaches_modbus`** — end-to-end **battery BMS CAN →
+Modbus** (docs/20). The pack reports SOC/SOH on CAN1 ID `0x355`; the ARM polls
+CAN1, caches the pack state, and serves it as Modbus **input register 5**
+(`IR_SOC_SOH`: low byte SOC %, high byte SOH %). The test injects a `0x355` frame
+on the battery bus and then reads IR 5 over the dongle, asserting the values
+crossed from CAN to Modbus. The CAN plumbing is `tests/arm_sim_can.py`
+(`CanBattery`), which models just enough of the bxCAN receive FIFO 0 at
+`0x40006400` (the registers a polled reader touches) through the sim's `uc`
+handle — no `tools/arm_sim.py` change — matching the recovered fact that the
+com-MCU polls CAN1 with no IRQ (docs/20).
+
+> **Scaffolding — expected-red.** This is a harness start, not a passing test:
+> our firmware has no CAN reader yet, and the factory polls CAN1 from an RTOS
+> task the harness does not schedule, so SOC/SOH does not reach IR 5 on either
+> image. It fails cleanly (our build reads IR 5 = 0; the factory sends no reply
+> at all) and pins the CAN → register-image → Modbus contract for when the ARM
+> battery-telemetry path lands.
 
 ## Running the tests
 
