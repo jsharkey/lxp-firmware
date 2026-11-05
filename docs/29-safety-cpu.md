@@ -102,3 +102,8 @@ a schematic.
   bulk `LS4_RAM` stream (not a `'T'`/`'D'` cross-check), so whether the smaller
   model has an external safety CPU or folds the redundancy in differently is
   unresolved (E027 lives in the 18kPV-superset map).
+
+> **Next (ARM side):** [`docs/30`](30-safety-cpu-arm-handoff.md) hands the ARM agent
+> the precise leads — the `Slave Ver` (reg 9 low byte) source and the E027 raise
+> point — to confirm whether **USART2 ⇔ safety CPU** (pinning it on both ends) or
+> the DSP merely relays its version/status.
