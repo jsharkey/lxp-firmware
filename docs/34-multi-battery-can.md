@@ -161,10 +161,63 @@ read   IR 5000 = 0x1234   IR 5001 = 0xABCD   IR 5004 = 0x5678   IR 5030 = 0x9ABC
 ```
 
 (reg 5000 = pack-0 subtype-0 bytes[0:2], 5001 = bytes[2:4], 5004 = subtype-1
-bytes[0:2], 5030 = pack-1 subtype-0 bytes[0:2].) The exact field→subtype→byte map
-for all 27 fields is the per-subtype branches of `sub_080205d4` (not fully mapped
-here); the register *addressing* (pack slot + field index) and the full CAN→dongle
-path are proven.
+bytes[0:2], 5030 = pack-1 subtype-0 bytes[0:2].)
+
+### The full 27-field map (per pack)
+
+Recovered byte-exact from the parser `sub_080205d4` (the per-subtype store
+branches) + the getter `sub_08020cc0`, and verified in the harness. Each pack is
+one **27 × u16** record (stride `0x36`); `sub_08014dc6` reads every field
+**little-endian** and the parser applies **no scaling**. Register = `5000 +
+30·pack_slot + field` (for the pack shown at base 5000). The named layout is
+[`include/inv/perpack_map.h`](../include/inv/perpack_map.h) (`PP_S<sub>_W<word>`).
+
+| field | reg (pack@5000) | CAN id | subtype | source bytes | note |
+|---|---|---|---|---|---|
+| 0  | 5000 | `0x400` | 0 | b0:1 | u16 LE |
+| 1  | 5001 | `0x400` | 0 | b2:3 | u16 LE |
+| 2  | 5002 | `0x400` | 0 | b4 (lo), b7 (hi) | **split pair** |
+| 3  | 5003 | `0x400` | 0 | b5:6 | u16 LE |
+| 4–7   | 5004–5007 | `0x420` | 1 | b0:1, b2:3, b4:5, b6:7 | u16 LE ×4 |
+| 8–11  | 5008–5011 | `0x440` | 2 | b0:1, b2:3, b4:5, b6:7 | u16 LE ×4 |
+| 12–15 | 5012–5015 | `0x460` | 3 | b0:1, b2:3, b4:5, b6:7 | u16 LE ×4 |
+| 16–18 | 5016–5018 | `0x480` | 4 | b0:1, b2:3, b4:5 | u16 LE ×3 |
+| 19–22 | 5019–5022 | `0x4A0` | 5 | b0:1, b2:3, b4:5, b6:7 | u16 LE ×4 |
+| 23–25 | 5023–5025 | `0x4C0` | 6 | b0:1, b2:3, b4:5 | u16 LE ×3 |
+| 26 | 5026 | `0x4C0` | 6 | b6 | u8 (hi byte 0) |
+
+(The CAN id encodes `0x400 | subtype<<5 | pack`; subtype 7 writes none of these 27
+fields. The pack index is 5 bits, so up to 32 packs page through 5000–5126.)
+
+### Field *semantics* are not yet pinned — and why
+
+The register addressing, the field→byte provenance, and the full CAN→dongle path
+above are **proven**. What each field physically *means* (which word is pack
+voltage vs current vs SOC vs a cell min/max vs a version) is **not** determined
+here, for a concrete reason: the parser is a straight little-endian byte copy with
+**no scaling or naming**, so the meaning lives entirely in the battery's frame
+definitions. Pinning them needs one of:
+
+- the **battery image** (`BATT_IN280-Z03T13.bin`, HC32F460) decoded on the TX
+  side — the ~3,900-instruction builder `FUN_0002a0bc` assembles these frames; it
+  is proprietary/gitignored and was **not attached to the session** that mapped
+  the ARM side, or
+- a **live CAN capture** from a multi-pack stack (match known quantities by value).
+
+An open question also remains on the **CAN id**: the ARM ingests per-pack on
+**`0x4xx`** (`0x400|sub<<5|pack`), whereas §1's read of the battery TX table listed
+per-pack frames at **`0x311–0x321`/`0x370–0x381`** (`0x3xx`) — and the battery's
+own RX dispatcher treats `0x400` as an inbound *command* (§3). Whether this EG4-LL
+pack actually emits the `0x4xx` telemetry the ARM parses (vs. a different/newer
+pack or brand preset), or the `0x3xx` frames are remapped, is unresolved without
+the battery image or a bus trace. So the 5000+ path is **present and provably
+served**; that it is *fed* on this exact pack is the remaining unknown.
+
+The most defensible semantic read (from the CAN-battery family + the aggregate
+frames we do know, docs/20) is that the seven subtype frames carry the per-pack
+analogs of the pack's V/I/SOC/SOH/temperature, min/max cell voltage & temperature,
+charge/discharge limits, cycle count / capacity, and version/identity — but the
+exact word-by-word assignment is deliberately left unlabeled rather than guessed.
 
 **So the answer flips:** per-pack telemetry **is** readable over the dongle Modbus
 on this `ceaa-07xx` image — just on a high, undocumented register bank (5000+)
