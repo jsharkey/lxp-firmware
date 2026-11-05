@@ -97,36 +97,54 @@ settings screen (down from ~75 s / ~30 s / ~225 s).
 
 ## Using it
 
+The simulator is **firmware-agnostic** — it renders whatever image you point it
+at. With no firmware it runs the **open-source build** (`build/firmware.bin`); a
+path (vendor `.hex` or flat `.bin`) runs that instead.
+
 ```bash
-make factory-hmi            # boot the factory HMI, serve it on http://localhost:8090/
-make factory-hmi PORT=9000
-# or:
-python3 tools/factory_hmi_app.py --port 8090
+make hmi-sim                       # the open-source firmware, http://localhost:8090/
+make factory-hmi                   # the factory image
+make hmi-sim FIRMWARE=path/App.hex # any other image
+# or directly:
+python3 tools/factory_hmi_app.py            # open-source build
+python3 tools/factory_hmi_app.py App.hex    # a vendor image
 ```
 
-The page shows the 240×160 panel (FSTN-tinted) and the four keys as buttons
-(also arrow keys / Enter / Esc). It boots once (~18 s, a spinner shows), then each
-press runs the firmware (~6 s) and repaints. Needs `pip install unicorn numpy
-pillow` and `reference/com_flat.bin` + `reference/symbols.csv`.
+The page shows the 240×160 panel (FSTN-tinted) and the four keys as buttons (also
+arrow keys / Enter / Esc). It boots once (a spinner shows — the open build in
+~14 s, the factory in ~20 s), then each press runs the firmware and repaints.
+Needs `pip install unicorn numpy pillow`; the factory image also needs
+`reference/com_flat.bin`.
 
 Headless, from a script:
 
 ```python
 from factory_hmi import FactoryHmi
-h = FactoryHmi().boot()
+FactoryHmi().boot().save_png("hello.png")                  # open-source build
+h = FactoryHmi("reference/com_flat.bin").boot()            # factory image
 h.save_png("overview.png")
-for k in ["PA11", "PA8", "PA8", "PA8", "PA11"]:   # -> Common settings
+for k in ["PA11", "PA8", "PA8", "PA8", "PA11"]:            # -> Common settings
     h.press(k)
 h.save_png("common.png")
 ```
+
+## The open firmware drives the same panel
+
+Our firmware is a drop-in replacement, so it talks to the **same** LCD in the
+**same wire format**: `src/hmi/lcd_tft.c` (+ `include/inv/lcd_tft.h`) bit-bangs
+the 4-wire serial bus on PB12–15, sends the MIPI-DCS commands, and packs pixels
+1bpp/8-per-byte exactly as the factory does — so `tools/tft.py` renders its
+output identically. `main()` brings the panel up and posts a "Hello World!" as a
+first milestone; `make hmi-sim` shows it.
 
 ## Pieces
 
 | File | Role |
 |---|---|
-| `tools/tft.py` | LCD controller model: GPIOB serial stream → unpack 8 px/byte → 240×160 monochrome image |
-| `tools/factory_hmi.py` | boot the factory image through its RTOS, read the screen, press keys |
+| `tools/tft.py` | LCD controller model: GPIOB serial stream → unpack 8 px/byte → drop off-panel margin → 240×160 monochrome image |
+| `tools/factory_hmi.py` | boot **any** firmware image, read the screen, press keys (default: the open-source build) |
 | `tools/factory_hmi_app.py` | browser app: the panel + four keys, driven by the real firmware |
+| `src/hmi/lcd_tft.c` | the open firmware's driver for this panel (same bit-banged format) |
 
 ## Limits / next
 
@@ -135,7 +153,6 @@ h.save_png("common.png")
   static text are exact. Feeding the DSP-link / BMS values would populate them.
 - Editing a setting (entering a field, changing a value) should work through the
   same keys; only navigation to the screens is exercised so far.
-- The pixel bytes carry an 8-bit value (the firmware passes "colors" like `0xE0`,
-  `0x1F`); the physical panel is monochrome, so `mono()` treats any non-background
-  value as ink. If a true grayscale/color panel is confirmed, map the bytes
-  accordingly.
+- The open firmware's panel bring-up is proven in the simulator; it still needs
+  validating on real hardware, and the full factory init sequence (not just the
+  CASET/RASET/RAMWR the sim needs) should be double-checked against a live panel.

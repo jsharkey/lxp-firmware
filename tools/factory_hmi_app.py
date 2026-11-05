@@ -39,6 +39,7 @@ BG  = (0xa9, 0xc2, 0xc0)
 _LOCK = threading.Lock()      # serialize all emulator access (Unicorn not thread-safe)
 _STATE = {"status": "booting", "png": None, "step": 0, "msg": "booting firmware …"}
 _HMI = None
+_FIRMWARE = None              # set by main(); None => open-source build/firmware.bin
 
 
 def _render_png(mono_img):
@@ -62,8 +63,9 @@ def _publish(msg=None):
 def _boot():
     global _HMI
     with _LOCK:
-        _HMI = FactoryHmi(verbose=True)
-        _STATE["msg"] = "booting firmware through its RTOS … (~90s)"
+        _HMI = FactoryHmi(firmware=_FIRMWARE, verbose=True)
+        _STATE["fw"] = os.path.basename(_HMI.firmware)
+        _STATE["msg"] = "booting %s …" % _STATE["fw"]
         _HMI.boot()
         _publish("ready")
         _STATE["status"] = "ready"
@@ -99,7 +101,7 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
  .key:active .lb,.key.flash .lb{color:#0b0f14} .key .pin{font:10px ui-monospace,monospace;color:var(--accent)}
  .foot{font-size:12px;color:var(--muted);text-align:center;max-width:440px}
 </style></head><body>
- <h1>EG4 <b>12000XP</b> &mdash; factory HMI, running in the emulator</h1>
+ <h1>EG4 com-MCU HMI &mdash; <b id="fw">firmware</b> running in the emulator</h1>
  <div class="device">
   <div class="bezel">
    <img class="screen" id="screen" alt="LCD">
@@ -120,6 +122,7 @@ KEYS.forEach(k=>{const d=document.createElement('div');d.className='key';d.datas
 function setBusy(on,msg){ov.classList.toggle('on',on); if(msg)ovmsg.textContent=msg;
   document.querySelectorAll('.key').forEach(b=>b.disabled=on);}
 function show(s){ if(s.png) img.src='data:image/png;base64,'+s.png;
+  if(s.fw){const e=document.getElementById('fw'); if(e)e.textContent=s.fw;}
   if(s.status==='ready'){setBusy(false);} else {setBusy(true,s.msg);} }
 async function poll(){ try{const s=await(await fetch('/api/state')).json(); show(s);
   if(s.status!=='ready') setTimeout(poll,1500);}catch(e){setTimeout(poll,2000);} }
@@ -173,13 +176,20 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    global _FIRMWARE
+    ap = argparse.ArgumentParser(description="On-screen HMI for any firmware for this MCU.")
+    ap.add_argument("firmware", nargs="?", default=None,
+                    help="firmware image (vendor .hex or flat .bin); "
+                         "default: the open-source build/firmware.bin")
     ap.add_argument("--port", type=int, default=8090)
     ap.add_argument("--host", default="0.0.0.0")
     args = ap.parse_args()
+    _FIRMWARE = args.firmware
     threading.Thread(target=_boot, daemon=True).start()
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    print("factory HMI app on http://localhost:%d/  (booting; ~90s to first paint)" % args.port, flush=True)
+    print("HMI app on http://localhost:%d/  (%s; booting)"
+          % (args.port, os.path.basename(args.firmware) if args.firmware else "open-source build"),
+          flush=True)
     try: srv.serve_forever()
     except KeyboardInterrupt: print("\nbye")
 

@@ -12,6 +12,7 @@
 #include "inv/modbus_map.h"
 #include "inv/hmi.h"
 #include "inv/hmi_menu.h"
+#include "inv/lcd_tft.h"
 #include "inv/dsp_link.h"
 #include "inv/variant.h"
 #include "inv/gpio_sample.h"
@@ -141,6 +142,13 @@ int main(void) {
     hmi_keypad_init();
     hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
     hmi_render(&g_hmi);
+
+    /* Bring up the real graphic LCD (docs/23) and post a "hello world" — proof
+     * our firmware drives the same panel as the factory image, in the same wire
+     * format (the HMI simulator renders this identically). Done after the comms
+     * GPIO is configured so it doesn't reorder their bring-up. */
+    lcd_tft_init();
+    lcd_text(LCD_PANEL_X0, 24, "Hello World!");
 
     for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
     dsp_push_init(&g_dsp);
