@@ -38,8 +38,10 @@ Same shape, cleaned up and hardware-abstracted:
 | `include/inv/hmi.h` | item/menu types, navigation API, LCD+keypad port interface |
 | `src/hmi/hmi.c` | navigation engine: move / enter-submenu / edit-value / action / back; scroll; clamp; commit vs cancel |
 | `src/hmi/hmi_model.c` | the menu tree (data), bound to `HR_*`/`IR_*` registers with ranges from the protocol doc |
-| `src/hmi/hmi_port.c` | LCD + keypad hardware stubs (TODO: pins from schematic) |
+| `src/hmi/hmi_port.c` | LCD + keypad port — 20×4 HD44780 over a PCF8574 I²C backpack (bit-banged), debounced keys on PA8/PA11/PC8/PC9 (`docs/22`) |
+| `include/inv/hmi_panel.h` | panel wiring shared by the firmware + the emulator model |
 | `tests/test_hmi.c` | host tests (`make test`, 14 checks) |
+| `tests/test_hmi_panel.py` | end-to-end on the emulator: keys → LCD text + register writes (`make test-sim-ours`) |
 
 Item kinds: `HMI_INFO` (read-only reg display), `HMI_U16` (ranged numeric edit),
 `HMI_ENUM` (choice list), `HMI_SUBMENU`, `HMI_ACTION`. Editable items read+write
@@ -56,8 +58,12 @@ enter/commit/cancel edit, min/max clamp, submenu push/pop, action callback).
       `modbus_map.h` (the model is currently a representative subset).
 - [ ] Item types/choices that need RE (enum option lists, per-item scale) —
       confirm against the stock menu-builder tables.
-- [ ] `hmi_port.c`: real LCD driver + debounced keypad scan — **needs the
-      schematic** (LCD controller + key/LCD GPIO, possibly SPI1).
+- [x] `hmi_port.c`: LCD driver + debounced keypad scan — done for a **20×4
+      HD44780 over a PCF8574 I²C backpack** (bit-banged), keys on the factory
+      key pins PA8/PA11/PC8/PC9. Runs end-to-end in the emulator with an
+      on-screen app (`make hmi`, `docs/22`). The *factory* SPI1 panel protocol
+      is still undecoded (`docs/16`); byte-matching it is a non-goal, so this
+      clean, observable panel stands in until the schematic pins the real one.
 - [ ] Settings persistence (EEPROM/flash) on commit; range validation shared
       with the Modbus write path.
 - [ ] Multi-byte/string items (SN, FW, time) rendering.
