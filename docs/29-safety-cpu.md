@@ -64,19 +64,24 @@ The ARM reaches the safety CPU on **USART2** (19200, RS-485, DE on PC2). This wa
 **proved it from the ARM image** by showing the ARM *reports* the cross-check status
 straight out of the USART2 frame rather than computing it:
 
-- **E027 is copied from the USART2 frame.** The Modbus fault word (`IR_FAULTCODE_L`,
-  served from `STATUS 0x2000a0d8+0x8c`) takes bits 10..31 — including **bit 27 =
-  `FAULT_CPU_SAMPLE_MISMATCH`** — verbatim from `BANK+0xd4`, a **big-endian u32 at
-  USART2 frame offset `+9`** (parser `sub_08024d74`, classifier `sub_0801b480`). The
-  ARM never diffs two sources to raise 27 — it trusts the word the USART2 peer sends.
-  That peer is therefore the CPU running the cross-check = this safety CPU.
-- **W008 (FW version mismatch) and the peer version arrive on USART2.** WarnCode
-  (`BANK+0x1e/0x1c`) is parsed from the USART2 frame; the peer's identity/version
-  bytes (`BANK+2..6,+8`) are received on USART2 and preserved across a bank reset.
+- **E027 is copied from the USART2 frame.** The Modbus fault word (`IR_FAULTCODE_L/H`,
+  served from `STATUS 0x2000a0d8+0x88`) is taken **verbatim from `BANK+0xd0`**, a
+  **big-endian u32 at USART2 frame offset `+5`** (parser `sub_08024d74`, classifier
+  `sub_0801b480`), with only the two internal-comm bits (E000, E017) overridden
+  locally. **bit 27 = `FAULT_CPU_SAMPLE_MISMATCH`** is not one of those, so it is the
+  frame's own bit — the ARM never diffs two sources to raise 27; it trusts the word
+  the USART2 peer sends. That peer is therefore the CPU running the cross-check = this
+  safety CPU.
+- **Grid-domain warnings and the peer version arrive on USART2.** The WARN word
+  (`STATUS+0x8c`, reg 62/63) takes bits 10..31 from `BANK+0xd4` = the USART2 frame `+9`
+  status dword, so the grid warnings (`W016/W017/W018`) are reported from the peer; its
+  low bits (incl. `W008 FW-version-mismatch`) are ARM-computed locally. The peer's
+  Control-CPU (DSP) **version** byte is `BANK+2` of the frame (docs/32); the identity
+  bytes `BANK+2..6,+8` are received on USART2 and preserved across a bank reset.
 - **Peer liveness is a USART2 property.** The USART2 driver `sub_080259d8` tracks link
-  health (`0x2000a6c4`, fail-counters `0x20009048+6`); the classifier sources the
-  **comms-loss bit `0x20000`** of `STATUS+0x88` from that local tracker — the ARM-side
-  twin of the DSP's `0x20000`.
+  health (`0x2000a6c4`, fail-counters `0x20009048+6`); the classifier asserts the
+  **comms-loss bit `0x20000`** (E017) of the fault word `STATUS+0x88` from that local
+  tracker — the ARM-side twin of the DSP's `0x20000`.
 - USART2 is **19200, RS-485** — electrically distinct from the DSP's TTL SCI-B,
   consistent with a separate MCU; and docs/23 proved USART2 is **not** a DSP SCI.
 

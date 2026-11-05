@@ -95,12 +95,14 @@ confirming the mode's origin.
 >
 > **RESOLVED (docs/30): the USART2 peer is the redundant / "safety" CPU.** The ARM
 > *reports* the safety cross-check status straight out of the USART2 frame — the
-> Modbus fault word (`STATUS+0x8c`) takes **bit 27 = E027 (`FAULT_CPU_SAMPLE_MISMATCH`)**
-> verbatim from `BANK+0xd4`, a BE u32 at USART2 frame `+9` (`sub_08024d74`/`sub_0801b480`);
-> W008 (version mismatch) and the peer version bytes also arrive on USART2; and the
-> peer-comms-loss bit `0x20000` is driven by the USART2 driver's own link-health
+> Modbus fault word (`STATUS+0x88`) is copied from `BANK+0xd0`, a BE u32 at USART2
+> frame `+5` (`sub_08024d74`/`sub_0801b480`), so **bit 27 = E027
+> (`FAULT_CPU_SAMPLE_MISMATCH`)** is the frame's own bit; the grid warnings and the
+> peer version byte (`BANK+2`, HR 10 low) also arrive on USART2; and the
+> peer-comms-loss bit `0x20000` (E017) is driven by the USART2 driver's own link-health
 > tracker. So USART2 carries the safety CPU's relayed DSP telemetry **plus** its own
-> agreement/version status. Full chain:
+> agreement/version status. (Full bank field map: [`docs/33`](33-usart2-telemetry-bank.md).)
+> Full chain:
 > `DSP —SCI-C 9600— safety CPU —USART2 19200 RS-485— ARM` (docs/29/30). The ARM *also*
 > receives the DSP's own `0x49` telemetry directly on **USART3** (SCI-B, docs/10), but
 > the classifier builds IR_STATE + the fault word from the **USART2/safety-CPU** bank.

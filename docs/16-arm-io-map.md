@@ -83,11 +83,12 @@ strong inference, **?** open.
   power itself** (IR 7/8, `sub_0801b034`, float `V·I`) — see [`docs/22`](22-arm-dsp-core-split.md).
 - **Operating state** (IR 0) is likewise classified by the ARM from the USART2
   (safety-CPU) telemetry bank (docs/22/30); the real-time power FSM is on the **DSP**.
-- **E027 / W008** — the sample-mismatch fault and FW-version-mismatch warning are
-  *reported* by the ARM straight out of the USART2 frame (not computed): the fault
-  word `STATUS+0x8c` takes bit 27 from `BANK+0xd4` (BE u32 @ USART2 frame `+9`), and
-  WarnCode from `BANK+0x1e/0x1c` — the ARM-side proof that USART2's peer is the
-  safety CPU (docs/29/30).
+- **E027** — the sample-mismatch fault is *reported* by the ARM straight out of the
+  USART2 frame (not computed): the fault word `STATUS+0x88` is copied from `BANK+0xd0`
+  (BE u32 @ USART2 frame `+5`), and bit 27 is the frame's own bit — the ARM-side proof
+  that USART2's peer is the safety CPU (docs/29/30). The grid-domain warnings
+  (`W016/17/18`) likewise come from the USART2 frame (`BANK+0xd4` @ `+9`, the WARN word
+  `STATUS+0x8c`); `W008` is ARM-computed. Full bank field map: [`docs/33`](33-usart2-telemetry-bank.md).
 - **Battery** telemetry comes **directly** to the ARM over CAN1 (docs/20) — the one
   peer the ARM reads first-hand (it still does no analog metering itself).
 

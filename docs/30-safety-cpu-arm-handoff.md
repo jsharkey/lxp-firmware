@@ -100,66 +100,91 @@ is the hand-off's **first outcome branch** and the **"Reported"** shape of Lead 
 the ARM does **not** compute the cross-check — it copies a status word the USART2
 peer already decided. That makes **USART2 the safety CPU's link**.
 
+> **Correction (this revision):** an earlier version of this section had the **fault
+> and warning words swapped** (it put the fault code at `STATUS+0x8c`/`BANK+0xd4`/frame
+> `+9` and claimed W008 came from `BANK+0x1e/0x1c`). The register sweep in
+> [`docs/33`](33-usart2-telemetry-bank.md) corrected it: **fault = `STATUS+0x88` ←
+> `BANK+0xd0` ← frame `+5`**, **warn = `STATUS+0x8c` ← `BANK+0xd4` ← frame `+9`**, and
+> `BANK+0x1e/0x1c` are **radiator temperatures** (IR 65/66), not the warn code. The
+> verdict is unchanged — both status words still come from the USART2 frame — but the
+> offsets below are the corrected ones.
+
 ### Lead 2 (E027) — decisive: the fault word is lifted verbatim from the USART2 frame
 
 The Modbus **fault code** is served by the input-register getter `sub_0803289c`:
-reg 60 (`IR_FAULTCODE_L`) ← `STATUS(0x2000a0d8)+0x8c` (u32). The state classifier
+reg 60/61 (`IR_FAULTCODE_L/H`) ← `STATUS(0x2000a0d8)+0x88` (u32). The state classifier
 **`sub_0801b480`** builds that word (regs: `r5=STATUS 0x2000a0d8`,
-`r6=BANK 0x20009e54` = the USART2 telemetry bank, `r1=0x2000a6c4`):
+`r6=BANK 0x20009e54` = the USART2 telemetry bank, `r1=0x2000a6c4` = the ARM-local
+fault/warn accumulator):
 
 ```
-0x0801b4a6  ldr.w  r0, [r6, #0xd4]     ; BANK+0xd4  (USART2 frame, see below)
-0x0801b4aa  lsrs   r0, r0, #0xa        ; keep bits 10..31
-0x0801b4ac  lsls   r0, r0, #0xa
+; --- FAULT word (reg 60/61) ---
+0x0801b48e  ldr.w  r2, [r6, #0xd0]     ; BANK+0xd0  (USART2 frame +5, see below)
+0x0801b492  ...     r0 = 0xfffdfffe    ; mask: clear bits 0 and 17
+0x0801b496  ands   r2, r0
+0x0801b498  ldr    r3, [r1]            ; 0x2000a6c4  (ARM-local accumulator)
+0x0801b49a  ...     r0 = 0x00020001    ; keep bits 0 (E000) and 17 (E017)
+0x0801b49e  ands   r3, r0
+0x0801b4a0  orrs   r2, r3
+0x0801b4a2  str.w  r2, [r5, #0x88]     ; STATUS+0x88 = FAULT word (reg 60/61)
+; --- WARN word (reg 62/63) ---
+0x0801b4a6  ldr.w  r0, [r6, #0xd4]     ; BANK+0xd4  (USART2 frame +9)
+0x0801b4aa  lsrs/lsls #0xa             ; keep bits 10..31 from the frame
 0x0801b4ae  ldr    r1, [r1, #4]        ; 0x2000a6c4+4 (ARM-local, bits 0..9)
-0x0801b4b0  lsls   r1, r1, #0x16
-0x0801b4b2  lsrs   r1, r1, #0x16       ; keep bits 0..9
+0x0801b4b0  lsls/lsrs #0x16            ; keep bits 0..9 local
 0x0801b4b4  orrs   r0, r1
-0x0801b4b6  str.w  r0, [r5, #0x8c]     ; STATUS+0x8c = fault word (reg 60)
+0x0801b4b6  str.w  r0, [r5, #0x8c]     ; STATUS+0x8c = WARN word (reg 62/63)
 ```
 
-So **`STATUS+0x8c` = (`BANK+0xd4` bits 10..31) | (local bits 0..9)**. `FAULT_CPU_SAMPLE_MISMATCH = 27`
-→ **bit 27 ∈ bits 10..31 ⇒ it comes from `BANK+0xd4`.** And `BANK+0xd4` is written
-by the USART2 mode/status parser **`sub_08024d74`**, gated on frame length ≥ `0x54`:
+So **`STATUS+0x88` (fault) = (`BANK+0xd0` with bits 0,17 cleared) | (local bits 0,17)`.**
+`FAULT_CPU_SAMPLE_MISMATCH = 27` → bit 27 is **not** bit 0 or 17, so **it is copied
+straight from `BANK+0xd0`.** Only the two *internal-comm* fault bits are asserted
+locally: **E000** (bit 0) and **E017** (bit 17 = `0x20000`) — these are the ARM's own
+"I lost the link" faults, which a dead peer cannot report. `BANK+0xd0` is written by
+the USART2 mode/status parser **`sub_08024d74`**, gated on frame length ≥ `0x54`:
 
 ```
 0x08024d80  ldr    r4, =0x20009e54        ; BANK
 0x08024d82  ldr    r5, =0x20008084        ; USART2 RX staging
 0x08024d86  ldrb   r0, [r5, #4]
-0x08024d88  strb   r0, [r4]               ; BANK+0  = frame[+4]  (operating mode)
+0x08024d88  strb   r0, [r4]               ; BANK+0   = frame[+4]  (operating mode)
 0x08024d8a  adds   r0, r5, #5
 0x08024d8c  bl     sub_08014dd4           ; BE u32 read
-0x08024d90  str.w  r0, [r4, #0xd0]        ; BANK+0xd0 = BE u32 @ frame[+5]  (status A)
+0x08024d90  str.w  r0, [r4, #0xd0]        ; BANK+0xd0 = BE u32 @ frame[+5]  (FAULT status)
 0x08024d94  adds.w r0, r5, #9
 0x08024d98  bl     sub_08014dd4
-0x08024d9c  str.w  r0, [r4, #0xd4]        ; BANK+0xd4 = BE u32 @ frame[+9]  (status B / fault)
+0x08024d9c  str.w  r0, [r4, #0xd4]        ; BANK+0xd4 = BE u32 @ frame[+9]  (WARN status)
 ```
 
 (`sub_08014dd4` = big-endian u32, `[p]<<24 | [p+1]<<16 | [p+2]<<8 | [p+3]` — the
-EG4/DSP BE family, same as the config/telemetry frames.) **The E027 bit is a
-big-endian status word at USART2 frame offset `+9`.** The ARM trusts it wholesale;
+EG4/DSP BE family, same as the config/telemetry frames.) **E027 is bit 27 of a
+big-endian status word at USART2 frame offset `+5`.** The ARM trusts it wholesale;
 it never diffs two sources to raise 27. → the CPU that decides the mismatch is the
 **USART2 peer** = the safety CPU (DSP-side `DAT_00012318` `0x200`/`0x20000`
 semantics, docs/29).
 
-### Lead 3 (W008 + liveness) — corroborating, all on USART2
+### Lead 3 (warnings + version + liveness) — corroborating, all on USART2
 
-- **Version-mismatch warning.** WarnCode is served `reg 62 ← BANK+0x1e`,
-  `reg 63 ← BANK+0x1c` (`sub_0803289c`). Both are parsed as BE u16 **from the USART2
-  frame** in the bulk parser `sub_080241a8` (tag-0 sub-record). `WARN_FW_VERSION_MISMATCH = W008`
-  is therefore **reported from the USART2 peer**, not computed by the ARM.
-- **Peer identity / version bytes.** `sub_080241a8` also stores small identity bytes
-  `BANK+2..6, +8` from the frame; `sub_08022c40` wipes the whole telemetry bank on a
-  comms reset **but deliberately preserves exactly those bytes** — i.e. they are the
-  peer's persistent identity/version, received over USART2.
+- **Grid-domain warnings arrive on USART2.** The WARN word (reg 62/63 ← `STATUS+0x8c`)
+  takes bits **10..31 from `BANK+0xd4`** = the USART2 frame `+9` status dword — so the
+  DSP/grid-domain warnings (e.g. `W016` grid outage = bit 16, `W017` grid-V range,
+  `W018` grid-F range) are **reported from the USART2 peer**. Its low bits (0..9),
+  including `W008 FW-version-mismatch`, come from the ARM-local accumulator
+  `0x2000a6c4+4` instead — i.e. **W008 is ARM-*computed*** (the ARM compares the
+  versions it holds; see docs/32), not copied from the frame. (This corrects the
+  earlier claim that W008 was a frame field.)
+- **Peer version byte.** The Control-CPU (DSP) version the ARM reports (HR 10 low) is
+  `BANK+2`, a byte of the **USART2 frame** (docs/32); `sub_080241a8` writes the small
+  identity/version bytes `BANK+2..6,+8`, and `sub_08022c40` wipes the telemetry bank on
+  a comms reset **but deliberately preserves exactly those bytes** — the peer's
+  persistent identity, received over USART2.
 - **Peer-liveness (comms-loss).** The USART2 driver `sub_080259d8` CRC-validates each
   frame (`sub_08014bec`), gates the mode/status parse on `frame[1]==1`, and
   **maintains the link-health state itself**: it debounces `0x2000a6c4` and counts
-  consecutive bad/missing frames in `0x20009048+6`. The classifier sources the
-  **peer-comms-loss bit (0x20000) of status word A (`STATUS+0x88`) from `0x2000a6c4`**
-  (local override of the frame's bit 17) — i.e. "I lost the USART2 peer," asserted
-  locally because a dead peer can't report its own death. That is the ARM-side twin
-  of the DSP's `0x20000` comms-loss bit.
+  consecutive bad/missing frames in `0x20009048+6`. The classifier then asserts the
+  **E017 bit (`0x20000`) of the fault word from `0x2000a6c4`** (local override of the
+  frame's bit 17) — "I lost the USART2 peer," the ARM-side twin of the DSP's `0x20000`
+  comms-loss bit.
 
 ### Note on the reg-9 pointer (Lead 1)
 
@@ -167,10 +192,11 @@ The hand-off's "reg 9 via `sub_0803289c`" is imprecise for this image: input reg
 `IR_PPV3` (const 0 on a 2-MPPT build), and **holding** reg 9 is served from the
 settings struct `SETTINGS+9` (`0x2000985d`, written only by the flash/settings loader
 `sub_080341b2`) — i.e. the com-MCU's *own* stored config, not a received version.
-The *functional* content of `Slave Ver` — the peer's **version and version-mismatch
-status** — nonetheless arrives on **USART2** (identity bytes `BANK+2..6,+8`; W008 in
-`BANK+0x1e/0x1c`), which is what the lead was after. The exact register the slave
-version is re-exported in (if any) is a loose end, not a blocker.
+The *functional* content of `Slave Ver` — the peer's version — nonetheless arrives on
+**USART2**: the Control-CPU (DSP) version is `BANK+2` (HR 10 low, docs/32), and the
+identity bytes `BANK+2..6,+8` are preserved across a comms reset. The exact register
+the *redundant*-CPU version is re-exported in is a loose end (reg 9 low is hard-`0x00`
+in this 12000XP image), not a blocker.
 
 ### Verdict
 
