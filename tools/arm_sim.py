@@ -258,6 +258,10 @@ class ArmSim:
         self._halt = False                     # set by stop-hooks so the tick driver breaks
         self._rtos = False                     # RTOS exception engine off until enable_rtos()
         self._exc_depth = 0                    # 0 = thread mode, >0 = in handler(s)
+        self._systick_due = False              # a SysTick is pending (deferred while masked)
+        self._rtos_step = 2000                 # run quantum between exception checks (RTOS)
+        self._thread_on_psp = False            # True while a task (PSP) is the interrupted thread
+        self._msp = None                       # shadow main/handler stack (see _exc_entry)
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -543,21 +547,26 @@ class ArmSim:
         self.uc.hook_add(UC_HOOK_INTR, self._on_intr)
         return self
 
-    def _active_sp(self):
-        """(sp_reg_const, value) for the stack the current context uses."""
-        if self._exc_depth == 0 and (self.uc.reg_read(UC_ARM_REG_CONTROL) & 2):
-            return UC_ARM_REG_PSP, self.uc.reg_read(UC_ARM_REG_PSP)
-        return UC_ARM_REG_MSP, self.uc.reg_read(UC_ARM_REG_MSP)
-
+    # We do NOT rely on Unicorn's CONTROL.SPSEL banking: in practice it does not
+    # survive our manual EXC_RETURN, so a handler's `mrs psp` would read a stale
+    # value and the context switch would corrupt. Instead we keep CONTROL=0 (one
+    # active SP) and switch SP ourselves between the task stack and a shadow MSP
+    # (`self._msp`), while keeping the PSP register current for the firmware's
+    # `mrs/msr psp`. `self._thread_on_psp` tracks whether the interrupted thread
+    # was a task (PSP) rather than depending on CONTROL.
     def _exc_entry(self, vecnum):
-        """Model Cortex-M exception entry: hardware-stack the frame, vector to the
-        handler on MSP, leave EXC_RETURN in LR."""
+        """Model Cortex-M exception entry: hardware-stack the caller's frame on
+        the active stack, then run the handler on the (shadow) MSP with an
+        EXC_RETURN in LR. Returns False (and halts) if the frame can't be written
+        (e.g. an uninitialised task stack)."""
         uc = self.uc
         vtor = self.r32(SCB_VTOR)
         handler = self.r32((vtor or self.vector_base()) + 4 * vecnum)
         if not handler or handler == 0xFFFFFFFF:
             return False
-        sp_reg, sp = self._active_sp()
+        if self._msp is None:
+            self._msp = uc.reg_read(UC_ARM_REG_SP)   # capture the main stack once
+        sp = uc.reg_read(UC_ARM_REG_SP)              # active stack (task PSP, or main MSP)
         xpsr = uc.reg_read(UC_ARM_REG_XPSR)
         align = (sp - 0x20) & 4
         newsp = (sp - 0x20 - align) & 0xFFFFFFFF
@@ -571,15 +580,16 @@ class ArmSim:
                 uc.mem_write(newsp + 4 * i, struct.pack("<I", v & 0xFFFFFFFF))
         except UcError:
             self._halt = True; return False                  # bad SP (incomplete init) -> stop, don't crash
-        uc.reg_write(sp_reg, newsp)                          # stacked onto the active stack
-        # EXC_RETURN encodes where to come back to
-        if self._exc_depth > 0:        exc = EXC_RET_HANDLER
-        elif sp_reg == UC_ARM_REG_PSP: exc = EXC_RET_PSP
-        else:                          exc = EXC_RET_MSP
+        if self._thread_on_psp:                              # interrupted a task: frame on its PSP
+            uc.reg_write(UC_ARM_REG_PSP, newsp)              # handler's `mrs psp` reads this
+            uc.reg_write(UC_ARM_REG_SP, self._msp)           # handler runs on MSP
+            exc = EXC_RET_PSP
+        else:                                                # interrupted main thread: stay on MSP
+            self._msp = newsp
+            uc.reg_write(UC_ARM_REG_SP, newsp)
+            exc = EXC_RET_MSP
         self._exc_depth += 1
         uc.reg_write(UC_ARM_REG_LR, exc)
-        uc.reg_write(UC_ARM_REG_MSP, uc.reg_read(UC_ARM_REG_MSP))
-        uc.reg_write(UC_ARM_REG_SP, uc.reg_read(UC_ARM_REG_MSP))   # handler runs on MSP
         uc.reg_write(UC_ARM_REG_XPSR, (xpsr & ~0x1FF) | vecnum)    # IPSR = exception number
         uc.reg_write(UC_ARM_REG_PC, handler | 1)
         return True
@@ -596,31 +606,33 @@ class ArmSim:
 
     def _do_exc_return(self, exc):
         """Model Cortex-M exception return: unstack {r0-r3,r12,lr,pc,xpsr} and
-        resume on the MSP or PSP indicated by EXC_RETURN. Sets PC for the driver."""
+        resume on the task (PSP) or main (MSP) stack per EXC_RETURN. We swap SP
+        ourselves rather than via CONTROL.SPSEL (see _exc_entry)."""
         uc = self.uc
+        self._msp = uc.reg_read(UC_ARM_REG_SP)               # handler ran on MSP; snapshot it
         to_psp = (exc == EXC_RET_PSP)
-        frame_sp = uc.reg_read(UC_ARM_REG_PSP if to_psp else UC_ARM_REG_MSP)
-        f = [struct.unpack("<I", uc.mem_read(frame_sp + 4 * i, 4))[0] for i in range(8)]
-        uc.reg_write(UC_ARM_REG_R0, f[0]); uc.reg_write(UC_ARM_REG_R1, f[1])
-        uc.reg_write(UC_ARM_REG_R2, f[2]); uc.reg_write(UC_ARM_REG_R3, f[3])
-        uc.reg_write(UC_ARM_REG_R12, f[4]); uc.reg_write(UC_ARM_REG_LR, f[5])
+        frame_sp = uc.reg_read(UC_ARM_REG_PSP) if to_psp else self._msp
+        f = [struct.unpack("<I", uc.mem_read((frame_sp + 4 * i) & 0xFFFFFFFF, 4))[0]
+             for i in range(8)]
         xpsr = f[7]
         newsp = (frame_sp + 0x20 + (4 if (xpsr & 0x200) else 0)) & 0xFFFFFFFF
-        self._exc_depth = max(0, self._exc_depth - 1)
-        if to_psp:
-            uc.reg_write(UC_ARM_REG_PSP, newsp)
-            uc.reg_write(UC_ARM_REG_CONTROL, uc.reg_read(UC_ARM_REG_CONTROL) | 2)
-            uc.reg_write(UC_ARM_REG_SP, newsp)
-        else:
-            uc.reg_write(UC_ARM_REG_MSP, newsp)
-            if self._exc_depth == 0:
-                uc.reg_write(UC_ARM_REG_CONTROL, uc.reg_read(UC_ARM_REG_CONTROL) & ~2)
-            uc.reg_write(UC_ARM_REG_SP, newsp)
-        uc.reg_write(UC_ARM_REG_XPSR, xpsr | (1 << 24))      # keep Thumb bit
         ret_pc = f[6]
         if not (FLASH_BASE <= (ret_pc & ~1) < FLASH_BASE + len(self.data)):
             self._halt = True                                # scheduler returned an invalid task
             return                                           # (incomplete init) -> stop, don't crash
+        uc.reg_write(UC_ARM_REG_R0, f[0]); uc.reg_write(UC_ARM_REG_R1, f[1])
+        uc.reg_write(UC_ARM_REG_R2, f[2]); uc.reg_write(UC_ARM_REG_R3, f[3])
+        uc.reg_write(UC_ARM_REG_R12, f[4]); uc.reg_write(UC_ARM_REG_LR, f[5])
+        self._exc_depth = max(0, self._exc_depth - 1)
+        if to_psp:                                           # resume a task on its PSP stack
+            uc.reg_write(UC_ARM_REG_PSP, newsp)
+            uc.reg_write(UC_ARM_REG_SP, newsp)
+            self._thread_on_psp = True
+        else:                                                # resume the main thread on MSP
+            self._msp = newsp
+            uc.reg_write(UC_ARM_REG_SP, newsp)
+            self._thread_on_psp = False
+        uc.reg_write(UC_ARM_REG_XPSR, xpsr | (1 << 24))      # keep Thumb bit
         uc.reg_write(UC_ARM_REG_PC, ret_pc | 1)
 
     def _pendsv_pending(self):
@@ -643,6 +655,8 @@ class ArmSim:
             except UcError:
                 pass
             return self
+        if self._rtos:
+            return self._run_rtos(start_pc, max_insn)
         uc.reg_write(UC_ARM_REG_PC, start_pc & ~1 | 1)
         remaining = max_insn
         while remaining > 0 and not self._halt:
@@ -654,34 +668,62 @@ class ArmSim:
                 pass
             if self._halt or (uc.reg_read(UC_ARM_REG_PC) & ~1) == STOP:
                 break
-            if not self._rtos:
-                remaining -= self._tick_interval
-                self._fire_systick()
-                continue
+            remaining -= self._tick_interval
+            self._fire_systick()
+        return self
+
+    def _run_rtos(self, start_pc, max_insn):
+        """Event-driven run for the preemptive RTOS. Models the NVIC for the two
+        lowest-priority exceptions the port uses -- SysTick (periodic) and PendSV
+        (set via PENDSVSET) -- which fire only in thread mode with interrupts
+        enabled (PRIMASK clear), and never nest. Execution advances in small
+        quanta; between quanta a *pending* exception is taken when it is allowed
+        to be, and a SysTick that comes due while interrupts are masked is
+        deferred (it collapses to one pending tick, as the real COUNTFLAG does),
+        not dropped -- so ticks keep advancing through the firmware's critical
+        sections instead of being lost at a chunk boundary that lands in one."""
+        uc = self.uc
+        uc.reg_write(UC_ARM_REG_PC, start_pc & ~1 | 1)
+        remaining = max_insn
+        budget = self._tick_interval
+        step = min(self._tick_interval, self._rtos_step)
+        while remaining > 0 and not self._halt:
+            # Take a pending exception iff in thread mode with interrupts enabled
+            # (both SysTick and PendSV sit at the lowest priority, so neither
+            # preempts the other or a running handler). A SysTick that comes due
+            # while interrupts are masked stays pending (one tick, like the real
+            # COUNTFLAG) rather than being dropped at a chunk boundary in a
+            # critical section.
+            if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1):
+                if self._systick_due:
+                    csr = self.r32(SYST_CSR)
+                    self._systick_due = False
+                    if csr & 1:                              # ENABLE: latch COUNTFLAG
+                        self.w32(SYST_CSR, csr | (1 << 16))
+                        if (csr & 2) and self._exc_entry(EXC_SYSTICK):   # TICKINT
+                            remaining -= 1; continue
+                if self._pendsv_pending() and self._exc_entry(EXC_PENDSV):
+                    remaining -= 1; continue
+            self._exc_event = None
+            pc = uc.reg_read(UC_ARM_REG_PC)
+            n = min(step, remaining)
+            try:
+                uc.emu_start(pc | 1, STOP, count=n)
+            except UcError:
+                pass
+            if self._halt or (uc.reg_read(UC_ARM_REG_PC) & ~1) == STOP:
+                break
             ev = self._exc_event
             if ev == "svc":
                 self._exc_entry(EXC_SVC); remaining -= 1
             elif ev is not None:                             # an EXC_RETURN fetch
-                self._do_exc_return(ev)
-                if self._pendsv_pending():                   # tail-chain PendSV
-                    self._exc_entry(EXC_PENDSV)
-                remaining -= 1
-            else:                                            # chunk boundary -> tick
-                remaining -= self._tick_interval
-                self._fire_systick_rtos()
+                self._do_exc_return(ev); remaining -= 1
+            else:                                            # quantum elapsed
+                remaining -= n; budget -= n
+                if budget <= 0:
+                    self._systick_due = True
+                    budget += self._tick_interval
         return self
-
-    def _fire_systick_rtos(self):
-        """Fire SysTick as a proper exception entry (only from thread mode)."""
-        if self._exc_depth != 0:
-            return
-        csr = self.r32(SYST_CSR)
-        if not (csr & 1):
-            return
-        self.w32(SYST_CSR, csr | (1 << 16))
-        if not (csr & 2) or (self.uc.reg_read(UC_ARM_REG_PRIMASK) & 1):
-            return
-        self._exc_entry(EXC_SYSTICK)
 
     def run_reset(self, max_insn=500_000, vector_base=None):
         """Boot from the image's own reset vector and run its event loop for up
