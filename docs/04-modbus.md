@@ -38,6 +38,16 @@ application composes the 32-bit value. The doc's 32-bit "word + byte reversed"
 rule is a *decoding convention for the master*; on our wire each register is
 just little-endian, which the L/H split already satisfies.
 
+## Related: register spaces and the several uses of "Modbus"
+
+The function code selects the **register space**, and holding (`0x03/0x06/0x10`,
+read-write settings) and input (`0x04`, read-only telemetry/status) are
+**independent number lines** — the same number means different things in each
+(e.g. *holding* 126-131 = OptimalChg_DisChg config vs *input* 126 = a status
+word). The same EG4 frame envelope is also reused for the external dongle, the
+ARM↔DSP link, and firmware update. Both traps, plus a worked AC-First-window
+example, are written up in [`docs/22`](22-modbus-multiplexing.md).
+
 ## Query grouping rule
 
 A request may span at most **40 registers** and must **not cross a 40-register
