@@ -128,14 +128,11 @@ extended: 0x311–0x321, 0x370–0x381, 0x373/0x379  (per-cell, per-string, extr
 
 The **extended ranges carry the per-pack / stack-detail telemetry** (per-battery
 summary, min/max cell voltage & temp, module counts, capacity, version, serial).
-For **this** pack they do **not** reach the dongle: the aggregate block (IR 81–106)
-is served, but the extended frames are parsed into internal scalars no Modbus getter
-reads. The ARM *does* have an undocumented per-pack register bank (input registers
-**5000–5126**, getter `sub_08020cc0`, array `0x2000691c`), but it is fed only by CAN
-**`0x4xx`** per-pack frames (`sub_080205d4`) — which this EG4-LL pack never emits (it
-uses `0x3xx`), so that bank is **dormant here**. Full mechanism, the dormancy proof,
-and CAN firmware-update findings in [`docs/34` — multi-battery CAN](34-multi-battery-can.md)
-(§2b).
+How the inverter treats them is decoded in
+[the ingest map below](#what-the-inverter-does-with-the-extended-frames); the short
+version is **only the aggregate block reaches the dongle** (IR 81–106). Full
+dormant-`0x4xx`-bank and CAN firmware-update findings in
+[`docs/34` — multi-battery CAN](34-multi-battery-can.md) (§2b).
 
 Immediately after the table sits the manufacturer-name payload `EG4/LUX`
 (the `0x35E`/`0x370` frame data). The `0x351/0x355/0x356/0x359` core is exactly
@@ -143,7 +140,49 @@ what a Victron/SMA/Deye/EG4 inverter expects to auto-configure charge limits and
 display SOC — so our com-MCU firmware's battery-telemetry reader must parse this
 set. The **Pylontech `0x42xx`** frame IDs (`0x4210/0x4220/0x4240/0x4290`, …) are
 also present but **scattered**, built individually in code rather than from a
-table (the Pylontech-style presets).
+table (the Pylontech-style presets). *(These `0x42xx` Pylontech frames are a
+different preset — `0x42xx & 0xf00 = 0x200`, not the ARM per-pack bank's `0x4xx`
+gate — and are not emitted to our LUX inverter.)*
+
+## What the inverter does with the extended frames
+
+Decoded the ARM's CAN-ID dispatch (`sub_08021694`/`sub_08021a1c`/`sub_08021b68`)
+to see which of the battery's `0x3xx` frames the inverter actually ingests, and
+where each lands. Across all three EG4 packs (which emit the same families —
+`IN280`/`AW280` identical, `WM314`/EG4-314 adds `0x322–0x329`), the picture is:
+
+| battery frames | inverter handler | lands in | on the dongle? |
+|---|---|---|---|
+| **aggregate** `0x351/355/356/359/35a/35b/35c/35e/35f` | `sub_08021694` + `sub_08021a1c` | the input-register image | **✔ served** — [IR 81–106](modbus-dongle/input-081_106-BMS.md), IR 5 |
+| **extended** `0x311–0x321` | `sub_08021b68` | fixed scalar RAM (`0x2000a87e…0x2000a8a2`, `0x2000a9b2…0x2000a9c2`) | ✗ — consumed only by internal CAN re-forwarders (`sub_0802138e`/`sub_08021850`), **not** read by the Modbus getters |
+| **cell / stack detail** `0x370–0x381` (min/max cell V & T, module counts, capacity, SW/HW version, serial) | **none** | — | ✗ — **not parsed at all**; the ARM has no `0x370–0x381` dispatch (verified: zero CAN-id compares in that range). Received on the bus and dropped. |
+| **per-pack bank** (CAN `0x400|sub<<5|pack`) | `sub_080205d4` → IR 5000–5126 | per-pack array `0x2000691c` | ✗ — real path, but **no EG4 pack emits `0x4xx`** (docs/34 §2b), so dormant |
+
+So beyond the aggregate pack summary, **no per-battery or per-cell detail is
+reachable from this inverter** — the richest frames (`0x370–0x381`: cell min/max
+V/T, capacity, version, serial) are not even parsed, and `0x311–0x321` go to
+internal scalars that never reach a register.
+
+### `0x311–0x321` byte layout (what the ARM extracts)
+
+Authoritative *structure* from `sub_08021b68` (big-endian; the scalars are
+internal and unnamed — the inverter re-forwards them, it does not serve or, as far
+as traced, display them, so a semantic label would be a guess and is left open):
+
+| frame | bytes → scalar |
+|---|---|
+| `0x311` | `[0:1]→a8a2`, `[2:3]→a88c`, `[4:5]→a88e` (BE u16 ×3) |
+| `0x312` | `[0]→a9b5`, `[1]→a9b6`, `[2]→a9b7`, `[3]→a9b8`, `[4]→a9b2` (u8 ×5 — status/flags) |
+| `0x313` | `[0:1]→a87e`, `[2:3]→a880`, `[4:5]→a882`, `[6]→a884`, `[7]→a886` |
+| `0x314` | `[6:7]→a8a0` |
+| `0x319` | `[0]→a9b9`, `[1:2]→a898`, `[3:4]→a89a` |
+| `0x321` | `[0:1]→a89c`, `[2:3]→a89e` |
+
+(The `a87e…a8a2` cluster is BE u16 measurements; `a9b2…a9c2` are u8 status bytes —
+consistent with per-string summary + flags, but their exact meaning needs the EG4
+extended-CAN spec or a live capture, neither of which is in hand. The `0x370–0x381`
+cell detail would be the clean min/max-cell set, but since the inverter never reads
+it, its layout isn't recoverable from this image's parse.)
 
 ## Per-frame byte layout (recovered)
 
