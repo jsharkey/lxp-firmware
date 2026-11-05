@@ -256,6 +256,24 @@ telemetry on CAN `0x4xx`); it would light up with such a pack, but sits unused
 here. So "undocumented per-pack registers exist" is true of the **firmware**; "this
 inverter+battery surface per-pack data to the dongle" is **false** for this pack.
 
+**Checked three EG4 battery models — none emit `0x4xx`.** To rule out that the
+`0x4xx` bank is for some *other* EG4 pack, three battery images were scanned:
+
+| battery | model id | MCU / base | per-pack/extended CAN | `0x4xx` per-pack series? |
+|---|---|---|---|---|
+| `BATT_IN280-Z03T13` | EG4-LL | HC32F460 @`0x20000` | `0x311–0x321`, `0x370–0x381` | no |
+| `BATT_AW280-Z02T30` | EG4-LL | HC32F460 @`0x20000` | `0x311–0x321`, `0x370–0x381` | no |
+| `BATT_WM314-Z03T21` | EG4-314 | other MCU @`0x10000` | `0x311–0x329`, `0x370–0x379` | no |
+
+All three build the standard aggregate (`0x351/355/356/359/35a/b/c/e/f`) plus the
+`0x3xx` extended ranges; none build the `0x400|(subtype<<5)|pack` series the ARM's
+5000-bank parser (`sub_080205d4`) consumes (WM314's only `0x4xx` immediates are a
+stray `0x400`/`0x403`, which are plain code constants, not a CAN-id progression).
+So across the EG4 battery line the 5000–5126 bank is **dormant**; the `0x4xx`
+per-pack protocol belongs to a different (likely non-EG4 / other-preset) pack. The
+EG4 packs' richer per-pack/cell detail rides the `0x3xx` extended frames, which this
+inverter parses into unserved scalars.
+
 > For **our** open firmware: the `0x4xx`→5000 register *path* has a firmware oracle
 > (`test_per_pack_telemetry_reaches_modbus`, synthetic `0x4xx` frames), so the
 > serving side can be matched if we choose to; but there is no point feeding it from
