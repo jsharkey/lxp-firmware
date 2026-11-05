@@ -117,6 +117,27 @@ the `[x]`/`[~]`/`[ ]` markers, phrases like "proven", "both ends proven",
   doc to the new finding — don't silently diverge. The next agent will trust
   what's written.
 
+## Record factory quirks (they may be bugs to fix)
+
+When you notice the factory firmware doing something **unexpected** — behaviour
+that deviates from the published spec (the EG4 Modbus doc, the CAN/BMS contract,
+a datasheet), is internally inconsistent, or just looks wrong — **write it down
+in [`docs/31-factory-quirks.md`](docs/31-factory-quirks.md)**, the running
+catalogue. Don't leave it buried in a commit message or a sub-finding of another
+doc where the next agent won't find it.
+
+Why this matters: we reimplement **functionally**, not byte-for-byte, so a
+factory quirk is a decision point, not something to copy by reflex. Each one is
+potentially a **bug we can fix** in the open-source firmware — but only if it's
+recorded so we can decide deliberately.
+
+For each quirk note: **what** the factory does, **what** the spec/expectation
+was, the **evidence** (function address / tool / which image), and a **verdict**
+— replicate it (it may be load-bearing: another peer or the protocol may depend
+on the quirk), fix it in our firmware, or still-to-decide. Never silently "fix"
+a quirk you only assume is a mistake; flag it in `docs/31` and let the call be
+explicit.
+
 ## Orientation
 
 - `README.md` — scope, strategy, status checklist, build matrix. Start here.
