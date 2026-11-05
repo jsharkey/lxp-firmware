@@ -162,8 +162,26 @@ enum mb_input_reg {
  * OptimalChg_DisChg 2-bit time table at 126-131) is in docs/04-modbus.md. */
 enum mb_hold_reg {
     HR_SN_START         = 2,   /* SN[0..9] ASCII serial number, regs 2-6         */
-    HR_SLAVE_COM_VER    = 9,   /* low: redundant CPU ver, high: comm CPU ver     */
-    HR_CNTL_FW_VER      = 10,  /* low: control (DSP) ver, high: FW version code  */
+    /* --- Firmware-version registers: one byte per processor in the system.
+       The EG4 protocol names three CPUs; the standard device naming used across
+       this project (docs/01, docs/16, docs/22) is:
+         - Control CPU       = TI C2000 DSP (power stage / MPPT / grid sync)
+         - Communication CPU = this STM32F103 com/HMI MCU  << THIS PROJECT >>
+         - Redundant CPU     = the 3rd on-board "safety" MCU (docs/29)
+       Traced to source in the factory ARM image (12000XP `ceaa`) via the holding
+       getter `fn_ceaa` @0x08032000 — see docs/31:
+         reg 9  = mov #0x0500                 -> low=0x00, high=0x05
+         reg 10 = [0x20009e54+2] | (0x01<<8)  -> low=USART2 bank, high=0x01       */
+    HR_SLAVE_COM_VER    = 9,   /* low  = REDUNDANT CPU ver: const 0x00 — not populated
+                                          in this 12000XP image (safety CPU; docs/29)
+                                  high = COMMUNICATION CPU ver: const — the ARM's own
+                                          baked-in FW version (this project)          */
+    HR_CNTL_FW_VER      = 10,  /* low  = CONTROL CPU (DSP) ver: from the USART2 bank
+                                          byte +2 (0x20009e56, written by the USART2
+                                          parser sub_080241a8) — the DSP's version
+                                          RELAYED to the ARM via the safety CPU on
+                                          USART2, not a direct DSP link (docs/30/31)
+                                  high = FW version code: const (ARM-side build code) */
     HR_RESET_SETTING    = 11,  /* bitfield: clear records / restore defaults /…  */
     HR_TIME_YEAR_MONTH  = 12,  /* low: year(17-255), high: month(1-12)           */
     HR_TIME_DATE_HOUR   = 13,

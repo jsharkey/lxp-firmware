@@ -61,13 +61,16 @@ selected at runtime by the **`Model`/`Com Addr` settings** — so the presence o
 a string or register does not imply the feature is enabled on the 12000XP.
 Treat the 18kPV map as a **superset**.
 
-The system has **three processors**:
+The system has **three processors**, each with a firmware-version byte in the Modbus
+map (HR 9/10). Where each byte actually comes from is traced in
+[`docs/31`](31-firmware-version-registers.md):
 
-| Modbus version reg | Role | This project? |
-|---|---|---|
-| `Cntl Ver` | Control CPU — TI C2000 DSP (power stage, MPPT, PWM, grid sync) | no |
-| `Com Ver` | **Communication/HMI MCU — this STM32F103** | **yes** |
-| `Slave Ver` | Redundant/safety CPU (cross-checks sampling; fault E027) | no |
+| Modbus version field | reg · byte | Role | This project? | ARM-side source |
+|---|---|---|---|---|
+| `Cntl Ver` (Control CPU) | 10 · low | TI C2000 DSP (power stage, MPPT, PWM, grid sync) | no | USART2 bank `+2` — the DSP's version **relayed via the safety CPU** (docs/30/31) |
+| `Com Ver` (Communication CPU) | 9 · high | **Communication/HMI MCU — this STM32F103** | **yes** | constant `0x05` (the ARM's own baked-in version) |
+| `Slave Ver` (Redundant CPU) | 9 · low | Redundant/safety CPU (cross-checks sampling; fault E027) | no | constant `0x00` — *not populated* in the 12000XP `ceaa` image |
+| `FW version code` | 10 · high | — (ARM build/protocol code, not a CPU) | — | constant `0x01` |
 
 ## MCU identification: STM32F1-compatible, **M4-class core** (GD32F303-style clone)
 
