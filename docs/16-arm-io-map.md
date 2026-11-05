@@ -75,19 +75,24 @@ strong inference, **?** open.
 
 **Key data-flow facts (established this session):**
 
-- **PV voltage & power come from the DSP, not a direct MPPT link.** The MPPT chip
-  publishes PV V/I/P on *its* EG4-Modbus UART, and the **DSP** is the master that
-  polls it (resolving docs/13's "com MCU and/or DSP"). The DSP's PV/grid
-  measurements reach the ARM over USART2 **relayed via the safety CPU** (docs/30);
-  the ARM serves **PV voltage verbatim** (IR 1/2 ← `0x20009e54`) and **computes PV
-  power itself** (IR 7/8, `sub_0801b034`, float `V·I`) — see [`docs/22`](22-arm-dsp-core-split.md).
-- **Operating state** (IR 0) is likewise classified by the ARM from the USART2
-  (safety-CPU) telemetry bank (docs/22/30); the real-time power FSM is on the **DSP**.
-- **E027 / W008** — the sample-mismatch fault and FW-version-mismatch warning are
-  *reported* by the ARM straight out of the USART2 frame (not computed): the fault
-  word `STATUS+0x8c` takes bit 27 from `BANK+0xd4` (BE u32 @ USART2 frame `+9`), and
-  WarnCode from `BANK+0x1e/0x1c` — the ARM-side proof that USART2's peer is the
-  safety CPU (docs/29/30).
+- **PV/grid measurements reach the ARM on USART2, from the safety CPU — not a direct
+  MPPT or DSP link.** The ARM serves **PV voltage verbatim** from the USART2 bank
+  (IR 1/2 ← `0x20009e54+0x4c/0x4e`) and **computes PV power itself** (IR 7/8,
+  `sub_0801b034`, float `V·I`). The DSP-side follow-up (docs/29) showed the DSP forwards
+  the safety CPU **no** grid/PV, so these measured quantities are the **safety CPU's own
+  independent samples** relayed over USART2, not DSP values. (The MPPT chip publishes
+  PV V/I/P on its own EG4-Modbus UART and the DSP polls it, docs/13 — but that is for
+  the DSP's use and does **not** feed the ARM's bank.) Full map: [`docs/33`](33-usart2-telemetry-bank.md).
+- **Operating state** (IR 0) is the **one DSP-originated field**: the DSP computes the
+  working-state byte, hands it to the safety CPU on SCI-C, which relays it in the USART2
+  frame (`BANK+0`), and the ARM classifies it (docs/22/29/30). The real-time power FSM is
+  on the **DSP**.
+- **E027** — the sample-mismatch fault is *reported* by the ARM straight out of the
+  USART2 frame (not computed): the fault word `STATUS+0x88` is copied from `BANK+0xd0`
+  (BE u32 @ USART2 frame `+5`), and bit 27 is the frame's own bit — the ARM-side proof
+  that USART2's peer is the safety CPU (docs/29/30). The grid-domain warnings
+  (`W016/17/18`) likewise come from the USART2 frame (`BANK+0xd4` @ `+9`, the WARN word
+  `STATUS+0x8c`); `W008` is ARM-computed. Full bank field map: [`docs/33`](33-usart2-telemetry-bank.md).
 - **Battery** telemetry comes **directly** to the ARM over CAN1 (docs/20) — the one
   peer the ARM reads first-hand (it still does no analog metering itself).
 
