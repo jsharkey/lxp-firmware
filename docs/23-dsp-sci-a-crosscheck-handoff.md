@@ -143,3 +143,29 @@ and the `docs/22` residual limit resolves to "relayed, not a second DSP SCI."
 > each expose a single ~19200 ARM port (SCI-B); neither has a dedicated SCI-A telemetry TX.
 > If the MPPT/3-phase product pairs with a DSP build not analyzed here, a dedicated SCI-A
 > can't be excluded outright — but it is absent from both images available.
+
+---
+
+## CONFIRMED (re-verified against both DSP images): USART2 is NOT a direct DSP SCI
+
+Re-derived the port facts with fresh citations (12000XP `CEAA`; 18kPV `fAAB` identical in shape):
+
+- **Port→pointer binding** — `FUN_0009E6D7` calls `FUN_0009DB5F(&SCIA_SCICCR, 0, 0x186)` and
+  `FUN_0009DB5F(&SCIB_SCICCR, 1, 0xc2)`; the binder stores **SCI-A→`DAT_0000aefc`,
+  SCI-B→`DAT_0000aefe`**.
+- **Telemetry TX = SCI-B** — `FUN_0009DD14` (`0x49`/type-1 builder `FUN_00096EE8`,
+  mode byte at `[4]`) → `FUN_0009D358`, which writes `DAT_0000aefe(+4/+9)` = **SCI-B TXBUF**.
+- **SCI-A carries a different stream** — `aefc` (SCI-A) is driven only by `FUN_0009C3FD`,
+  which byte-feeds bulk **`LS4_RAM` 0x1F8-byte records**, not the type-1 telemetry.
+- **Baud decides it** — SCI-B `BRR=0xC2/0xC3` ≈ **19200**; SCI-A/C `BRR=0x186` ≈ **9600**
+  (LSPCLK≈30 MHz). The ARM's USART3 *and* USART2 are both 19200, but the DSP has **exactly
+  one 19200 serial port (SCI-B)** and it is already USART3 (bootloader `0x21/0x22/0x23`).
+- **Bootloader proves SCI-B is the bidirectional ARM link** — `FUN_00080AA8`/`FUN_00080534`
+  both **read `SCIB_SCIRXBUF` and write `SCIB_SCITXBUF`**; the ARM side matched that to USART3.
+
+**Resolution of the hand-off's open question:** the ARM↔DSP *direct* serial interface is a
+**single bidirectional SCI-B/USART3 link** (config down + telemetry up, 19200 TTL). The
+DSP-domain telemetry the ARM parses on **USART2 (19200, RS-485) is relayed**, not a second
+DSP SCI — there is no 19200 DSP port left to be it. Most likely relay: the **redundant/safety
+CPU** (see the safety-CPU investigation). Caveat unchanged: both DSP images on hand show one
+19200 ARM port; re-verify if a model pairs with a DSP build not analyzed here.
