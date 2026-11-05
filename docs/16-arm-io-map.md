@@ -153,11 +153,16 @@ configured for (a battery-side setting, see `docs/20`).
 ## Open items
 
 - Confirm the USART1 pins (PA9/PA10 presumed; not hit by the init sweep) and
-  which peer each UART serves (USART3=DSP and UART5=dongle are known; USART1/
-  USART2/UART4 peers — meter, BMS-UART, console — are not yet pinned).
-- Resolved in [`docs/18`](18-power-path-relays.md): `0x2000d0e4+0xa0` = IR_STATE
-  (reg 0); `0x2000da6c` = AutoTest/manual relay-override. Remaining: fix each
-  relay's silkscreen identity (grid vs EPS vs gen vs dry).
+  which peer each UART serves. Known: **USART3 = DSP** (SCI-B: config + bootloader),
+  **UART5 = dongle**, and **USART2 = DSP-domain telemetry** (EG4-framed `type=1`
+  frame carrying the operating mode + PV/grid V/F into `0x20009e54`; the ARM's
+  core input registers come from here — see [`docs/22`](22-arm-dsp-core-split.md)).
+  USART1/UART4 peers (meter, BMS-UART, console) are still not pinned.
+- `IR_STATE` (reg 0) = byte at **`0x2000a0d8+0x90`** (getter `sub_0803289c`,
+  written by the classifier `sub_0801b480`) — see [`docs/22`](22-arm-dsp-core-split.md).
+  (Supersedes an earlier `0x2000d0e4+0xa0` note, which was a phantom address.)
+  `0x2000da6c` = AutoTest/manual relay-override. Remaining: fix each relay's
+  silkscreen identity (grid vs EPS vs gen vs dry).
 - Pin the dry contact (method above) and the SPI1 peers (LCD vs EEPROM) and the
   PB6/PB7 bit-banged bus.
 - Map the EXTI inputs (external-interrupt lines) — the scan shows EXTI/AFIO use
