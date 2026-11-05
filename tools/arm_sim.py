@@ -264,6 +264,7 @@ class ArmSim:
         self._msp = None                       # shadow main/handler stack (see _exc_entry)
         self._insns = 0                        # instructions executed this RTOS run (block hook)
         self._tick_mark = 0                    # next _insns value at which a SysTick comes due
+        self._pending_irqs = []                # peripheral IRQ vector numbers awaiting delivery
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -562,6 +563,15 @@ class ArmSim:
         self.uc.hook_add(UC_HOOK_BLOCK, self._on_block)
         return self
 
+    def pend_irq(self, vecnum):
+        """Pend a peripheral interrupt (vector number, e.g. 16+IRQn) for the RTOS
+        engine to deliver as soon as it is in thread mode with interrupts enabled.
+        The factory receives the RS485/dongle UART purely by RX interrupt, so a
+        harness must pend that IRQ to feed it bytes; polling its SR/DR is never
+        done by the firmware. Requires enable_rtos()."""
+        self._pending_irqs.append(vecnum)
+        return self
+
     def _on_block(self, uc, addr, size, ud):
         self._insns += max(1, size // 2)                     # ~thumb instructions in the block
         if self._insns >= self._tick_mark:
@@ -570,7 +580,8 @@ class ArmSim:
         # Stop to let _run_rtos take a pending exception as soon as it is allowed
         # (thread mode, interrupts enabled). Both SysTick and PendSV qualify.
         if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1) \
-                and (self._systick_due or (self.r32(SCB_ICSR) & (1 << 28))):
+                and (self._pending_irqs or self._systick_due
+                     or (self.r32(SCB_ICSR) & (1 << 28))):
             uc.emu_stop()
 
     # We do NOT rely on Unicorn's CONTROL.SPSEL banking: in practice it does not
@@ -721,6 +732,10 @@ class ArmSim:
             # while interrupts are masked stays pending (one tick, like the real
             # COUNTFLAG) rather than being dropped.
             if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1):
+                # Peripheral IRQs (e.g. a UART RX) sit above SysTick/PendSV, so
+                # deliver a pending one first. pend_irq() queues them.
+                if self._pending_irqs and self._exc_entry(self._pending_irqs[0]):
+                    self._pending_irqs.pop(0); continue
                 if self._systick_due:
                     csr = self.r32(SYST_CSR)
                     self._systick_due = False
