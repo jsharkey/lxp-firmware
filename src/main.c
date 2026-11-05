@@ -16,6 +16,8 @@
 #include "inv/variant.h"
 #include "inv/gpio_sample.h"
 #include "inv/relay.h"
+#include "inv/bms_can.h"
+#include "inv/bms_can_map.h"
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -27,6 +29,17 @@ static inv_runtime_t g_rt;
 static volatile uint32_t g_ticks;
 
 void SysTick_Handler(void) { g_ticks++; }
+
+/* ---- battery BMS over CAN1 -> the Modbus input-register image ---- */
+static bms_pack_t g_bms;
+
+static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
+    if (!bms_can_on_frame(&g_bms, id, data, dlc)) return;
+    /* Publish decoded pack state into the shared register image. IR_SOC_SOH
+     * packs SOC in the low byte and SOH in the high byte (docs/04). */
+    if (g_bms.soc_soh_valid)
+        g_rt.input_reg[IR_SOC_SOH] = (uint16_t)((g_bms.soh << 8) | g_bms.soc);
+}
 
 /* ---- Modbus register map backed by the runtime image ---- */
 static mb_exception_t mb_rd_input(void *c, uint16_t a, uint16_t *o) {
@@ -105,6 +118,8 @@ int main(void) {
 
     systick_init_1ms();
     mb_port_init(&g_mb);
+    bms_can_init(&g_bms);
+    can_port_init();                    /* battery BMS bus on CAN1 (docs/20) */
     relay_init();
     relay_set_override(0, 0);           /* relays idle until a mode/override drives them */
     relay_set_mode(STATE_STANDBY);      /* run-enable relay follows the operating mode */
@@ -117,9 +132,16 @@ int main(void) {
     for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
     dsp_push_init(&g_dsp);
 
-    uint32_t last_render = 0, last_dsp = 0;
+    uint32_t last_render = 0, last_dsp = 0, last_bms = 0;
     for (;;) {
         mb_port_poll(g_ticks);
+
+        can_port_poll(on_can_frame);  /* drain battery BMS telemetry -> register image */
+        if ((uint32_t)(g_ticks - last_bms) >= 1000) {   /* ~1 Hz keep-alive/request to the pack */
+            last_bms = g_ticks;
+            static const uint8_t keepalive[8] = {0};    /* payload provisional (docs/20) */
+            can_port_send(BMS_CAN_ID_INV_ALIVE, keepalive, sizeof keepalive);
+        }
 
         pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
         relay_poll();           /* apply AC transfer-relay state (PA12/PB3) */
