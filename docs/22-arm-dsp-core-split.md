@@ -80,7 +80,8 @@ confirming the mode's origin.
 > needs the schematic. But the **data is DSP-domain** (operating mode + the DSP's
 > own V/F/PV measurements, EG4-framed), which is what matters for the split below.
 > **USART3** is the confirmed DSP SCI-B (bootloader + CRC, docs/05); USART2 is the
-> complementary telemetry direction.
+> complementary telemetry direction. A DSP-side cross-check to pin the physical
+> port (SCI-A vs relayed) is specced in [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md).
 
 ## The split, and why the evidence looked contradictory
 
