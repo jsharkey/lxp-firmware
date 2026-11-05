@@ -34,31 +34,41 @@ strong inference, **?** open.
                                 |   << THIS PROJECT >>  no analog metering  |
                                 +----+--------------------------------+-----+
              USART3 0x40004800  |                                    |  USART2 0x40004400
-             [✔] ARM --> DSP:   |                                    |  [✔ data] DSP --> ARM:
-             config push +      |                                    |  operating mode + PV/grid
-             bootloader 21/22/23|  (= DSP SCI-B)                     |  V/F telemetry (BE, type-1,
-                                v                                    |   EG4 CRC). port SCI-A vs
-                           +----------------------------------------+-----+ relay = [?]
-                           |   TI C2000 Control DSP   (F2837x)            |
-                           |   real-time power FSM (docs/07);             |
-                           |   measures PV & grid, runs the power stage    |
-                           +----+----------------------------+------------+
-             EG4 Modbus UART     | DSP polls as master  [~]   |  [?] role / link
-             (same framing  [~]  v                            v     not yet imaged
-              as the DSP link)  +------------------+   +----------------------+
-                                | MPPT controller  |   | redundant safety CPU |
-                                | CBAA, GD32-class |   | (3rd on-board MCU)    |
-                                | (docs/13)        |   +----------------------+
-                                | PV V/I/P telem   |
-                                +------------------+
+             [✔] ARM --> DSP:   |                                    |  [✔] ARM <-> safety CPU
+             config push +      |                                    |  (19200, RS-485 DE on PC2):
+             bootloader 21/22/23|  (= DSP SCI-B)                     |  operating mode + PV/grid V/F
+                                v                                    |  (BE, type-1, EG4 CRC) + E027
+                           +--------------------------------------+  |  mismatch / W008 ver status
+                           |   TI C2000 Control DSP   (F2837x)    |  |  (docs/30)
+                           |   real-time power FSM (docs/07);     |  |
+                           |   measures PV & grid, runs power stg |  |
+                           +----+------------------+--------------+  |
+          EG4 Modbus UART       | DSP polls    [~] | SCI-C 9600      |
+          (same framing   [~]   v  as master       | 'T'/'D'  [✔]    v
+           as the DSP link)  +------------------+   | cross-check  +------------------------+
+                             | MPPT controller  |   | (docs/29)    | redundant safety CPU   |
+                             | CBAA, GD32-class |   +------------->| (3rd on-board MCU)      |
+                             | (docs/13)        |                  | redundant sampler;      |
+                             | PV V/I/P telem   |                  | votes + gates inverter  |
+                             +------------------+                  | (docs/29/30)            |
+                                                                   +------------------------+
 ```
+
+> **Topology note (docs/30):** USART2's peer is the **redundant/safety CPU**, now
+> proven from the ARM side — the ARM *reports* E027 (sample-mismatch) and W008
+> (version-mismatch) straight out of the USART2 frame, and tracks that peer's
+> liveness on the USART2 link. The safety CPU cross-checks the DSP over **SCI-C**
+> (9600, `'T'`/`'D'`, docs/29) and relays consolidated mode + telemetry + its own
+> agreement/version status to the ARM over **USART2**. The DSP's *own* `0x49`
+> telemetry still reaches the ARM directly on **USART3** (SCI-B), but the ARM's
+> classified operating state and fault word are built from the USART2/safety-CPU bank.
 
 **The ARM's links (what connects to each port):**
 
 | ARM port | peer | direction / role | conf. |
 |---|---|---|---|
 | **USART3** `0x40004800` | **DSP** (SCI-B) | ARM→DSP config push + firmware-update bootloader (`0x21/0x22/0x23`) | ✔ |
-| **USART2** `0x40004400` | DSP-domain telemetry, **relayed** (not a direct DSP SCI) | DSP→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) — the ARM's core input registers | ✔ data; **port resolved (docs/23): NOT a direct DSP SCI** — the DSP's only 19200 serial port is SCI-B/USART3; its telemetry is TX'd on SCI-B, so USART2 is a relay (candidate: the redundant/safety CPU — see [`docs/29`](29-safety-cpu.md)) |
+| **USART2** `0x40004400` | **redundant / "safety" CPU** (19200, RS-485 DE on PC2) | safety CPU→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) **plus** its E027 sample-mismatch / W008 version-mismatch status — the ARM's core input registers + fault word | ✔ **peer pinned (docs/30)**: not a DSP SCI (docs/23); the ARM *reports* E027/W008 out of this frame and tracks the peer's liveness on this link. The peer cross-checks the DSP over SCI-C (docs/29) |
 | **CAN1** `0x40006400` (PB8/PB9) | **battery BMS** | ARM↔BMS, polled (`docs/20`) | ✔ |
 | **UART5** `0x40005000` | external **dongle** | EG4 Modbus (LE + SN), external RS-485 | ✔ |
 | **USART1** `0x40013800`, **UART4** `0x40004c00` | meter / console / ? | not pinned from firmware (needs schematic) | ? |
@@ -67,12 +77,17 @@ strong inference, **?** open.
 
 - **PV voltage & power come from the DSP, not a direct MPPT link.** The MPPT chip
   publishes PV V/I/P on *its* EG4-Modbus UART, and the **DSP** is the master that
-  polls it (resolving docs/13's "com MCU and/or DSP"). The DSP forwards PV/grid
-  measurements to the ARM over USART2; the ARM serves **PV voltage verbatim**
-  (IR 1/2 ← `0x20009e54`) and **computes PV power itself** (IR 7/8, `sub_0801b034`,
-  float `V·I`) — see [`docs/22`](22-arm-dsp-core-split.md).
-- **Operating state** (IR 0) is likewise classified by the ARM from DSP telemetry
-  (docs/22); the real-time power FSM is on the **DSP**.
+  polls it (resolving docs/13's "com MCU and/or DSP"). The DSP's PV/grid
+  measurements reach the ARM over USART2 **relayed via the safety CPU** (docs/30);
+  the ARM serves **PV voltage verbatim** (IR 1/2 ← `0x20009e54`) and **computes PV
+  power itself** (IR 7/8, `sub_0801b034`, float `V·I`) — see [`docs/22`](22-arm-dsp-core-split.md).
+- **Operating state** (IR 0) is likewise classified by the ARM from the USART2
+  (safety-CPU) telemetry bank (docs/22/30); the real-time power FSM is on the **DSP**.
+- **E027 / W008** — the sample-mismatch fault and FW-version-mismatch warning are
+  *reported* by the ARM straight out of the USART2 frame (not computed): the fault
+  word `STATUS+0x8c` takes bit 27 from `BANK+0xd4` (BE u32 @ USART2 frame `+9`), and
+  WarnCode from `BANK+0x1e/0x1c` — the ARM-side proof that USART2's peer is the
+  safety CPU (docs/29/30).
 - **Battery** telemetry comes **directly** to the ARM over CAN1 (docs/20) — the one
   peer the ARM reads first-hand (it still does no analog metering itself).
 
@@ -227,9 +242,10 @@ configured for (a battery-side setting, see `docs/20`).
   **UART5 = dongle** (independently corroborated by the dongle's own firmware —
   an RS-485 **half-duplex master** datalogger, so the ARM is the slave; see
   [`docs/26`](26-dongle-firmware.md), which also rules out USART3 for the dongle),
-  and **USART2 = DSP-domain telemetry** (EG4-framed `type=1`
-  frame carrying the operating mode + PV/grid V/F into `0x20009e54`; the ARM's
-  core input registers come from here — see [`docs/22`](22-arm-dsp-core-split.md)).
+  and **USART2 = the redundant / safety CPU** (EG4-framed `type=1` frame carrying the
+  operating mode + PV/grid V/F **and** the E027/W008 cross-check status into
+  `0x20009e54`; the ARM's core input registers + fault word come from here — peer
+  pinned in [`docs/30`](30-safety-cpu-arm-handoff.md), see also [`docs/22`](22-arm-dsp-core-split.md)).
   USART1/UART4 peers (meter, BMS-UART, console) are still not pinned.
 - `IR_STATE` (reg 0) = byte at **`0x2000a0d8+0x90`** (getter `sub_0803289c`,
   written by the classifier `sub_0801b480`) — see [`docs/22`](22-arm-dsp-core-split.md).

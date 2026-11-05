@@ -57,24 +57,41 @@ is a **safety/redundant sampling channel**, not telemetry, MPPT, or a dongle.
 (This supersedes the tentative "SCI-C = PV/MPPT sub-controller" guess in docs/13:
 the `'T'`/`'D'` peer is the safety CPU.)
 
-## Where it connects — the ARM side (USART2), strong inference
+## Where it connects — the ARM side (USART2), **PROVEN** (docs/30)
 
-The ARM reports the **redundant CPU version** (reg 9 low byte), so it must receive
-it from the safety CPU over *some* link. The best-supported candidate is **USART2**:
+The ARM reaches the safety CPU on **USART2** (19200, RS-485, DE on PC2). This was the
+"strong inference" in an earlier draft; [`docs/30`](30-safety-cpu-arm-handoff.md) then
+**proved it from the ARM image** by showing the ARM *reports* the cross-check status
+straight out of the USART2 frame rather than computing it:
 
-- docs/23 **proved** USART2 carries DSP-domain telemetry that is **relayed, not a
-  direct DSP SCI** (the DSP's only 19200 port is SCI-B/USART3). A relay that
-  re-reports grid/mode telemetry *and* carries a redundant-CPU version is precisely
-  what the safety CPU would be.
-- USART2 is **19200, RS-485** (DE on PC2, docs/16) — electrically distinct from the
-  DSP's TTL SCI-B, consistent with a separate MCU.
+- **E027 is copied from the USART2 frame.** The Modbus fault word (`IR_FAULTCODE_L`,
+  served from `STATUS 0x2000a0d8+0x8c`) takes bits 10..31 — including **bit 27 =
+  `FAULT_CPU_SAMPLE_MISMATCH`** — verbatim from `BANK+0xd4`, a **big-endian u32 at
+  USART2 frame offset `+9`** (parser `sub_08024d74`, classifier `sub_0801b480`). The
+  ARM never diffs two sources to raise 27 — it trusts the word the USART2 peer sends.
+  That peer is therefore the CPU running the cross-check = this safety CPU.
+- **W008 (FW version mismatch) and the peer version arrive on USART2.** WarnCode
+  (`BANK+0x1e/0x1c`) is parsed from the USART2 frame; the peer's identity/version
+  bytes (`BANK+2..6,+8`) are received on USART2 and preserved across a bank reset.
+- **Peer liveness is a USART2 property.** The USART2 driver `sub_080259d8` tracks link
+  health (`0x2000a6c4`, fail-counters `0x20009048+6`); the classifier sources the
+  **comms-loss bit `0x20000`** of `STATUS+0x88` from that local tracker — the ARM-side
+  twin of the DSP's `0x20000`.
+- USART2 is **19200, RS-485** — electrically distinct from the DSP's TTL SCI-B,
+  consistent with a separate MCU; and docs/23 proved USART2 is **not** a DSP SCI.
 
-So the likely topology is a safety CPU that **cross-checks the DSP over SCI-C
-(9600)** and **reports to the ARM over USART2 (19200 RS-485)**, supplying both the
-validated grid/mode telemetry the ARM serves and its own `Slave Ver`. The SCI-C↔
-USART2 pairing is **inference** (two independent links whose peer is the same MCU
-by role); confirming it needs the ARM-side USART2 frame to show a version field, or
-a schematic.
+So the topology is now pinned on both ends: a safety CPU that **cross-checks the DSP
+over SCI-C (9600)** and **reports to the ARM over USART2 (19200 RS-485)**, supplying
+the validated grid/mode telemetry the ARM classifies plus its agreement (E027) /
+version (W008) status:
+
+```
+DSP (C2000) —SCI-C 9600 'T'/'D'— safety CPU —USART2 19200 RS-485— ARM (STM32)
+```
+
+The SCI-C↔USART2 pairing of the *same physical MCU* remains role-level inference (two
+links, same peer by behaviour); a schematic (or the peer's part number) is the last
+unresolved detail.
 
 ## Role (synthesis)
 
@@ -93,9 +110,13 @@ a schematic.
   functions; the abs-difference agreement check with debounce; the protection
   status bits (`0x200` mismatch, `0x20000` comms-loss) and the run-gate that
   consumes them. This is a redundant-sampling safety channel on the 18kPV DSP.
-- **Strong inference:** that this peer is the `Slave Ver` / E027 "redundant CPU"
-  of the protocol (the behaviour matches exactly), and that it is the same MCU the
-  ARM reaches on USART2.
+- **Proven (direct ARM reads, docs/30):** that the ARM reaches this peer on
+  **USART2** — E027 (fault bit 27) and W008 (version mismatch) are *reported* out of
+  the USART2 frame, and peer comms-loss is tracked on the USART2 link. The
+  `Slave Ver`/E027 "redundant CPU" of the protocol **is** the USART2 peer.
+- **Strong inference:** that the USART2 peer and the DSP's SCI-C `'T'`/`'D'` peer are
+  the *same physical MCU* (same role, same `0x200`/`0x20000` status semantics on both
+  links) — not separately provable from firmware alone.
 - **Open:** the safety CPU's part/identity (not derivable from these images); the
   exact physical quantities in the 7-value `'T'` record (grid V/F vs other); and
   the **12000XP** arrangement — it has only SCI-A/B, its SCI-A carries a *different*
