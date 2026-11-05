@@ -106,6 +106,22 @@ boots in ~14 s. All of it runs the real firmware — none of these shortcuts ski
 or fake any of its logic (what stays faked is only what the harness always
 models: peripheral-ready flags, the config flash, the bxCAN FIFO).
 
+### Boot cache
+
+The boot is deterministic, so the **first** boot writes the exact post-boot
+machine — CPU registers, all of memory, the RTOS engine's state and the LCD GRAM
+— to `.hmi_cache/`, and later launches **restore it in ~0.02 s** instead of
+re-booting. It is bit-identical (the same machine, continued), and a press from a
+restored state navigates exactly as from a fresh boot.
+
+The cache is **derived from the firmware image**, so a factory cache is as
+proprietary as the image: `.hmi_cache/` is gitignored and **never committed** —
+each user generates their own on first run. Keyed by the image's content hash, it
+re-boots automatically when the firmware changes; `rm -rf .hmi_cache` or
+`boot(cache=False)` forces a fresh boot. (The registers are saved explicitly, not
+Unicorn's opaque context object, which does not survive being restored into a
+fresh emulator.)
+
 ## Using it
 
 The simulator is **firmware-agnostic** — it renders whatever image you point it

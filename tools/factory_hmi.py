@@ -18,12 +18,26 @@ until the display task paints); each keypress then runs the firmware until the
 screen settles. Needs `pip install unicorn` and reference/com_flat.bin +
 reference/symbols.csv.
 """
-import os, sys, time
+import os, sys, time, gzip, pickle, hashlib
 import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, load_symbols_nm, load_symbols_csv
 from tft import attach_tft, mono, W, H, PANEL_W, PANEL_H
 from unicorn import UC_HOOK_MEM_READ
+import unicorn.arm_const as _ac
+
+# CPU registers to persist in the boot cache, by name -> Unicorn constant, in the
+# order they are restored (modes/masks first, stacks next, GP + PC last). We save
+# the registers explicitly rather than Unicorn's opaque context blob: pickling a
+# UcContext and restoring it into a fresh emulator corrupts the heap (that was the
+# segfault in the first cache attempt); plain register ints round-trip cleanly.
+_CACHE_REGS = {}
+for _n in ("CPSR", "CONTROL", "PRIMASK", "BASEPRI", "FAULTMASK", "MSP", "PSP", "SP",
+           "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
+           "R8", "R9", "R10", "R11", "R12", "LR", "PC"):
+    _c = getattr(_ac, "UC_ARM_REG_" + _n, None)
+    if _c is not None:
+        _CACHE_REGS[_n] = _c
 
 # Front-panel keys (docs/16): PA8, PA11, PC8, PC9, active-low. Functional names
 # recovered by driving the factory menu (docs/23): PA11 is ENTER/select.
@@ -87,10 +101,78 @@ class FactoryHmi:
         try: self.sim.run(n)
         except Exception: pass
 
-    def boot(self, warmup=2_000_000):
-        """Boot through config + scheduler until the display task has painted a
-        stable screen. Returns self."""
+    # ---- boot cache -----------------------------------------------------
+    # Booting runs tens of millions of instructions (the faithful RTOS). It is
+    # deterministic, so we cache the exact post-boot machine to disk and restore
+    # it in ~1 s on later launches. The cache is keyed by the firmware's content
+    # hash (a rebuilt image re-boots) + the tick + CACHE_VER. It lives in a
+    # gitignored directory and is DERIVED from the firmware image — so a factory
+    # cache is proprietary and must never be committed; each user generates their
+    # own once.
+    CACHE_VER = 1
+    CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".hmi_cache")
+    _RTOS_ATTRS = ("_exc_depth", "_thread_on_psp", "_msp", "_systick_due", "_pendsv_req")
+
+    def _cache_path(self):
+        try:
+            h = hashlib.md5(open(self.firmware, "rb").read()).hexdigest()[:12]
+        except Exception:
+            return None
+        return os.path.join(self.CACHE_DIR, "boot_%s_t%d_v%d.pkl.gz" % (h, TICK, self.CACHE_VER))
+
+    def _save_cache(self, path):
+        uc = self.sim.uc
+        blob = {
+            "v": self.CACHE_VER,
+            "regs": {n: uc.reg_read(c) for n, c in _CACHE_REGS.items()},
+            "mem": [(b, e - b + 1, bytes(uc.mem_read(b, e - b + 1)))
+                    for (b, e, _p) in uc.mem_regions()],
+            "shadow": dict(self.sim.shadow),
+            "rtos": {**{a: getattr(self.sim, a) for a in self._RTOS_ATTRS},
+                     "_pending_irqs": list(self.sim._pending_irqs)},
+            "gram": self.tft.gram.tobytes(), "shape": self.tft.gram.shape,
+        }
+        os.makedirs(self.CACHE_DIR, exist_ok=True)
+        tmp = path + ".tmp%d" % os.getpid()
+        with gzip.open(tmp, "wb", compresslevel=4) as f:
+            pickle.dump(blob, f, protocol=4)
+        os.replace(tmp, path)                    # atomic publish
+
+    def _load_cache(self, path):
+        with gzip.open(path, "rb") as f:
+            blob = pickle.load(f)
+        if blob.get("v") != self.CACHE_VER:
+            raise ValueError("stale cache version")
+        uc = self.sim.uc
+        have = [(b, e) for (b, e, _p) in uc.mem_regions()]
+        for (b, s, data) in blob["mem"]:
+            if not any(hb <= b and b + s - 1 <= he for (hb, he) in have):
+                uc.mem_map(b, s)                 # an auto-mapped page a fresh machine lacks
+                have.append((b, b + s - 1))
+            uc.mem_write(b, data)
+        for n, c in _CACHE_REGS.items():
+            uc.reg_write(c, blob["regs"][n])
+        self.sim.shadow = dict(blob["shadow"])
+        for a in self._RTOS_ATTRS:
+            setattr(self.sim, a, blob["rtos"][a])
+        self.sim._pending_irqs = list(blob["rtos"]["_pending_irqs"])
+        self.tft.gram = np.frombuffer(blob["gram"], dtype=np.uint8).reshape(blob["shape"]).copy()
+
+    def boot(self, warmup=2_000_000, cache=True):
+        """Boot until the display paints a stable screen — or restore the cached
+        post-boot machine (instant). Returns self."""
         t0 = time.time()
+        cp = self._cache_path() if cache else None
+        if cp and os.path.exists(cp):
+            try:
+                self._load_cache(cp)
+                self._booted = True
+                self._log("restored %s from cache (%d px, %.1fs)"
+                          % (os.path.basename(self.firmware),
+                             int((self.tft.gram != 0).sum()), time.time() - t0))
+                return self
+            except Exception as e:
+                self._log("cache restore failed (%s); booting fresh" % e)
         self._log("booting %s ..." % os.path.basename(self.firmware))
         try: self.sim.run_reset(max_insn=warmup)
         except Exception: pass
@@ -102,6 +184,9 @@ class FactoryHmi:
         self._booted = True
         self._log("  booted, screen settled (%d px, %.0fs)"
                   % (int((self.tft.gram != 0).sum()), time.time() - t0))
+        if cp:
+            try: self._save_cache(cp)
+            except Exception as e: self._log("cache save failed (%s)" % e)
         return self
 
     def _settle(self, chunk=800_000, max_chunks=30, quiet=2, jitter=90, need=200):

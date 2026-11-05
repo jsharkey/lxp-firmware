@@ -16,3 +16,6 @@ __pycache__/
 reference/*.hex
 reference/com_flat.bin
 *.hex
+
+# HMI boot cache (derived from firmware images — proprietary for the factory; generated per-user)
+.hmi_cache/

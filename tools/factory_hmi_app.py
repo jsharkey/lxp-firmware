@@ -109,9 +109,10 @@ PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
   </div>
   <div class="keys" id="keys"></div>
  </div>
- <div class="foot">Every pixel is the factory firmware's own draw code, running under the Unicorn
-  harness; each key press drives the real GPIO and runs the firmware until its display task repaints
-  the 128&times;160 LCD. It is slow because it is really executing the image.</div>
+ <div class="foot">Every pixel is the firmware's own draw code, running under the Unicorn harness;
+  each key press drives the real GPIO and runs the firmware until it repaints the 240&times;160 LCD.
+  Use the buttons or your keyboard &mdash; <b>&uarr;</b>/<b>&darr;</b> move, <b>Enter</b> selects,
+  <b>Esc</b> goes back.</div>
 <script>
 const KEYS=__KEYS__;
 const keysEl=document.getElementById('keys'), img=document.getElementById('screen'),
@@ -132,9 +133,16 @@ async function press(pin){ const el=document.querySelector(`.key[data-k="${pin}"
   try{const s=await(await fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({key:pin})})).json(); show(s);}catch(e){setBusy(true,'error — retry');}
   if(el) el.classList.remove('flash'); }
-const KMAP={ArrowUp:'PC9',ArrowDown:'PA8',Enter:'PA11',Escape:'PC8',Backspace:'PC8'};
-document.addEventListener('keydown',e=>{const p=KMAP[e.key]; if(p){e.preventDefault();
-  if(!document.querySelector('.key').disabled) press(p);}});
+// Keyboard -> the four front-panel keys: arrows move, Enter selects, Esc backs.
+const KMAP={ArrowUp:'PC9',ArrowDown:'PA8',ArrowLeft:'PC9',ArrowRight:'PA8',
+            Enter:'PA11',Escape:'PC8',Backspace:'PC8'};
+document.addEventListener('keydown',e=>{
+  const p=KMAP[e.key];
+  if(!p || e.repeat) return;                 // ignore auto-repeat while a key is held
+  e.preventDefault();
+  if(document.querySelector('.key').disabled) return;   // ignore while booting / a press runs
+  press(p);
+});
 poll();
 </script></body></html>"""
 
