@@ -53,6 +53,10 @@ static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
         /* The factory additionally clamps this to a cell-count-derived max
          * (~57.4 V on this pack); we report the pack's limit as-is. */
         g_rt.input_reg[IR_BMS_CHG_VOLT_REF] = g_bms.charge_volt_dv;
+    if (g_bms.alarms_valid) {             /* 0x359 protection/alarm bitfields, 1:1 */
+        g_rt.input_reg[IR_BMS_FAULTCODE] = g_bms.fault_bits;
+        g_rt.input_reg[IR_BMS_WARNCODE]  = g_bms.warn_bits;
+    }
 }
 
 /* ---- Modbus register map backed by the runtime image ---- */

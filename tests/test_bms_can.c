@@ -70,6 +70,21 @@ int main(void)
         CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_VIT, d, sizeof d), "0x356 too short -> ignored");
     }
 
+    /* 0x359 protection/alarm: [0:1] fault bits, [2:3] warn bits */
+    {
+        uint8_t d[8] = { 0x02, 0x01, 0x08, 0x04, 1, 'P', 'N', 0 };  /* 0x0102, 0x0408 */
+        CHECK(bms_can_on_frame(&p, BMS_CAN_ID_ALARM_A, d, sizeof d), "0x359 consumed");
+        CHECK(p.alarms_valid, "0x359 marks alarms valid");
+        CHECK(p.fault_bits == 0x0102, "0x359 decodes fault bits");
+        CHECK(p.warn_bits  == 0x0408, "0x359 decodes warn bits");
+    }
+
+    /* 0x35A is NOT consumed (received but not exposed on Modbus; see docs/29) */
+    {
+        uint8_t d[8] = {0xFF,0xFF,0xFF,0xFF,0,0,0,0};
+        CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_ALARM_B, d, sizeof d), "0x35A not consumed");
+    }
+
     printf("test_bms_can: %d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;
 }

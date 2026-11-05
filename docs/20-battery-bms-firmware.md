@@ -235,9 +235,15 @@ scaling; our firmware matches it, so the one test passes on both:
 | `0x356` [2:3] current (s16) | 98 `BatCurrent_BMS` | 0.01 A, 1:1 |
 | `0x356` [4:5] temperature (s16) | 103 `MaxCellTemp_BMS` | 0.1 °C, 1:1 |
 | `0x351` [0:1] charge-V limit | 83 `ChargeVoltRef` | 0.1 V, 1:1, then the factory **clamps** to a cell-count max (~57.4 V here) |
+| `0x359` [0:1] protection bits | 99 `FaultCode_BMS` | bitfield, 1:1 |
+| `0x359` [2:3] alarm bits | 100 `WarningCode_BMS` | bitfield, 1:1 |
 
-(The factory also routes `0x355` [4:5] into IR 101 `MaxCellVolt_BMS` — a 7.7 V
-"cell" — which looks like a field/quirk mismatch, so we don't reproduce it.)
+The factory also maps `0x359` [4] module count → IR 96 `BatParallelNum`
+(correct), mirrors the protection/alarm words into IR 88/89, and has two quirks
+in this area — `0x355` [4:5] → IR 101 (a 7.7 V "cell"), the `0x359` `"PN"` marker
+→ IR 97 capacity, and `0x35A` is received but never published. We don't
+reproduce those; they are catalogued in
+[`docs/29` — factory quirks](29-factory-quirks.md).
 
 Our com-MCU reimplementation implements the receive side: `can_port_init` /
 `can_port_poll` (`src/can/can_port.c`) bring up CAN1 (remapped to PB8/PB9) and

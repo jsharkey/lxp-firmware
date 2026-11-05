@@ -58,6 +58,7 @@ CAN1_RX0_VEC = 16 + 20         # NVIC USB_LP_CAN1_RX0 IRQn=20 -> exception vecto
 CAN_ID_LIMITS  = 0x351        # charge/discharge V & I limits
 CAN_ID_SOC_SOH = 0x355        # SOC / SOH
 CAN_ID_VIT     = 0x356        # pack voltage / current / temperature
+CAN_ID_ALARM_A = 0x359        # protection / alarm bitfields
 
 
 class CanBattery:
@@ -158,6 +159,12 @@ class CanBattery:
         0.1 A (only the charge voltage limit is consumed so far)."""
         self.send(CAN_ID_LIMITS, struct.pack("<HHHH", charge_volt_dv, charge_curr,
                                              discharge_curr, discharge_volt_dv))
+
+    def send_alarms(self, fault_bits, warn_bits, pack_count=1):
+        """Queue a 0x359 protection/alarm frame: [0:1] protection bitfield,
+        [2:3] alarm/warning bitfield, [4] module count, [5:6] the 'PN' marker."""
+        self.send(CAN_ID_ALARM_A, struct.pack("<HHB", fault_bits, warn_bits,
+                                              pack_count) + b"PN\x00")
 
     def settle(self, insn=6_000_000, chunk=1_000_000):
         """Run the firmware so injected telemetry propagates into its register
