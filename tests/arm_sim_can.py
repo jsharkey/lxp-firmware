@@ -55,7 +55,9 @@ IER_FMPIE0 = 1 << 1
 CAN1_RX0_VEC = 16 + 20         # NVIC USB_LP_CAN1_RX0 IRQn=20 -> exception vector 36
 
 # Battery -> inverter telemetry IDs we can stand in for (bms_can_map.h).
-CAN_ID_SOC_SOH = 0x355
+CAN_ID_LIMITS  = 0x351        # charge/discharge V & I limits
+CAN_ID_SOC_SOH = 0x355        # SOC / SOH
+CAN_ID_VIT     = 0x356        # pack voltage / current / temperature
 
 
 class CanBattery:
@@ -144,6 +146,18 @@ class CanBattery:
         if soc_hires is None:
             soc_hires = soc * 100
         self.send(CAN_ID_SOC_SOH, struct.pack("<HHH", soc, soh, soc_hires))
+
+    def send_measurements(self, voltage_cv, current_ca, temp_dc):
+        """Queue a 0x356 V/I/T frame: voltage 0.01 V, current 0.01 A, temp
+        0.1 degC (current and temp are signed)."""
+        self.send(CAN_ID_VIT, struct.pack("<hhh", voltage_cv, current_ca, temp_dc))
+
+    def send_limits(self, charge_volt_dv, charge_curr=0, discharge_curr=0,
+                    discharge_volt_dv=0):
+        """Queue a 0x351 limits frame: charge/discharge voltage 0.1 V, currents
+        0.1 A (only the charge voltage limit is consumed so far)."""
+        self.send(CAN_ID_LIMITS, struct.pack("<HHHH", charge_volt_dv, charge_curr,
+                                             discharge_curr, discharge_volt_dv))
 
     def settle(self, insn=6_000_000, chunk=1_000_000):
         """Run the firmware so injected telemetry propagates into its register

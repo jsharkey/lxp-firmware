@@ -159,31 +159,47 @@ def test_modbus_charge_current_write_read():
         "0x03 read did not return the edited ChargeCurr=43"
 
 
-def test_can_battery_soc_soh_reaches_modbus():
-    """Battery BMS CAN (docs/20) -> Modbus. The pack reports SOC/SOH on CAN1 ID
-    0x355; the ARM takes it off CAN1, caches it, and serves it as Modbus input
-    register 5 (IR_SOC_SOH: low byte SOC %, high byte SOH %). Inject a 0x355 frame
-    on the battery bus, let the firmware propagate it, then read IR 5 over the
-    dongle and confirm the values crossed from CAN to Modbus.
+def test_can_battery_telemetry_reaches_modbus():
+    """Battery BMS CAN (docs/20) -> Modbus input registers (the EG4 18kPV-12LV
+    map). The pack streams telemetry on CAN1; the ARM takes it off the bus,
+    caches it, and serves it over the dongle. Inject the core frames, let the
+    firmware propagate them, then read the registers back and confirm each data
+    point crossed with the right register and scaling:
+
+        0x355 SOC/SOH  -> IR 5   (low byte SOC %, high byte SOH %)
+        0x356 voltage  -> IR 4   (Vbat; 0.01 V -> 0.1 V, rounded)
+        0x356 current  -> IR 98  (BatCurrent_BMS, 0.01 A, signed, 1:1)
+        0x356 temp     -> IR 103 (MaxCellTemp_BMS, 0.1 degC, signed, 1:1)
+        0x351 chg Vlim -> IR 83  (ChargeVoltRef, 0.1 V, 1:1 below the pack's clamp)
 
     Black box over two buses: CanBattery drives CAN1 (polled for our firmware,
     interrupt-driven for the factory) and ModbusDongle drives USART3, neither
     naming a symbol -- so the one test holds for both images."""
     from arm_sim_modbus import ModbusDongle
     from arm_sim_can import CanBattery
-    IR_SOC_SOH = 5
-    SOC, SOH = 77, 96
+    SOC, SOH = 77, 96                   # -> IR 5 = (SOH<<8)|SOC
+    V_CV, I_CA, T_DC = 5325, 150, 231   # 0x356: 53.25 V, 1.50 A, 23.1 degC
+    CHG_V = 560                         # 0.1 V charge-V limit (below the ~57.4 V clamp)
 
     sim = _sim()
     battery = CanBattery(sim)     # install CAN1 hooks before the image runs
     mb = ModbusDongle(sim)        # boots the image + installs the UART hooks
 
-    battery.send_soc_soh(SOC, SOH)       # pack announces state of charge/health
-    battery.settle()                     # let it propagate into the register image
+    battery.send_soc_soh(SOC, SOH)
+    battery.send_measurements(V_CV, I_CA, T_DC)
+    battery.send_limits(CHG_V)
+    battery.settle()              # let the telemetry propagate into the register image
 
-    got = mb.read_input(IR_SOC_SOH)
-    assert got == [(SOH << 8) | SOC], \
-        "CAN SOC=%d/SOH=%d did not reach Modbus IR 5 (got %r)" % (SOC, SOH, got)
+    # IR 4 (Vbat) and IR 5 (SOC/SOH) are adjacent -> one read.
+    vbat, soc_soh = mb.read_input(4, 2) or [None, None]
+    assert soc_soh == (SOH << 8) | SOC, "SOC/SOH -> IR 5: got %r" % (soc_soh,)
+    assert vbat == (V_CV + 5) // 10,    "voltage -> IR 4 (Vbat): got %r" % (vbat,)
+
+    # IR 83, 98, 103 are in one 40-register group -> one read of 83..103.
+    blk = mb.read_input(83, 21) or [None] * 21
+    assert blk[0]  == CHG_V, "charge Vlim -> IR 83: got %r"  % (blk[0],)
+    assert blk[15] == I_CA,  "current -> IR 98: got %r"      % (blk[15],)
+    assert blk[20] == T_DC,  "temperature -> IR 103: got %r" % (blk[20],)
 
 
 def test_modbus_acfirst_window_tracks_rtc():

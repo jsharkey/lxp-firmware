@@ -23,6 +23,18 @@ bool bms_can_on_frame(bms_pack_t *pack, uint32_t id, const uint8_t *data, uint8_
         pack->soh = (uint8_t)rd_le16(data + 2);
         pack->soc_soh_valid = true;
         return true;
+    case BMS_CAN_ID_VIT:                /* 0x356: [0:1] V, [2:3] I, [4:5] T (signed) */
+        if (dlc < 6) return false;
+        pack->voltage_cv = (int16_t)rd_le16(data);
+        pack->current_ca = (int16_t)rd_le16(data + 2);
+        pack->temp_dc    = (int16_t)rd_le16(data + 4);
+        pack->measured_valid = true;
+        return true;
+    case BMS_CAN_ID_LIMITS:             /* 0x351: [0:1] charge voltage limit */
+        if (dlc < 2) return false;
+        pack->charge_volt_dv = rd_le16(data);
+        pack->limits_valid = true;
+        return true;
     default:
         return false;                   /* other telemetry IDs not consumed yet */
     }

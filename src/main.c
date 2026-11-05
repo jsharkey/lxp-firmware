@@ -35,10 +35,23 @@ static bms_pack_t g_bms;
 
 static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
     if (!bms_can_on_frame(&g_bms, id, data, dlc)) return;
-    /* Publish decoded pack state into the shared register image. IR_SOC_SOH
-     * packs SOC in the low byte and SOH in the high byte (docs/04). */
+    /* Publish decoded pack state into the shared register image, rescaling each
+     * CAN field to its Modbus register (docs/04 / the EG4 18kPV-12LV map). The
+     * factory image maps the same CAN fields to these same input registers. */
     if (g_bms.soc_soh_valid)
         g_rt.input_reg[IR_SOC_SOH] = (uint16_t)((g_bms.soh << 8) | g_bms.soc);
+    if (g_bms.measured_valid) {
+        /* 0x356: pack voltage 0.01 V -> IR_VBAT 0.1 V (round to nearest, matching
+         * the factory); current 0.01 A and temperature 0.1 degC map 1:1 (both
+         * signed) into the BMS registers. */
+        g_rt.input_reg[IR_VBAT]           = (uint16_t)((g_bms.voltage_cv + 5) / 10);
+        g_rt.input_reg[IR_BMS_CURRENT]    = (uint16_t)g_bms.current_ca;
+        g_rt.input_reg[IR_BMS_MAX_CELL_T] = (uint16_t)g_bms.temp_dc;
+    }
+    if (g_bms.limits_valid)               /* 0x351 charge voltage limit 0.1 V, 1:1 */
+        /* The factory additionally clamps this to a cell-count-derived max
+         * (~57.4 V on this pack); we report the pack's limit as-is. */
+        g_rt.input_reg[IR_BMS_CHG_VOLT_REF] = g_bms.charge_volt_dv;
 }
 
 /* ---- Modbus register map backed by the runtime image ---- */
