@@ -271,8 +271,13 @@ All three build the standard aggregate (`0x351/355/356/359/35a/b/c/e/f`) plus th
 stray `0x400`/`0x403`, which are plain code constants, not a CAN-id progression).
 So across the EG4 battery line the 5000–5126 bank is **dormant**; the `0x4xx`
 per-pack protocol belongs to a different (likely non-EG4 / other-preset) pack. The
-EG4 packs' richer per-pack/cell detail rides the `0x3xx` extended frames, which this
-inverter parses into unserved scalars.
+EG4 packs' richer detail rides the `0x3xx` extended frames, and the inverter's
+handling of those is decoded in
+[`docs/20`](20-battery-bms-firmware.md#what-the-inverter-does-with-the-extended-frames):
+`0x311–0x321` → internal scalars (unserved), and the cell/stack-detail
+`0x370–0x381` (min/max cell V/T, capacity, version, serial) is **not parsed at
+all** — received on the bus and dropped. Only the aggregate block (IR 81–106)
+reaches the dongle.
 
 > For **our** open firmware: the `0x4xx`→5000 register *path* has a firmware oracle
 > (`test_per_pack_telemetry_reaches_modbus`, synthetic `0x4xx` frames), so the
