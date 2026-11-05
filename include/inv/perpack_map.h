@@ -2,6 +2,13 @@
  * Per-pack battery telemetry — undocumented Modbus input registers 5000-5126.
  * (docs/34 §2b; factory getter sub_08020cc0, CAN parser sub_080205d4.)
  *
+ * NOTE — fed by CAN 0x4xx; DORMANT with the EG4-LL pack. This bank is served from a
+ * per-pack array filled ONLY by CAN 0x4xx frames (sub_080205d4). The attached
+ * EG4-LL battery emits per-pack/extended telemetry on 0x3xx (0x311-0x321, 0x370-0x381),
+ * which the ARM parses to internal scalars NOT read by the Modbus getter -- so this
+ * bank stays empty with that pack (docs/34 §2b). It is a real feature for a battery
+ * that streams per-pack telemetry on CAN 0x4xx.
+ *
  * Beyond the aggregate BMS block (IR 81-106), the factory serves PER-PACK battery
  * telemetry on a separate high register range that no public EG4 map lists. The
  * data arrives on CAN as

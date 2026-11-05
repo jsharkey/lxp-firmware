@@ -123,26 +123,29 @@ def test_safety_cpu_telemetry_reaches_modbus():
                                 "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
-# --- per-pack battery telemetry on the undocumented 5000+ range (docs/34) ---
-# Per-pack frames arrive on CAN as id = 0x400 | (subtype<<5) | pack_index; the
-# parser sub_080205d4 stores them in a per-pack array (0x2000691c, stride 0x36)
-# and marks the pack present (0x2000a770 / count 0x2000a8ae). The serializer
-# routes INPUT registers 5000-5126 to a *separate* getter (sub_08020cc0) that
-# serves that array -- 30 register slots per pack (bases 5000/5030/5060/5090),
-# paged for >4 packs. This range is undocumented and ABOVE the IR 0-239 sweep
-# that first concluded "no per-pack register" (docs/34), so it was missed.
+# --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------
+# The firmware has a per-pack register bank: the parser sub_080205d4 stores CAN
+# frames (id = 0x400 | (subtype<<5) | pack) into a per-pack array (0x2000691c,
+# stride 0x36), marks the pack present (0x2000a770 / count 0x2000a8ae), and the
+# serializer routes INPUT registers 5000-5126 to a separate getter (sub_08020cc0)
+# that serves it -- 30 slots/pack (bases 5000/5030/5060/5090), paged for >4 packs.
+# NOTE: this bank is fed ONLY by CAN 0x4xx. The attached EG4-LL pack emits per-pack
+# telemetry on 0x3xx (parsed to internal scalars, not served), so the bank is
+# DORMANT with that pack. This test therefore drives the FIRMWARE PATH with
+# synthetic 0x4xx frames -- it proves the 0x4xx -> array -> 5000-register serving
+# chain works, not that this battery feeds it (it does not; docs/34 §2b).
 def _inject_pack(bat, pack, subtype, data8):
     bat.send(0x400 | (subtype << 5) | (pack & 0x1F), bytes(data8))
 
 
 def test_per_pack_telemetry_reaches_modbus():
-    """Per-pack battery telemetry DOES reach the dongle -- on undocumented input
-    registers 5000+ (docs/34). Inject per-pack CAN frames (id 0x400|sub<<5|pack)
-    for two packs, and read them back over the dongle: pack 0 in the 5000 block,
-    pack 1 in the 5030 block, with the fields in frame order (reg 5000 = pack-0
-    subtype-0 bytes[0:2], 5001 = bytes[2:4], 5004 = subtype-1 bytes[0:2]). A
-    second, changed snapshot must read back its new values (live, not cached).
-    Factory-only: this is a factory superset our build does not implement."""
+    """The firmware's per-pack register path (CAN 0x4xx -> IR 5000+) works: inject
+    synthetic per-pack frames (id 0x400|sub<<5|pack) for two packs and read them
+    back over the dongle -- pack 0 in the 5000 block, pack 1 in the 5030 block,
+    fields in frame order (reg 5000 = pack-0 subtype-0 bytes[0:2], 5001 = bytes[2:4],
+    5004 = subtype-1 bytes[0:2]); a changed snapshot reads back new values (live, not
+    cached). Factory-only. NB this proves the serving PATH, not that the attached
+    EG4-LL pack feeds it -- that pack emits 0x3xx, leaving this bank dormant (docs/34)."""
     import struct as _s
     from arm_sim_modbus import ModbusDongle
     from arm_sim_can import CanBattery

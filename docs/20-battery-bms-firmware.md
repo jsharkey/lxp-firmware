@@ -128,11 +128,14 @@ extended: 0x311–0x321, 0x370–0x381, 0x373/0x379  (per-cell, per-string, extr
 
 The **extended ranges carry the per-pack / stack-detail telemetry** (per-battery
 summary, min/max cell voltage & temp, module counts, capacity, version, serial).
-This inverter **does** surface them on the dongle Modbus — not in the aggregate
-IR 0–239 block, but on an **undocumented high range, input registers 5000–5126**
-(per-pack getter `sub_08020cc0`, array `0x2000691c`, fed from CAN `0x400|sub<<5|pack`
-by `sub_080205d4`). Full mechanism + proof, and CAN firmware-update findings, in
-[`docs/34` — multi-battery CAN](34-multi-battery-can.md) (§2b).
+For **this** pack they do **not** reach the dongle: the aggregate block (IR 81–106)
+is served, but the extended frames are parsed into internal scalars no Modbus getter
+reads. The ARM *does* have an undocumented per-pack register bank (input registers
+**5000–5126**, getter `sub_08020cc0`, array `0x2000691c`), but it is fed only by CAN
+**`0x4xx`** per-pack frames (`sub_080205d4`) — which this EG4-LL pack never emits (it
+uses `0x3xx`), so that bank is **dormant here**. Full mechanism, the dormancy proof,
+and CAN firmware-update findings in [`docs/34` — multi-battery CAN](34-multi-battery-can.md)
+(§2b).
 
 Immediately after the table sits the manufacturer-name payload `EG4/LUX`
 (the `0x35E`/`0x370` frame data). The `0x351/0x355/0x356/0x359` core is exactly
