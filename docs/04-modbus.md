@@ -46,7 +46,7 @@ read-write settings) and input (`0x04`, read-only telemetry/status) are
 (e.g. *holding* 126-131 = OptimalChg_DisChg config vs *input* 126 = a status
 word). The same EG4 frame envelope is also reused for the external dongle, the
 ARM↔DSP link, and firmware update. Both traps, plus a worked AC-First-window
-example, are written up in [`docs/22`](22-modbus-multiplexing.md).
+example, are written up in [`docs/25`](25-modbus-register-spaces.md).
 
 ## Query grouping rule
 

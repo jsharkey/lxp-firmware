@@ -187,7 +187,7 @@ def test_can_battery_soc_soh_reaches_modbus():
 
 
 def test_modbus_acfirst_window_tracks_rtc():
-    """AC-First load-priority window vs. the ARM real-time clock (docs/22).
+    """AC-First load-priority window vs. the ARM real-time clock (docs/25).
 
     Program AC-First window 0 to 06:00-08:00 by Modbus (holding regs 152/153,
     each packed (minute<<8)|hour), set the clock over the wire (regs 13/14), and
@@ -203,7 +203,7 @@ def test_modbus_acfirst_window_tracks_rtc():
     the same spec holds for any image that speaks the EG4 dongle protocol. NB:
     input register 126 (this status word) is a *different register space* from
     holding registers 126-131 (the OptimalChg_DisChg config table): same number,
-    different space, different meaning -- see docs/22.
+    different space, different meaning -- see docs/25.
 
     TDD scaffolding: proven on the factory oracle; our firmware does not yet
     evaluate the AC-First windows against the RTC, so this is expected to fail on
