@@ -1,0 +1,34 @@
+# IR 1-3 — Vpv1 / Vpv2 / Vpv3 (PV string voltages)
+
+> **Dongle Modbus**, input registers (func `0x04`, read-only). Authoritative.
+> See the [index](README.md).
+
+| reg | name | unit | range | note |
+|---|---|---|---|---|
+| IR 1 | Vpv1 | 0.1 V | 0-65535 | PV1 voltage |
+| IR 2 | Vpv2 | 0.1 V | 0-65535 | PV2 voltage |
+| IR 3 | Vpv3 | 0.1 V | 0-65536 | PV3 voltage — **18kPV only** |
+
+## Where the data comes from
+
+**The USART2 bank — the safety CPU's own measurement**, not a DSP value and not a
+direct MPPT reading. PV voltage is sampled by the redundant/safety CPU and
+relayed to the ARM over USART2:
+
+| reg | bank offset |
+|---|---|
+| IR 1 (Vpv1) | `BANK+0x4c` |
+| IR 2 (Vpv2) | `BANK+0x4e` |
+
+Exact offsets and the register sweep: [`docs/33`](../33-usart2-telemetry-bank.md).
+Why these are the safety CPU's samples (not DSP-relayed):
+[`docs/29`](../29-safety-cpu.md), [`docs/wiring/ARM-USART2`](../wiring/ARM-USART2.md).
+
+## Nuance
+
+- **PV *power*** (IR 7-9) is **not** here — the ARM computes it itself from these
+  voltages × current. See [`input-007_009-Ppv1_Ppv3`](input-007_009-Ppv1_Ppv3.md).
+- **Vpv3 (IR 3)** is inactive on the **12000XP** (2-MPPT); valid on the 18kPV.
+- The MPPT stage controller measures PV independently and reports to the DSP over
+  its own link ([`docs/wiring/MPPT-USART1`](../wiring/MPPT-USART1.md)) — that path
+  does **not** feed this register.

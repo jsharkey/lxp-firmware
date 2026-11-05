@@ -1,0 +1,59 @@
+# IR 81-106 — BMS block (battery data)
+
+> **Dongle Modbus**, input registers (func `0x04`, read-only). Authoritative. See
+> the [index](README.md).
+
+| reg | name | unit | note |
+|---|---|---|---|
+| 81 | MaxChgCurr | 0.01 A | BMS max charge current |
+| 82 | MaxDischgCurr | 0.01 A | BMS max discharge current |
+| 83 | ChargeVoltRef | 0.1 V | BMS recommended charge voltage |
+| 84 | DischgCutVolt | 0.1 V | BMS discharge cut-off voltage |
+| 85-94 | BatStatus0-9_BMS | — | BMS status words |
+| 95 | BatStatus_INV | — | inverter's lithium-status summary |
+| 96 | BatParallelNum | — | number of packs in parallel |
+| 97 | BatCapacity | Ah | battery capacity |
+| 98 | BatCurrent_BMS | 0.01 A (s16) | battery current (signed) |
+| 99 | FaultCode_BMS | — | BMS fault |
+| 100 | WarningCode_BMS | — | BMS warning |
+| 101 | MaxCellVolt_BMS | 0.001 V | max cell voltage |
+| 102 | MinCellVolt_BMS | 0.001 V | min cell voltage |
+| 103 | MaxCellTemp_BMS | 0.1 °C (s16) | max cell temperature |
+| 104 | MinCellTemp_BMS | 0.1 °C (s16) | min cell temperature |
+| 105 | BMSFWUpdateState | — | 1 upgrading, 2 success, 3 failed |
+| 106 | CycleCnt_BMS | — | charge/discharge cycle count |
+
+## Where the data comes from
+
+**The battery BMS, first-hand over CAN1.** The ARM is the inverter-side CAN
+driver; it decodes the pack's broadcast frames and maps them into this register
+block. No DSP or safety-CPU involvement. See
+[`docs/20`](../20-battery-bms-firmware.md) (the pack-side frame contract + the
+CAN→IR map) and [`docs/wiring/ARM-CAN1`](../wiring/ARM-CAN1.md) (the ARM-side
+driver: RX ring `0x200051ac`, parser `sub_0802a760`).
+
+Representative CAN-frame → register mappings (from the factory oracle,
+[`docs/20`](../20-battery-bms-firmware.md)):
+
+| CAN ID | carries | → registers |
+|---|---|---|
+| `0x351` | charge/discharge V & I limits | 83 (ChargeVoltRef), 81/82 (currents), 84 |
+| `0x355` | SOC / SOH | IR 5 (see [`input-005-SOC_SOH`](input-005-SOC_SOH.md)) |
+| `0x356` | battery V / I / T | 98 (current), temps |
+| `0x359` | protection / alarm bits | 99/100 (fault/warn), 96 |
+
+The committed contract is [`include/inv/bms_can_map.h`](../../include/inv/bms_can_map.h).
+
+## Nuances
+
+- **Signed:** IR 98 (current), IR 103/104 (cell temps) are `s16`.
+- **Charge/discharge switches:** the dongle can toggle them via `HR 11` bits 5/6
+  ([`holding-011-ResetSetting`](holding-011-ResetSetting.md)), which the ARM then
+  commands to the pack over CAN1.
+- **Not to be confused with** the inverter's own fault/warn words (IR 60-63) — the
+  BMS has its own at IR 99/100.
+- **Variant/map caveat:** the ceaa-07xx factory getter serves IR 90-94 from the
+  USART2 bank (`BANK+0xb8/0xbc`) rather than as BMS-status, disagreeing with the
+  18kPV superset label for those four — flagged in
+  [`docs/33`](../33-usart2-telemetry-bank.md). Verify IR 90-94 before relying on
+  them for this image.

@@ -1,5 +1,7 @@
 # The USART2 telemetry bank (`0x20009e54`) — format and dongle exposure
 
+> **Dongle registers:** this bank→register map is the **provenance source** that the dongle per-register docs cite for input-register origins. Dongle-facing register docs: [`docs/modbus-dongle/`](modbus-dongle/README.md).
+
 > **Authoritative wiring:** the USART2↔safety-CPU link itself (pins, electrical,
 > direction) is in [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md), which
 > cites this doc for the bank field map. This doc is the authoritative **bank
