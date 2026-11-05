@@ -56,6 +56,7 @@ Honest picture of where things stand:
 - [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
 - [x] **Modbus-RTU slave** — engine + USART3 port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md))
+- [x] **Interrupt-driven USART3** — RX/TX ring buffers serviced from the USART3 ISR, matching the factory (its only vectored UART); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
 - [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
@@ -129,6 +130,8 @@ include/     stm32f103.h (minimal device header) + inv/ recovered data model
 include/inv/ states, faults, settings, modbus_map, hmi_menu, variant
 src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleton)
 src/modbus/  Modbus-RTU slave engine + USART3 port
+src/uart/    interrupt-driven USART3 driver (RX/TX rings)
+src/can/     CAN1 port (polled RX, as the factory) + BMS frame decoder
 src/hmi/     LCD/keypad menu engine + menu model + port
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
 ldscripts/   stm32f103ve.ld (12000XP) + *_18kpv_app.ld + *_6kxp_app.ld (App builds)
