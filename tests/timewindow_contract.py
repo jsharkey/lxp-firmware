@@ -181,54 +181,68 @@ class OursBackend:
         return bool(self.fn(arr, len(windows), self.ctypes.c_uint16(now_minutes(hour, minute))))
 
 
-# --- backend: the factory evaluator, called in isolation under Unicorn ------
-# Per-image addresses. "com_flat" matches the committed experiment
-# tools/emu_acfirst.py on reference/com_flat.bin (the 244080-byte 05-series ARM
-# image). "ceaa07" lists the 07-series addresses from docs/25 §3; mark it
-# unverified-in-this-harness until a contributor confirms the isolated call on
-# that image. Both evaluate the three windows at SETTINGS+win_off (4-byte stride,
-# start@+0, end@+2) against the RTC, and set bit 24 of `status_word`.
-PROFILES = {
-    "com_flat": dict(
-        eval_entry=0x0801ECE8,   # caller of sub_0801eb4c; mirrors bit24 after eval
-        settings=0x20009854, win_off=0x64,
-        rtc=0x2000A718,          # +1 = minute, +2 = hour
-        win_timer=0x2000A98C,    # debounce; 0 => evaluate now
-        status_word=0x2000A758,  # bit 24 = any AC-First window active
-        verified=True,
-    ),
-    "ceaa07": dict(
-        eval_entry=0x080352D0,   # sub_080352d0 (docs/25); reads RTC min/hour +
-                                 # the 3 AC-First windows at settings+0x64..+0x6e
-        settings=0x2000C85C, win_off=0x64,
-        rtc=0x2000D850,          # +1 = minute, +2 = hour (calendar 0x2000d850)
-        win_timer=None,
-        status_word=0x2000D890,  # bit 24 = any AC-First window active
-        verified=True,           # confirmed green on ceaa-07xx_vE_260214
-    ),
+# --- backends: the factory window evaluators, called in isolation under Unicorn -
+# Each is a standalone factory function that reads the RTC + its window registers
+# and sets an "active now" flag -- no boot. Addresses were recovered by finding
+# the `now = 60*hour + minute` sites in the image and the window offset each loops
+# over (see docs/35). Variants cover the 05-series (com_flat) and 07-series
+# (ceaa07) images; `profile="auto"` probes which one the given image matches.
+EVALUATORS = {
+    # AC-First load windows (HR 152-157), surfaced as IR 126 bit 8.
+    "acfirst": [
+        dict(variant="com_flat",                      # 05-series (emu_acfirst.py)
+             eval_entry=0x0801ECE8, settings=0x20009854, win_off=0x64,
+             rtc=0x2000A718, win_timer=0x2000A98C, enable=None,
+             result=("statusbit", 0x2000A758, 24)),
+        dict(variant="ceaa07",                        # 07-series (docs/25) -- verified
+             eval_entry=0x080352D0, settings=0x2000C85C, win_off=0x64,
+             rtc=0x2000D850, win_timer=None, enable=None,
+             result=("statusbit", 0x2000D890, 24)),
+    ],
+    # AC-charge windows (HR 68-73), gated by ACChargeType (stSysEnable, config
+    # +0x33 bits 1-3); evaluator sub_08034590 writes a per-window mask at dbb7.
+    # These share AC-First's window semantics (start-incl/end-excl/wrap), which
+    # the shared VECTORS prove against our one generic acfirst_window_active().
+    "acchg": [
+        dict(variant="ceaa07",                        # 07-series -- verified
+             eval_entry=0x08034590, settings=0x2000C85C, win_off=0x3a,
+             rtc=0x2000D850, win_timer=None, enable=(0x33, 0x02),  # ACChargeType=1 (by time)
+             result=("mask", 0x2000DBB7)),
+    ],
 }
 
 
-def _seed_and_eval(Emu, p, image, symbols, windows, hour, minute):
-    """Seed only the RTC + window config a window evaluator reads, call it in
-    isolation, and return its 'any window active now' verdict (status bit 24)."""
+def _seed_and_eval(Emu, spec, image, symbols, windows, hour, minute):
+    """Seed only the RTC + window config (+ any feature-enable gate) the evaluator
+    reads, call it in isolation, and return its 'any window active now' verdict."""
     emu = Emu(image, symbols)                   # fresh sandbox per call
     regs = flat_regs(windows)
-    emu.wbytes(p["settings"] + 0x60, bytes(0x30))          # clear the window region
+    s = spec["settings"]
+    emu.wbytes(s + 0x30, bytes(0x40))                      # clear a generous config span
     for i in range(len(windows)):
-        base = p["settings"] + p["win_off"] + 4 * i        # start@+0, end@+2, stride 4
+        base = s + spec["win_off"] + 4 * i                 # start@+0, end@+2, stride 4
         emu.uc.mem_write(base + 0, struct.pack("<H", regs[2 * i] & 0xFFFF))
         emu.uc.mem_write(base + 2, struct.pack("<H", regs[2 * i + 1] & 0xFFFF))
-    emu.uc.mem_write(p["settings"] + 0x0b, struct.pack("<H", 0x0100))  # enable config paths
-    emu.uc.mem_write(p["settings"] + 0x1a, bytes([0x01]))
-    emu.wbytes(p["rtc"], bytes(8))
-    emu.uc.mem_write(p["rtc"] + 1, bytes([minute & 0xFF]))
-    emu.uc.mem_write(p["rtc"] + 2, bytes([hour & 0xFF]))
-    if p["win_timer"] is not None:
-        emu.w32(p["win_timer"] & ~1, 0)                    # debounce off -> evaluate now
-    emu.w32(p["status_word"], 0)
-    emu.call(p["eval_entry"])
-    return bool((emu.r32(p["status_word"]) >> 24) & 1)
+    emu.uc.mem_write(s + 0x0b, struct.pack("<H", 0x0100))  # AC-First enable paths (harmless)
+    emu.uc.mem_write(s + 0x1a, bytes([0x01]))
+    if spec.get("enable") is not None:                     # feature-enable gate (e.g. ACChargeType)
+        off, val = spec["enable"]
+        emu.uc.mem_write(s + off, bytes([val]))
+    emu.wbytes(spec["rtc"], bytes(8))
+    emu.uc.mem_write(spec["rtc"] + 1, bytes([minute & 0xFF]))
+    emu.uc.mem_write(spec["rtc"] + 2, bytes([hour & 0xFF]))
+    if spec.get("win_timer") is not None:
+        emu.w32(spec["win_timer"] & ~1, 0)                 # debounce off -> evaluate now
+    kind = spec["result"][0]
+    if kind == "statusbit":
+        _, addr, bit = spec["result"]
+        emu.w32(addr, 0)
+        emu.call(spec["eval_entry"])
+        return bool((emu.r32(addr) >> bit) & 1)
+    _, addr = spec["result"]                               # "mask": nonzero per-window byte
+    emu.uc.mem_write(addr, b"\x00")
+    emu.call(spec["eval_entry"])
+    return emu.rbytes(addr, 1)[0] != 0
 
 
 class Skip(Exception):
@@ -236,21 +250,29 @@ class Skip(Exception):
 
 
 class FactoryBackend:
-    """The factory AC-First evaluator, called in isolation under Unicorn.
+    """A factory window evaluator (window_type), called in isolation under Unicorn.
 
-    profile="auto" (default) identifies the right PROFILES entry for the given
-    image by probing: the entry whose evaluator reads active at 07:00 and
-    inactive at 09:00 for a 06:00-08:00 window. So `make test-window` works for
-    either the 05-series (com_flat) or 07-series (ceaa07) image with no flag.
+    window_type selects which evaluator ("acfirst" or "acchg"); profile="auto"
+    (default) identifies the right image variant for that type by probing: the
+    variant whose evaluator reads active at 07:00 and inactive at 09:00 for a
+    06:00-08:00 window. So `make test-window` works for either the 05-series
+    (com_flat) or 07-series (ceaa07) image with no flag.
     """
-    def __init__(self, image, symbols=None, profile="auto"):
+    def __init__(self, image, symbols=None, window_type="acfirst", profile="auto"):
         self.image = image
         self.symbols = symbols
+        self.window_type = window_type
         self.requested = profile
-        self._p = None if profile == "auto" else PROFILES[profile]
-        self._pname = profile
-        self.name = "factory (%s, %s)" % (os.path.basename(image or "?"), profile)
+        self._spec = None
         self._Emu = None
+        self.name = "factory (%s, %s/%s)" % (
+            os.path.basename(image or "?"), window_type, profile)
+        if profile != "auto":
+            for sp in EVALUATORS[window_type]:
+                if sp["variant"] == profile:
+                    self._spec = sp
+            if self._spec is None:
+                raise Skip("no %s evaluator variant %r" % (window_type, profile))
 
     def available(self):
         if not self.image or not os.path.exists(self.image):
@@ -270,24 +292,25 @@ class FactoryBackend:
         return self._Emu
 
     def _resolve(self):
-        if self._p is not None:
-            return self._p
+        if self._spec is not None:
+            return self._spec
         Emu = self._emu()
         probe = slot(W(6, 0, 8, 0), 0)
-        for name, p in PROFILES.items():
+        for sp in EVALUATORS[self.window_type]:
             try:
-                # a wrong profile may fault; emu prints a stop line -- hush it
+                # a wrong variant may fault; emu prints a stop line -- hush it
                 with contextlib.redirect_stdout(io.StringIO()):
-                    on = _seed_and_eval(Emu, p, self.image, self.symbols, probe, 7, 0)
-                    off = _seed_and_eval(Emu, p, self.image, self.symbols, probe, 9, 0)
+                    on = _seed_and_eval(Emu, sp, self.image, self.symbols, probe, 7, 0)
+                    off = _seed_and_eval(Emu, sp, self.image, self.symbols, probe, 9, 0)
             except Exception:
                 continue
             if on and not off:
-                self._p, self._pname = p, name
-                self.name = "factory (%s, %s)" % (os.path.basename(self.image), name)
-                return p
-        raise Skip("could not identify a factory evaluator profile for %s"
-                   % os.path.basename(self.image or "?"))
+                self._spec = sp
+                self.name = "factory (%s, %s/%s)" % (
+                    os.path.basename(self.image), self.window_type, sp["variant"])
+                return sp
+        raise Skip("could not identify a factory %s evaluator for %s"
+                   % (self.window_type, os.path.basename(self.image or "?")))
 
     def active(self, windows, hour, minute):
         if not self.available():
