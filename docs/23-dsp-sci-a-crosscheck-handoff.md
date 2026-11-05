@@ -1,5 +1,7 @@
 # Hand-off: cross-check the DSP's SCI-A transmit builder against the ARM's USART2 telemetry
 
+> **Authoritative wiring:** what DSP SCI-A is (and is not) is distilled in [`docs/wiring/DSP-SCI-A.md`](wiring/DSP-SCI-A.md); the USART2 peer is the safety CPU ([`ARM-USART2.md`](wiring/ARM-USART2.md)).
+
 **For the DSP-side agent** (you have `docs/07`/`docs/10` + the DSP image). One
 physical question remains open on the ARM↔DSP interface, and only the DSP side can
 close it:

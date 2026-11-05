@@ -1,5 +1,7 @@
 # The external "dongle" firmware — what it proves about the ARM UART
 
+> **Authoritative wiring:** the UART5↔dongle link is distilled in [`docs/wiring/ARM-UART5.md`](wiring/ARM-UART5.md). This doc remains the dongle-firmware analysis.
+
 Status: **analyzed from the attached dongle image** (`abbc426d-E_V2_12.bin`).
 This is the monitoring **dongle** that plugs into the inverter's external
 comms port — the far end of the "external RS-485 / Modbus" link in the

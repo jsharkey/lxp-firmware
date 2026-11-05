@@ -7,94 +7,18 @@ assignments are **proven** from the STM32F103 alternate-function map plus the
 active-peripheral scan; the **silkscreen purpose of the bare relay/LED/control
 outputs is inferred** from the driver logic and flagged by confidence.
 
-## System block diagram — the processors and their links
+## System block diagram & per-link details → `docs/wiring/`
 
-The inverter is a **multi-processor system**; this project reimplements only the
-ARM "com" MCU. Five processors have been identified (the first four are on-board;
-the BMS is in the battery pack). Confidence: **✔** proven from firmware, **~**
-strong inference, **?** open.
+The overall system block diagram and the per-port ARM link table have **moved to
+the wiring source-of-truth** at [`docs/wiring/README.md`](wiring/README.md), with
+one doc per physical link — e.g. [`ARM-USART3`](wiring/ARM-USART3.md) (DSP),
+[`ARM-USART2`](wiring/ARM-USART2.md) (safety CPU), [`ARM-UART5`](wiring/ARM-UART5.md)
+(dongle), [`ARM-CAN1`](wiring/ARM-CAN1.md) (BMS), [`ARM-SPI1`](wiring/ARM-SPI1.md)
+(config flash), [`ARM-LCD`](wiring/ARM-LCD.md) (panel). Defer to `docs/wiring/` for
+what each port connects to and how.
 
-```
-                           +------------------------------+
-                           |  EG4 datalogger / cloud      |
-                           |  "dongle"  (external)        |
-                           +---------------+--------------+
-                                           | UART5 0x40005000        [✔]
-                                           | EG4 Modbus, LE + 10-byte SN
-   battery pack(s)                         |
-  +--------------------+   CAN1  PB8/PB9    |
-  | BMS   HC32F460     |<------------------>|
-  | (docs/20)          |   0x40006400 [✔]   |
-  +--------+-----------+   polled           |
-           | RS-485 pack-to-pack            |
-           : (daisy chain, auto-address)    v
-  meter /                       +-----------------------------------------+
-  console? --- USART1/UART4 --->|   ARM "com" MCU   (STM32F103VE)          |
-  (peers [?])   (unpinned)      |   comms . HMI . supervisor . relays      |
-                                |   << THIS PROJECT >>  no analog metering  |
-                                +----+--------------------------------+-----+
-             USART3 0x40004800  |                                    |  USART2 0x40004400
-             [✔] ARM --> DSP:   |                                    |  [✔] ARM <-> safety CPU
-             config push +      |                                    |  (19200, RS-485 DE on PC2):
-             bootloader 21/22/23|  (= DSP SCI-B)                     |  operating mode + PV/grid V/F
-                                v                                    |  (BE, type-1, EG4 CRC) + E027
-                           +--------------------------------------+  |  mismatch / W008 ver status
-                           |   TI C2000 Control DSP   (F2837x)    |  |  (docs/30)
-                           |   real-time power FSM (docs/07);     |  |
-                           |   measures PV & grid, runs power stg |  |
-                           +----+------------------+--------------+  |
-          EG4 Modbus UART       | DSP polls    [~] | SCI-C 9600      |
-          (same framing   [~]   v  as master       | 'T'/'D'  [✔]    v
-           as the DSP link)  +------------------+   | cross-check  +------------------------+
-                             | MPPT controller  |   | (docs/29)    | redundant safety CPU   |
-                             | CBAA, GD32-class |   +------------->| (3rd on-board MCU)      |
-                             | (docs/13)        |                  | redundant sampler;      |
-                             | PV V/I/P telem   |                  | votes + gates inverter  |
-                             +------------------+                  | (docs/29/30)            |
-                                                                   +------------------------+
-```
-
-> **Topology note (docs/30):** USART2's peer is the **redundant/safety CPU**, now
-> proven from the ARM side — the ARM *reports* E027 (sample-mismatch) and W008
-> (version-mismatch) straight out of the USART2 frame, and tracks that peer's
-> liveness on the USART2 link. The safety CPU cross-checks the DSP over **SCI-C**
-> (9600, `'T'`/`'D'`, docs/29) and relays consolidated mode + telemetry + its own
-> agreement/version status to the ARM over **USART2**. The DSP's *own* `0x49`
-> telemetry still reaches the ARM directly on **USART3** (SCI-B), but the ARM's
-> classified operating state and fault word are built from the USART2/safety-CPU bank.
-
-**The ARM's links (what connects to each port):**
-
-| ARM port | peer | direction / role | conf. |
-|---|---|---|---|
-| **USART3** `0x40004800` | **DSP** (SCI-B) | ARM→DSP config push + firmware-update bootloader (`0x21/0x22/0x23`) | ✔ |
-| **USART2** `0x40004400` | **redundant / "safety" CPU** (19200, RS-485 DE on PC2) | safety CPU→ARM: operating mode + PV/grid V/F (BE, type-1, EG4 CRC) **plus** its E027 sample-mismatch / W008 version-mismatch status — the ARM's core input registers + fault word | ✔ **peer pinned (docs/30)**: not a DSP SCI (docs/23); the ARM *reports* E027/W008 out of this frame and tracks the peer's liveness on this link. The peer cross-checks the DSP over SCI-C (docs/29) |
-| **CAN1** `0x40006400` (PB8/PB9) | **battery BMS** | ARM↔BMS, polled (`docs/20`) | ✔ |
-| **UART5** `0x40005000` | external **dongle** | EG4 Modbus (LE + SN), external RS-485 | ✔ |
-| **USART1** `0x40013800`, **UART4** `0x40004c00` | meter / console / ? | not pinned from firmware (needs schematic) | ? |
-
-**Key data-flow facts (established this session):**
-
-- **PV/grid measurements reach the ARM on USART2, from the safety CPU — not a direct
-  MPPT or DSP link.** The ARM serves **PV voltage verbatim** from the USART2 bank
-  (IR 1/2 ← `0x20009e54+0x4c/0x4e`) and **computes PV power itself** (IR 7/8,
-  `sub_0801b034`, float `V·I`). The DSP-side follow-up (docs/29) showed the DSP forwards
-  the safety CPU **no** grid/PV, so these measured quantities are the **safety CPU's own
-  independent samples** relayed over USART2, not DSP values. (The MPPT chip publishes
-  PV V/I/P on its own EG4-Modbus UART and the DSP polls it, docs/13 — but that is for
-  the DSP's use and does **not** feed the ARM's bank.) Full map: [`docs/33`](33-usart2-telemetry-bank.md).
-- **Operating state** (IR 0) is the **one DSP-originated field**: the DSP computes the
-  working-state byte, hands it to the safety CPU on SCI-C, which relays it in the USART2
-  frame (`BANK+0`), and the ARM classifies it (docs/22/29/30). The real-time power FSM is
-  on the **DSP**.
-- **E027** — the sample-mismatch fault is *reported* by the ARM straight out of the
-  USART2 frame (not computed): the fault word `STATUS+0x88` is copied from `BANK+0xd0`
-  (BE u32 @ USART2 frame `+5`), and bit 27 is the frame's own bit — the ARM-side proof
-  that USART2's peer is the safety CPU (docs/29/30). The grid-domain warnings
-  (`W016/17/18`) likewise come from the USART2 frame (`BANK+0xd4` @ `+9`, the WARN word
-  `STATUS+0x8c`); `W008` is ARM-computed. Full bank field map: [`docs/33`](33-usart2-telemetry-bank.md).
-- **Battery** telemetry comes **directly** to the ARM over CAN1 (docs/20) — the one
-  peer the ARM reads first-hand (it still does no analog metering itself).
+This doc keeps the **full 54-pin inventory** and the **recovery method** below —
+the IO-map substance that the wiring docs reference.
 
 ## MCU and method
 

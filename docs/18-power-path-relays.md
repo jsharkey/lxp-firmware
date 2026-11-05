@@ -1,5 +1,7 @@
 # Power-path relays — what drives them, and register-based names
 
+> **Authoritative wiring:** the relay pin/role summary is in the [wiring overview](wiring/README.md#local-gpio-not-inter-processor-links). This doc remains the full relay-drive analysis. (Note the IR_STATE address correction: authoritative is `0x2000a0d8+0x90`.)
+
 Status: **recovered by static + dynamic RE of the `ceaa-07xx` ARM image.** Each
 relay's GPIO driver, the exact RAM fields/bits that gate it, and the one solidly
 register-anchored input (**IR_STATE**, input register 0) are proven; the

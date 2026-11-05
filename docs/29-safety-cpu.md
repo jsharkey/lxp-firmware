@@ -1,5 +1,7 @@
 # The redundant / "safety" CPU — concrete evidence
 
+> **Authoritative wiring:** the two safety-CPU links are specified in [`docs/wiring/DSP-SCI-C.md`](wiring/DSP-SCI-C.md) (DSP side) and [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md) (ARM side). This doc remains the evidence.
+
 The EG4 platform is a **three-processor** system (README, docs/01): the Control
 DSP (TI C2000), the Com/HMI MCU (STM32, this project), and a third **redundant /
 "safety" CPU**. Until now the safety CPU was only a label. This note collects the

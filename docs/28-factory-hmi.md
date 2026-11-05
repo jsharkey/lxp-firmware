@@ -1,5 +1,7 @@
 # Factory HMI — running the real graphic LCD in the emulator
 
+> **Authoritative wiring:** the factory LCD bus is distilled in [`docs/wiring/ARM-LCD.md`](wiring/ARM-LCD.md). This doc remains the panel-decode detail.
+
 Status: **working.** The factory ARM image's own display code runs under the
 Unicorn harness (`tools/arm_sim.py`) and paints its real screens; a model of the
 LCD reconstructs the picture, and the four front-panel keys drive the firmware's
