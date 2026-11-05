@@ -223,7 +223,10 @@ configured for (a battery-side setting, see `docs/20`).
 
 - Confirm the USART1 pins (PA9/PA10 presumed; not hit by the init sweep) and
   which peer each UART serves. Known: **USART3 = DSP** (SCI-B: config + bootloader),
-  **UART5 = dongle**, and **USART2 = DSP-domain telemetry** (EG4-framed `type=1`
+  **UART5 = dongle** (independently corroborated by the dongle's own firmware —
+  an RS-485 **half-duplex master** datalogger, so the ARM is the slave; see
+  [`docs/26`](26-dongle-firmware.md), which also rules out USART3 for the dongle),
+  and **USART2 = DSP-domain telemetry** (EG4-framed `type=1`
   frame carrying the operating mode + PV/grid V/F into `0x20009e54`; the ARM's
   core input registers come from here — see [`docs/22`](22-arm-dsp-core-split.md)).
   USART1/UART4 peers (meter, BMS-UART, console) are still not pinned.
