@@ -173,6 +173,7 @@ def test_can_battery_telemetry_reaches_modbus():
         0x351 chg Vlim -> IR 83  (ChargeVoltRef, 0.1 V, 1:1 below the pack's clamp)
         0x359 fault    -> IR 99  (FaultCode_BMS, protection bitfield, 1:1)
         0x359 warn     -> IR 100 (WarningCode_BMS, alarm bitfield, 1:1)
+        0x359 modules  -> IR 96  (BatParallelNum, module count)
 
     Black box over two buses: CanBattery drives CAN1 (polled for our firmware,
     interrupt-driven for the factory) and ModbusDongle drives USART3, neither
@@ -183,6 +184,7 @@ def test_can_battery_telemetry_reaches_modbus():
     V_CV, I_CA, T_DC = 5325, 150, 231   # 0x356: 53.25 V, 1.50 A, 23.1 degC
     CHG_V = 560                         # 0.1 V charge-V limit (below the ~57.4 V clamp)
     FAULT, WARN = 0x0102, 0x0408        # 0x359 protection / alarm bitfields
+    MODULES = 3                         # 0x359 [4] pack module count
 
     sim = _sim()
     battery = CanBattery(sim)     # install CAN1 hooks before the image runs
@@ -191,7 +193,7 @@ def test_can_battery_telemetry_reaches_modbus():
     battery.send_soc_soh(SOC, SOH)
     battery.send_measurements(V_CV, I_CA, T_DC)
     battery.send_limits(CHG_V)
-    battery.send_alarms(FAULT, WARN)
+    battery.send_alarms(FAULT, WARN, pack_count=MODULES)
     battery.settle()              # let the telemetry propagate into the register image
 
     # IR 4 (Vbat) and IR 5 (SOC/SOH) are adjacent -> one read.
@@ -201,11 +203,12 @@ def test_can_battery_telemetry_reaches_modbus():
 
     # IR 83, 98, 99, 100, 103 are in one 40-register group -> one read of 83..103.
     blk = mb.read_input(83, 21) or [None] * 21
-    assert blk[0]  == CHG_V, "charge Vlim -> IR 83: got %r"  % (blk[0],)
-    assert blk[15] == I_CA,  "current -> IR 98: got %r"      % (blk[15],)
-    assert blk[16] == FAULT, "fault -> IR 99: got %r"        % (blk[16],)
-    assert blk[17] == WARN,  "warn -> IR 100: got %r"        % (blk[17],)
-    assert blk[20] == T_DC,  "temperature -> IR 103: got %r" % (blk[20],)
+    assert blk[0]  == CHG_V,   "charge Vlim -> IR 83: got %r"  % (blk[0],)
+    assert blk[13] == MODULES, "modules -> IR 96: got %r"      % (blk[13],)
+    assert blk[15] == I_CA,    "current -> IR 98: got %r"      % (blk[15],)
+    assert blk[16] == FAULT,   "fault -> IR 99: got %r"        % (blk[16],)
+    assert blk[17] == WARN,    "warn -> IR 100: got %r"        % (blk[17],)
+    assert blk[20] == T_DC,    "temperature -> IR 103: got %r" % (blk[20],)
 
 
 def test_modbus_acfirst_window_tracks_rtc():

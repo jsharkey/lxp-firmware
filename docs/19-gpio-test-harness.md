@@ -380,6 +380,7 @@ cross-checked against the EG4 Modbus map — docs/20):
 | `0x356` temperature | 103 (`MaxCellTemp_BMS`) | 0.1 °C, signed, 1:1 |
 | `0x351` charge-V limit | 83 (`ChargeVoltRef`) | 0.1 V, 1:1 (below the pack's clamp) |
 | `0x359` protection / alarm | 99 / 100 (`FaultCode_BMS` / `WarningCode_BMS`) | bitfields, 1:1 |
+| `0x359` module count | 96 (`BatParallelNum`) | 1:1 |
 
 The CAN plumbing is `tests/arm_sim_can.py` (`CanBattery`), which models the bxCAN
 receive FIFO 0 at `0x40006400` through the sim's `uc` handle — no

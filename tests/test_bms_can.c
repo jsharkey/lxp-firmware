@@ -77,9 +77,10 @@ int main(void)
         CHECK(p.alarms_valid, "0x359 marks alarms valid");
         CHECK(p.fault_bits == 0x0102, "0x359 decodes fault bits");
         CHECK(p.warn_bits  == 0x0408, "0x359 decodes warn bits");
+        CHECK(p.module_count == 1, "0x359 decodes module count");
     }
 
-    /* 0x35A is NOT consumed (received but not exposed on Modbus; see docs/29) */
+    /* 0x35A is NOT consumed (received but not exposed on Modbus; see docs/31) */
     {
         uint8_t d[8] = {0xFF,0xFF,0xFF,0xFF,0,0,0,0};
         CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_ALARM_B, d, sizeof d), "0x35A not consumed");
