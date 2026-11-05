@@ -118,6 +118,53 @@ class SpiNorFlash:
                 self.mem = bytearray(b"\xFF" * self.size); self.wel = 0
             return 0xFF
         return 0xFF
+
+# --- config-flash records -------------------------------------------------
+# The factory com-MCU keeps its settings in a journaled store on the SPI NOR
+# config flash: six 8 KB regions (slot N at N*CONFIG_REGION), each a ring of
+# 256-byte records. A record is 250 payload bytes, a 16-bit Modbus CRC of that
+# payload at [0xFA:0xFC] (little-endian), and a 0xA5 "written" marker at [0xFF];
+# the firmware scans a region newest-first (highest address down) and takes the
+# first record whose marker and CRC check out. If a slot has none, it falls back
+# to a compiled-in default record in the MCU's own flash (0x0807F800 for slot 0,
+# 0x0807F900 for slot 5). A blank chip with those defaults absent leaves boot
+# stuck re-scanning, so a harness must present valid config to get past bring-up
+# -- see attach_config_flash(). (Reverse-engineered from the ceaa-07xx image:
+# scan sub_0801_6652, CRC sub_0801_60bc == the repo's Modbus CRC-16.)
+CONFIG_RECORD = 0x100          # one record / flash page
+CONFIG_REGION = 0x2000         # per-slot region size (32 records)
+CONFIG_SLOTS  = 6              # slots 0..5
+CONFIG_MARKER = 0xA5           # [0xFF] "record written" marker
+CONFIG_CRC_OFF = 0xFA          # [0xFA:0xFC] little-endian payload CRC
+CONFIG_PAYLOAD = 0xFA          # bytes [0:0xFA] covered by the CRC
+
+def config_crc16(data):
+    """Modbus CRC-16 (poly 0xA001, init 0xFFFF) -- the checksum the factory
+    firmware validates each config record against (and the same CRC the repo's
+    src/modbus uses)."""
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc & 0xFFFF
+
+def make_config_record(payload=b""):
+    """Build one valid 256-byte config record from up to 250 payload bytes
+    (zero-padded): payload + CRC16(payload) at 0xFA + marker 0xA5 at 0xFF. The
+    firmware accepts it (marker + CRC), so default/blank payload is enough to
+    clear the config gate; fill the payload to drive specific settings."""
+    payload = bytes(payload)
+    if len(payload) > CONFIG_PAYLOAD:
+        raise ValueError("payload > %d bytes" % CONFIG_PAYLOAD)
+    rec = bytearray(b"\x00" * CONFIG_RECORD)
+    rec[:len(payload)] = payload
+    crc = config_crc16(rec[:CONFIG_PAYLOAD])
+    rec[CONFIG_CRC_OFF] = crc & 0xFF
+    rec[CONFIG_CRC_OFF + 1] = (crc >> 8) & 0xFF
+    rec[CONFIG_RECORD - 1] = CONFIG_MARKER
+    return bytes(rec)
+
 RCC = 0x40021000
 USARTS = {0x40013800,0x40004400,0x40004800,0x40004c00,0x40005000}
 USART_SR_READY = 0x000000C0   # TXE|TC
@@ -369,6 +416,25 @@ class ArmSim:
         self.uc.hook_add(UC_HOOK_MEM_WRITE, on_dr_w, begin=dr, end=dr + 4)
         self.uc.hook_add(UC_HOOK_MEM_READ, on_dr_r, begin=dr, end=dr + 4)
         return dev
+
+    def attach_config_flash(self, cs_pin="PA4", spi_base=0x40013000,
+                            slots=CONFIG_SLOTS, payloads=None):
+        """Attach an SPI NOR config flash already provisioned with valid config,
+        the way a factory-programmed board presents it. Writes one valid record
+        (make_config_record) at the top page of each slot region so the firmware
+        finds valid config for every slot on the first read, instead of scanning
+        a blank chip forever. This clears the config bring-up gate and lets boot
+        reach task creation and the scheduler.
+
+        `payloads`: optional {slot: payload-bytes} to drive specific settings;
+        slots not listed get a blank (all-zero) but validly-framed record.
+        Returns the SpiNorFlash device (its .mem is the backing store)."""
+        payloads = payloads or {}
+        dev = SpiNorFlash()
+        for slot in range(slots):
+            top = slot * CONFIG_REGION + (CONFIG_REGION - CONFIG_RECORD)
+            dev.mem[top:top + CONFIG_RECORD] = make_config_record(payloads.get(slot, b""))
+        return self.attach_spi_flash(cs_pin=cs_pin, spi_base=spi_base, flash=dev)
 
     # ---- symbols / memory / execution -----------------------------------
     def sym(self, name):

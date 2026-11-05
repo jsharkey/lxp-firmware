@@ -45,6 +45,9 @@ warm = sim.snapshot()                  # CPU + all memory + GPIO shadow
 sim.restore(warm); sim.set_input("PB7", 1); sim.run_until_output("PB7", 1, reset=False)
 
 sim.enable_systick(20_000)             # drive tick-gated logic (see below); off by default
+sim.attach_spi_flash("PA4")            # RAM-backed SPI NOR on SPI1 (blank chip)
+sim.attach_config_flash("PA4")         # ...pre-provisioned with valid config so
+                                       # boot clears config bring-up (see below)
 
 sim.get_output("PB7")                  # current driven level (shadow latch)
 sim.was_driven("PB7", level=1)         # was it driven (to a level) since clear?
@@ -139,16 +142,46 @@ using Unicorn's native MSP/PSP banking). Verified end-to-end on the factory
 image: SysTick fires as exceptions, PendSV runs, and the engine **context-switches
 to a real PSP task** (`0x08030010`).
 
-**What still blocks the relay task specifically (honest).** With the engine
-running, the firmware only schedules a minimal task set in the harness (an
-idle-like spinner, plus one garbage TCB whose stacked PC is 0 — a sign of
-*incomplete init*). The control/relay task (`sub_0801b3dc`) is **never created /
-made ready**, because task creation is gated behind init we have not satisfied
-(the config-flash *contents* the firmware validates, and likely the DSP link).
-So running the relays end-to-end through the scheduler needs that init gate
-resolved, not more exception-engine work. The engine guards against the invalid
-switch (it halts rather than faulting). **Validating the relay behaviour does not
-need any of this** — the relay tests below run the factory's real relay code
+**The config-flash gate — found, and resolved.** Earlier it looked like the
+relay task was "never created"; the real cause was that **boot never finishes
+config bring-up on a blank chip**, so it never reaches task creation at all.
+Tracing it out (stuck call chain `sub_0802e4dc` → `sub_0801_4696` →
+`sub_0801_683c`, the config loader):
+
+- The settings live in a **journaled store on the SPI config flash**: six 8 KB
+  regions, slot *N* at `N*0x2000`, each a ring of 256-byte records. A record is
+  **250 payload bytes + a 16-bit Modbus CRC** of that payload at `[0xFA:0xFC]`
+  (little-endian) + a **`0xA5` marker** at `[0xFF]`. The loader scans a region
+  newest-first and takes the first record whose marker and CRC check out (CRC
+  `sub_0801_60bc` is byte-for-byte the repo's Modbus CRC-16). If a slot has no
+  valid record it falls back to a **compiled-in default** in the MCU's own flash
+  (`0x0807F800` for slot 0, `0x0807F900` for slot 5).
+- A blank SPI chip has no records, and in the ceaa-07xx dump those default pages
+  are **past the end of the image** (it ends exactly at `0x0807F800`), so both
+  sources are empty and boot loops re-scanning — *slow*, not hung: each scan is
+  32 bit-banged SPI page reads, so all six slots × retries take ~15 M instructions.
+
+**`sim.attach_config_flash()` clears it.** It attaches an SPI NOR pre-provisioned
+with one valid record (`make_config_record()`, which frames a payload with the
+right CRC + marker) at the top page of each slot — the way a factory-programmed
+board presents config. The loader then validates all six slots on the first read
+(config reads drop ~1150 → 12), and boot runs **all the way through task
+registration**: `sub_0802e2f0` registers the periodic tasks via `sub_0802e578`
+(= `pxPortInitialiseStack`, so each is a real preemptive task with its own
+stack), **including the relay/control loop `sub_0801b3dc` as task id 1** (300-word
+stack). It then starts the scheduler (`sub_0801c466` = `vPortStartFirstTask`:
+set PendSV pri, `PSP=0`, `PENDSVSET`, `cpsie i; b .`) and `enable_rtos()`
+context-switches into the first task (`0x08030010`, the cooperative dispatcher
+`loop { sub_0801_4a24() }`).
+
+**What's left (honest).** Config is no longer the blocker; the remaining work is
+purely **preemptive-scheduler emulation**: driving PendSV to select and dispatch
+the *right* ready task so `sub_0801b3dc` actually gets the CPU. Task selection
+reads a ready bitmask (`0x2000da16`) + index table (`0x20002204`); under the
+engine a later switch lands on an unregistered slot (id 3 was skipped → TCB with
+`SP`/stacked-`PC` 0), which the engine guards against (halts, doesn't fault).
+Finishing that is its own focused effort. **Validating the relay behaviour does
+not need any of it** — the relay tests below run the factory's real relay code
 directly with seeded state.
 
 ### The relay parity tests (target-specific: shared contract, per-image drive)
