@@ -30,3 +30,59 @@ RELAY_OVERRIDE_TRUTH = {
 # (IR_STATE > PROGRAMMING = 2); open (0) in standby / fault / programming.
 RUN_STATES    = (0x04, 0x10, 0x40, 0xC0)   # PV-ongrid, bat-ongrid, bat-offgrid, pv+bat-offgrid
 NONRUN_STATES = (0x00, 0x01, 0x02)         # standby, fault, programming
+
+
+# --- safety-CPU telemetry -> Modbus input registers (docs/30, docs/33) ------
+# The redundant/"safety" CPU streams the live grid/PV/bus measurements to the
+# ARM over USART2; the ARM decodes them into its telemetry bank (0x20009e54,
+# docs/33) and serves them to the dongle as input registers. This table is the
+# contract both images are held to: a decoded telemetry field lands at a fixed
+# bank offset (native little-endian u16) and is served on a given input register
+# with a fixed scale.
+#
+#   field -> (bank byte offset, input register, served = round(raw * scale))
+#
+# Most fields are served verbatim; the inverter-current RMS is scaled x10 and the
+# radiator temperatures /10 by the factory getter (sub_0803289c) -- our firmware
+# must reproduce the same scales. Offsets/scales were recovered by sweeping the
+# real getter over every register (docs/33).
+SAFETY_TELEMETRY = {
+    # field       off    IR   scale
+    "pv1":       (0x4c,   1,  1),    # PV1 voltage        0.1 V
+    "pv2":       (0x4e,   2,  1),    # PV2 voltage        0.1 V
+    "grid_r":    (0x20,  12,  1),    # grid voltage R     0.1 V
+    "grid_s":    (0x28,  13,  1),    # grid voltage S     0.1 V
+    "grid_t":    (0xb6,  14,  1),    # grid voltage T     0.1 V
+    "freq":      (0x5e,  15,  1),    # grid frequency     0.01 Hz
+    "iinv":      (0x24,  18, 10),    # inverter current   served x10
+    "veps_r":    (0x22,  20,  1),    # EPS voltage R      0.1 V
+    "feps":      (0x60,  23,  1),    # EPS frequency      0.01 Hz
+    "vbus1":     (0x0e,  38,  1),    # BUS 1 voltage      0.1 V
+    "vbus2":     (0x10,  39,  1),    # BUS 2 voltage      0.1 V
+    "vbus_p":    (0x12, 120,  1),    # half-BUS voltage   0.1 V
+    "gen_freq":  (0x62, 122,  1),    # generator freq     0.01 Hz
+    "t_rad1":    (0x1e,  65,  0.1),  # radiator temp 1    served /10
+    "t_rad2":    (0x1c,  66,  0.1),  # radiator temp 2    served /10
+}
+
+
+def safety_served(field, raw):
+    """The input-register value a given raw (bank) telemetry value is served as."""
+    _off, _ir, scale = SAFETY_TELEMETRY[field]
+    return int(round(raw * scale))
+
+
+# Two telemetry snapshots. Set B is a small fluctuation of set A (a few tenths of
+# a volt / 0.01 Hz, a degree) so a test can prove *changing* values propagate --
+# the register image is not a one-shot cache. Raw bank units (pre-scale); temps
+# and iinv are chosen as clean multiples so the scaled result is exact.
+SAFETY_TELEMETRY_A = {
+    "pv1": 3201, "pv2": 3180, "grid_r": 2401, "grid_s": 2402, "grid_t": 2403,
+    "freq": 5999, "iinv": 150, "veps_r": 2400, "feps": 6000, "vbus1": 3900,
+    "vbus2": 3901, "vbus_p": 1950, "gen_freq": 5998, "t_rad1": 350, "t_rad2": 360,
+}
+SAFETY_TELEMETRY_B = {
+    "pv1": 3195, "pv2": 3188, "grid_r": 2405, "grid_s": 2399, "grid_t": 2410,
+    "freq": 6001, "iinv": 152, "veps_r": 2402, "feps": 5997, "vbus1": 3912,
+    "vbus2": 3889, "vbus_p": 1948, "gen_freq": 6002, "t_rad1": 360, "t_rad2": 350,
+}
