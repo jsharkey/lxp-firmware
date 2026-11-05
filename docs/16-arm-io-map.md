@@ -106,7 +106,7 @@ pin-init functions (main / comms / CAN groups).
 
 | Pin(s) | Driver | Inferred role | Conf. |
 |---|---|---|---|
-| PB12, PB13, PB14, PB15 | `sub_080114d2` / `sub_08011698` (bit-banged) | **graphic-LCD 4-wire serial bus** — PB12 SCLK, PB13 SDA, PB14 DC, PB15 /CS (a 128×160 MIPI-DCS TFT; **not** on SPI1, which is the config flash). Corrects the earlier "status-LED bank" read — see [`docs/23`](23-factory-hmi.md) | high |
+| PB12, PB13, PB14, PB15 | `sub_080114d2` / `sub_08011698` (bit-banged) | **graphic-LCD 4-wire serial bus** — PB12 SCLK, PB13 SDA, PB14 DC, PB15 /CS (a 240×160 monochrome MIPI-DCS LCD, 1bpp 8px/byte; **not** on SPI1, which is the config flash). Corrects the earlier "status-LED bank" read — see [`docs/23`](23-factory-hmi.md) | high |
 | PB1 | `sub_0801154a` (set HIGH) | status-LED / indicator (HMI "LED Ctr/Mode") | low-med |
 | PD14 | `sub_08016af0` (key scan) + `sub_0801154a` | LCD backlight or key-column strobe | med |
 | PD10 | `sub_0801acf4` (set HIGH once per main loop) | enable / run / heartbeat line | med |

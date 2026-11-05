@@ -12,8 +12,8 @@ factory image's draw code executing.
 
 ## The display hardware (reverse-engineered)
 
-The factory panel is a small **MIPI-DCS graphic TFT**, **128×160, 1 byte per
-pixel**, driven **bit-banged 4-wire serial on GPIOB** — *not* over SPI1 (that bus
+The factory panel is a small **monochrome MIPI-DCS graphic LCD**, **240×160**
+visible, driven **bit-banged 4-wire serial on GPIOB** — *not* over SPI1 (that bus
 is the config NOR flash, `docs/21`):
 
 | line | pin | role |
@@ -28,11 +28,21 @@ is the config NOR flash, `docs/21`):
 > correction in `docs/16`.
 
 The command set is MIPI-DCS: `SLPOUT 0x11`, `COLMOD 0x3A`, `CASET 0x2A`,
-`RASET 0x2B`, `RAMWR 0x2C`, `DISPON/OFF` — an ST77xx/ILI-class controller. The
-firmware draws **straight into the controller's GRAM** with windowed writes
-(CASET/RASET set a rectangle, RAMWR streams it); there is no full RAM
-framebuffer. The command/data primitive is `sub_080114d2(rs, byte)`; a full
-screen clear is the inline loop in `sub_08011698` (fills 20480 pixels).
+`RASET 0x2B`, `RAMWR 0x2C`, `DISPON/OFF`. The crucial decode is the **pixel
+format**: it is **1 bit per pixel, packed 8 pixels to a byte, MSB-first**, and
+the controller is addressed in **byte-columns** across (CASET) and **pixel rows**
+down (RASET). So one RAMWR data byte paints 8 horizontal pixels. Reading each
+byte as one pixel (the first wrong guess) both garbles text and makes the width
+8× too small.
+
+The firmware clears a **128-byte-wide** GRAM but the **visible panel is
+byte-columns 48..127** → `(128-48)` bytes × 8 = **640 logical px → the 240×160
+panel** (columns 0..47 are an off-panel left margin). Content is drawn with
+windowed writes (CASET/RASET set a byte-column × row rectangle, RAMWR streams the
+packed bytes row-major); there is no full RAM framebuffer. The command/data
+primitive is `sub_080114d2(rs, byte)`; the full-screen clear is the inline loop
+in `sub_08011698`. `tools/tft.py` captures the bytes, unpacks 8 px/byte, drops
+the off-panel margin, and fits the result to 240×160.
 
 ## How it runs
 
@@ -49,7 +59,7 @@ A fake "ready" on the bxCAN status registers keeps the CAN-poll task from
 spinning its whole slice (`docs/19`).
 
 `tools/tft.py` models the controller: it decodes the bit-banged GPIOB stream (or,
-equivalently, the command/data primitive) into the 128×160 GRAM and renders it as
+equivalently, the command/data primitive) into the byte-column GRAM, unpacks 8 px/byte, and renders it as
 the physical **monochrome** panel reads it (`mono()`), the dominant pixel value
 being the background. `tools/factory_hmi.py` wraps the boot + key driving.
 
@@ -94,7 +104,7 @@ make factory-hmi PORT=9000
 python3 tools/factory_hmi_app.py --port 8090
 ```
 
-The page shows the 128×160 panel (FSTN-tinted) and the four keys as buttons
+The page shows the 240×160 panel (FSTN-tinted) and the four keys as buttons
 (also arrow keys / Enter / Esc). It boots once (~18 s, a spinner shows), then each
 press runs the firmware (~6 s) and repaints. Needs `pip install unicorn numpy
 pillow` and `reference/com_flat.bin` + `reference/symbols.csv`.
@@ -114,7 +124,7 @@ h.save_png("common.png")
 
 | File | Role |
 |---|---|
-| `tools/tft.py` | LCD controller model: GPIOB serial stream → 128×160 GRAM → monochrome image |
+| `tools/tft.py` | LCD controller model: GPIOB serial stream → unpack 8 px/byte → 240×160 monochrome image |
 | `tools/factory_hmi.py` | boot the factory image through its RTOS, read the screen, press keys |
 | `tools/factory_hmi_app.py` | browser app: the panel + four keys, driven by the real firmware |
 

@@ -22,7 +22,7 @@ import os, sys, time
 import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim
-from tft import attach_tft, mono, W, H
+from tft import attach_tft, mono, W, H, PANEL_W, PANEL_H
 from unicorn import UC_HOOK_MEM_READ
 
 # Front-panel keys (docs/16): PA8, PA11, PC8, PC9, active-low. Functional names
@@ -113,14 +113,15 @@ class FactoryHmi:
     def gram(self):
         return self.tft.gram.copy()
 
-    def screen(self, invert=False):
-        """Current screen as a monochrome HxW uint8 image (0/255)."""
+    def screen(self, invert=True):
+        """Current screen as the 240x160 monochrome panel image (dark ink on a
+        light panel by default, as the device reads)."""
         return mono(self.tft.gram, invert=invert)
 
-    def save_png(self, path, scale=4, invert=False):
+    def save_png(self, path, scale=3, invert=True):
         from PIL import Image
         img = self.screen(invert=invert)
-        Image.fromarray(img).resize((W * scale, H * scale), 0).save(path)
+        Image.fromarray(img).resize((PANEL_W * scale, PANEL_H * scale), 0).save(path)
         return path
 
 
