@@ -121,6 +121,36 @@ Neither contradicts the other; they are opposite ends of the same loop. The
 both *drives* it (schedules/commands) and *reports* it (classifies telemetry into
 the Modbus/HMI model and gates its relays).
 
+## Data-flow example — the PV registers (and the MPPT chip)
+
+The same classify-vs-command split shows up in the PV telemetry, and it answers
+"does the ARM read the MPPT controller directly?" — **no, it goes through the DSP.**
+
+The input-register getter `sub_0803289c` sources the PV registers thus:
+
+| IR reg | quantity | source |
+|---|---|---|
+| 1 / 2 | PV1 / PV2 **voltage** | **DSP telemetry, verbatim** — `0x20009e54+0x4c/0x4e` (the USART2 bank) |
+| 3 | PV3 voltage | hardcoded `0` (no 3rd MPPT on the 2-tracker build) |
+| 7 / 8 | PV1 / PV2 **power** | `0x2000a0d8+0x28/0x2c` — **computed on the ARM** |
+| 9 | PV3 power | hardcoded `0` |
+
+- **Voltage** is the DSP's own measurement, forwarded over USART2 and served as-is.
+- **Power** is *not* a copied field: `sub_0801a678` does the float `V·I` (with the
+  `0.5f` averaging term) into accumulators `0x2000a818`/`0x2000a81c`, and
+  `sub_0801b034` converts and stores them to `STATUS+0x28/0x2c` (alongside
+  Pcharge/Pdischarge/Pinv). Its inputs are the DSP-supplied V/I.
+
+The **`mppt` controller** (a 4th processor, [`docs/13`](13-mppt-controller.md))
+publishes PV V/I/P on its own EG4-Modbus UART — but the **DSP** is the master that
+polls it; the ARM never reads the MPPT directly. The path is **MPPT → DSP →
+(USART2) → ARM**, and the ARM derives the power terms. (Consistent with docs/16:
+the com MCU configures *no* analog inputs — it does no sensing of its own.)
+
+So, again: the ARM is the **classifier/aggregator/reporter** over DSP telemetry
+(serve voltage, compute power, classify state), while the raw measurements and the
+real-time control live on the **DSP** and the sensor-facing **MPPT** chip.
+
 ## Implications for the reimplementation
 
 Our ARM firmware's "mode" module should therefore be **two things, not a power FSM**:
