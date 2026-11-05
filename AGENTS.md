@@ -13,22 +13,23 @@ follow this.
 - **Commit directly to `main`.** Do **not** create working branches, and do
   **not** open pull requests. The history on `main` *is* the shared record of
   what's been learned.
-- **Pull the latest `main` before you start each prompt**, and **rebase (never
-  merge) before you push**:
+- **Pull the latest `main` before you start each prompt, and read what changed.**
+  Other agents have been working in parallel; their commits and docs may have
+  already answered, moved, or reframed part of what you were just asked to do.
+  So before going forward, skim the new commits and touched docs and let them
+  update your plan — your prompt was written against an earlier `main`, and the
+  current one may make some of it done, redundant, or wrong.
 
   ```bash
-  git pull --rebase origin main
-  # ...do the work, commit...
+  git pull --rebase origin main   # before you start — then review what moved
+  ```
+- **Rebase (never merge) before you push**, so history stays linear and
+  collisions surface early:
+
+  ```bash
   git pull --rebase origin main   # again, right before pushing
   git push origin main
   ```
-
-  Several agents are committing in parallel, so `main` very likely moved while
-  you worked. Rebasing keeps history linear and surfaces collisions early.
-- **Keep commits small and focused** — one logical change each, so another
-  agent can follow the accumulating record and rebase cleanly. Push promptly
-  rather than sitting on a large batch; the longer you hold work, the more you
-  diverge from the others.
 - **Commit message style** (match the existing log): `area: imperative summary`,
   e.g. `docs/30: trace the FW-version fields to their per-CPU source`,
   `firmware/tests: flow 0x359 bitfields to Modbus`, `hmi-sim: robust boot cache`.
@@ -80,13 +81,22 @@ The factory firmware binaries are **proprietary and must stay out of the tree.**
 
 ## Build & test before you push
 
-Don't push red. Run what's relevant to what you touched:
+Run what's relevant to what you touched, and don't push red — **with one
+deliberate exception** (see below):
 
 ```bash
 make test        # host unit tests — always, if you touched src/ or include/
 make test-sim    # GPIO/HMI behaviour tests — if you touched GPIO/HMI/emulator
 make             # 12000XP build; add VARIANT=18kpv / VARIANT=6000xp if touched
 ```
+
+- **Simulator tests may be committed red for *our* firmware** when they pass
+  **green against the factory image**. The harness runs both firmwares (see
+  `docs/19`), so a new `make test-sim` test that encodes proven factory
+  behaviour is a valid spec to land even before our side implements it — that's
+  the TDD target a later step makes green. Mark such a test clearly as a
+  known-red-for-ours spec and say so in the commit. This exception is **only**
+  for simulator tests; host `make test` and the builds must stay green.
 
 - `tools/` are **read-only RE scripts** — they read the images in `reference/`
   and emit analysis; they do not modify firmware. Keep them non-destructive.
