@@ -34,9 +34,15 @@ read back what it produced — see each entry's *How found*.
 - **Expected:** `MaxCellVolt_BMS` should carry the pack's maximum cell voltage
   (a per-cell measurement, ~3.2–3.6 V → `3200`–`3600`). The high-res SOC belongs
   with the other SOC fields, not in a cell-voltage register.
-- **Likely cause:** a field/offset mix-up in the `0x355` handler (the high-res
-  SOC word is routed to the cell-voltage slot), or the max-cell-voltage source
-  frame was never wired up and this slot was reused.
+- **Root cause (confirmed):** the real max-cell-voltage source — the extended
+  cell frame **`0x373`** (min/max cell voltage & temperature) — is **never wired
+  to IR 101** on this image. Injecting `0x373` with realistic values changes no
+  register, and the whole extended `0x370–0x381` / `0x311–0x321` range is received
+  but published to no register at all (the inverter aggregates to one logical
+  pack — see [`docs/34`](34-multi-battery-can.md)). With that slot left unfed, the
+  `0x355` high-res SOC word bleeds into it instead of the cell voltage. So it is
+  the "source frame never wired up, slot reused by a field/offset mix-up" case,
+  not a simple typo in an otherwise-correct handler.
 - **Our firmware:** does **not** reproduce it — we leave IR 101 alone rather than
   publish a bogus cell voltage. So the common telemetry test does not assert
   IR 101.
