@@ -143,7 +143,7 @@ int main(void) {
     hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
     hmi_render(&g_hmi);
 
-    /* Bring up the real graphic LCD (docs/23) and post a "hello world" — proof
+    /* Bring up the real graphic LCD (docs/28) and post a "hello world" — proof
      * our firmware drives the same panel as the factory image, in the same wire
      * format (the HMI simulator renders this identically). Done after the comms
      * GPIO is configured so it doesn't reorder their bring-up. */

@@ -146,7 +146,7 @@ hmi: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 	python3 tools/hmi_app.py --bin $(BUILD)/$(TARGET).bin --elf $(BUILD)/$(TARGET).elf --port $(PORT)
 
 # The interactive graphic-HMI simulator on screen (tools/factory_hmi_app.py,
-# docs/23): renders whatever firmware's real LCD output and feeds the four keys.
+# docs/28): renders whatever firmware's real LCD output and feeds the four keys.
 # It is firmware-agnostic — defaults to the open-source build; pass FIRMWARE=path
 # to run a vendor .hex/.bin instead. Open http://localhost:$(HMI_PORT)/ .
 HMI_PORT ?= 8090

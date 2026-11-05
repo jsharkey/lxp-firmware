@@ -1,5 +1,5 @@
 /*
- * lcd_tft — driver for the factory HMI graphic LCD (docs/23), for our firmware.
+ * lcd_tft — driver for the factory HMI graphic LCD (docs/28), for our firmware.
  *
  * Bit-banged 4-wire serial on GPIOB (PB12 SCLK / PB13 SDA / PB14 DC / PB15 /CS),
  * MIPI-DCS, MSB-first. Pixels are 1bpp packed 8-to-a-byte: one RAMWR data byte
@@ -64,7 +64,7 @@ void lcd_tft_init(void)
     GPIOB->BSRR = PIN_SCLK | PIN_SDA;     /* idle clock/data high      */
     GPIOB->BRR  = PIN_CS;                 /* assert /CS                */
 
-    /* Init sequence mirrors the factory bring-up (docs/23); the exact command
+    /* Init sequence mirrors the factory bring-up (docs/28); the exact command
      * set is what the real panel needs. tools/tft.py ignores all but
      * CASET/RASET/RAMWR, so this is faithful on hardware and harmless in sim. */
     lcd_cmd(0x01); dly(2000);             /* software reset            */
