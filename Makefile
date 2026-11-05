@@ -132,6 +132,22 @@ SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
 # Cross-image: settings persisted by one firmware are read by the other (needs both).
 SIM_CROSS       = python3 tests/test_persist_crossimage.py $(BUILD)/$(TARGET).bin $(FACTORY_BIN)
 
+# --- Factory-coverage dashboard (docs/36) ----------------------------------
+# While the factory-side sim tests run with $LXP_COVERAGE set, arm_sim records
+# every factory basic block it executes; coverage_report.py maps those onto the
+# recovered function map to produce docs/factory-coverage.md. Collection is pure
+# observation (never changes pass/fail) and the regen is non-fatal, so this can
+# never turn test-sim red. Scoped to the factory image by $LXP_COVERAGE_IMAGE,
+# so the "ours" and cross-image sims in the same run don't pollute it.
+COV_JSONL    := $(BUILD)/factory_cov.jsonl
+COV_MD       := docs/factory-coverage.md
+COV_SYMBOLS  := reference/symbols.csv
+COV_CLASSIFY := tests/factory_coverage_classify.csv
+COV_REGEN = python3 tools/coverage_report.py --cov $(COV_JSONL) \
+  --symbols $(COV_SYMBOLS) --classify $(COV_CLASSIFY) --out $(COV_MD) \
+  --image-name $$(basename $(FACTORY_BIN)) \
+  --image-hash $$(sha256sum $(FACTORY_BIN) 2>/dev/null | cut -d' ' -f1)
+
 # Every block runs even if an earlier one fails; the target fails only at the end
 # if any did -- so a red test (e.g. the expected-red dongle/CAN scaffolding)
 # never hides the blocks after it. Each file @-prints its own banner header,
@@ -170,7 +186,20 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_OURS_COMMON) || rc=1; \
 	$(SIM_OURS_SELF) || rc=1; \
 	$(SIM_OURS_HMI) || rc=1; \
-	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
+	$(if $(HAVE_FACTORY),rm -f $(COV_JSONL); export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; unset LXP_COVERAGE LXP_COVERAGE_IMAGE; $(COV_REGEN) || echo "# test-sim: coverage dashboard regen skipped (non-fatal)";,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
+	exit $$rc
+
+# Standalone dashboard build: run only the factory-side sim tests with coverage
+# recording on, then regenerate docs/factory-coverage.md. Needs the proprietary
+# image (so it depends on $(FACTORY_BIN), unlike test-sim which degrades without
+# it). The dashboard is regenerated even if a sim block fails -- partial coverage
+# is still informative -- but the target's exit status reflects the sims.
+coverage: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(FACTORY_BIN)
+	@rm -f $(COV_JSONL)
+	@rc=0; export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); \
+	$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; \
+	unset LXP_COVERAGE LXP_COVERAGE_IMAGE; \
+	$(COV_REGEN); \
 	exit $$rc
 
 # Focused time-window micro-tests (docs/35): a cheap complement to test-sim that
@@ -192,4 +221,4 @@ test-window: $(if $(HAVE_FACTORY),$(FACTORY_BIN))
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window factory hmi hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage factory hmi hmi-sim factory-hmi

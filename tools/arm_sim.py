@@ -246,6 +246,45 @@ def load_flat(path):
     return hex_to_flat(path) if is_intel_hex(path) else open(path, "rb").read()
 
 
+# --- optional execution-coverage collection -------------------------------
+# When $LXP_COVERAGE names an output file AND the loaded image path matches
+# $LXP_COVERAGE_IMAGE, every ArmSim built in this process records the entry PC
+# of each executed basic block (a cheap per-block hook, the same kind the RTOS
+# engine already adds). The addresses are flushed, de-duplicated, to the output
+# file at interpreter exit -- *appended*, so the separate test processes that
+# `make test-sim` spawns accumulate into one file. tools/coverage_report.py maps
+# those PCs onto reference/symbols.csv to produce docs/factory-coverage.md.
+#
+# This is pure observation: it never changes a test's pass/fail, and it is OFF
+# unless both env vars are set (so normal runs pay nothing). The image-path match
+# is what scopes collection to the factory oracle -- when a test loads BOTH
+# images (e.g. the cross-image persistence test) only the factory sim records.
+import atexit as _atexit
+
+_COV_PCS = set()            # flash PCs (thumb bit cleared) executed this process
+_COV_OUT = [None]          # output file path, set on the first recording sim
+_COV_REGISTERED = [False]
+
+
+def _cov_same_path(a, b):
+    try:
+        return bool(a) and bool(b) and os.path.realpath(a) == os.path.realpath(b)
+    except Exception:
+        return False
+
+
+def _cov_flush():
+    out = _COV_OUT[0]
+    if not out or not _COV_PCS:
+        return
+    try:
+        with open(out, "a") as f:
+            for pc in sorted(_COV_PCS):
+                f.write("0x%08x\n" % pc)
+    except Exception:
+        pass
+
+
 class ArmSim:
     def __init__(self, image, symbols=None):
         # image: a path to a flat .bin, or the flat image bytes directly
@@ -266,6 +305,16 @@ class ArmSim:
         self._tick_mark = 0                    # next _insns value at which a SysTick comes due
         self._pending_irqs = []                # peripheral IRQ vector numbers awaiting delivery
         self._pendsv_set = False               # mirror of ICSR.PENDSVSET (cheap flag for the block hook)
+        # Execution coverage is recorded only when $LXP_COVERAGE is set and this
+        # image is the one named by $LXP_COVERAGE_IMAGE (the factory oracle).
+        self.image_path = image if isinstance(image, str) else None
+        self._cov_on = bool(os.environ.get("LXP_COVERAGE")) and _cov_same_path(
+            self.image_path, os.environ.get("LXP_COVERAGE_IMAGE"))
+        if self._cov_on:
+            _COV_OUT[0] = os.environ["LXP_COVERAGE"]
+            if not _COV_REGISTERED[0]:
+                _atexit.register(_cov_flush)
+                _COV_REGISTERED[0] = True
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -318,7 +367,18 @@ class ArmSim:
         # (a full factory boot more than halves without it).
         uc.hook_add(UC_HOOK_CODE, self._on_code, begin=STOP, end=STOP + 0x1000)
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._on_unmapped)
+        # Coverage: one extra per-block hook, only when recording is enabled, so
+        # it costs nothing on ordinary runs.
+        if self._cov_on:
+            uc.hook_add(UC_HOOK_BLOCK, self._on_cov_block)
         self.uc = uc
+
+    def _on_cov_block(self, uc, address, size, ud):
+        # Entry PC of each executed basic block, recorded iff it lands in flash
+        # (image code). Cheap: a set add once per block, not per instruction.
+        a = address & ~1
+        if FLASH_BASE <= a < FLASH_BASE + len(self.data):
+            _COV_PCS.add(a)
 
     # ---- peripheral behaviour -------------------------------------------
     def _on_write(self, uc, access, addr, size, value, ud):
