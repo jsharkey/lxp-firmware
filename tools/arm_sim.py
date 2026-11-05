@@ -262,6 +262,8 @@ class ArmSim:
         self._rtos_step = 2000                 # run quantum between exception checks (RTOS)
         self._thread_on_psp = False            # True while a task (PSP) is the interrupted thread
         self._msp = None                       # shadow main/handler stack (see _exc_entry)
+        self._insns = 0                        # instructions executed this RTOS run (block hook)
+        self._tick_mark = 0                    # next _insns value at which a SysTick comes due
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -545,7 +547,31 @@ class ArmSim:
         # event and stops; the _run driver performs the state change and restarts
         # emu_start at the new PC (rewriting PC from inside a hook is unreliable).
         self.uc.hook_add(UC_HOOK_INTR, self._on_intr)
+        # A per-block hook drives the engine between instructions. It (a) counts
+        # real instructions, so the SysTick cadence and run budget stay right
+        # however a quantum ends, and (b) stops emulation *promptly* at a block
+        # boundary whenever a pending exception may now be taken. (b) is what
+        # makes PendSV prompt: the firmware's yield selects the next task (writing
+        # cur_id) and sets PENDSVSET inside a critical section, expecting the
+        # switch the instant interrupts re-enable. Were it deferred to a fixed
+        # quantum, the still-running task would loop back and -- now reading the
+        # updated cur_id -- clear the newly selected task's ready bit, draining
+        # the ready set so every switch lands on the idle task. Stopping at a
+        # block boundary (never mid-instruction, unlike a store hook) is safe: PC
+        # is left on a real instruction, so nothing re-executes.
+        self.uc.hook_add(UC_HOOK_BLOCK, self._on_block)
         return self
+
+    def _on_block(self, uc, addr, size, ud):
+        self._insns += max(1, size // 2)                     # ~thumb instructions in the block
+        if self._insns >= self._tick_mark:
+            self._systick_due = True
+            self._tick_mark = self._insns + self._tick_interval
+        # Stop to let _run_rtos take a pending exception as soon as it is allowed
+        # (thread mode, interrupts enabled). Both SysTick and PendSV qualify.
+        if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1) \
+                and (self._systick_due or (self.r32(SCB_ICSR) & (1 << 28))):
+            uc.emu_stop()
 
     # We do NOT rely on Unicorn's CONTROL.SPSEL banking: in practice it does not
     # survive our manual EXC_RETURN, so a handler's `mrs psp` would read a stale
@@ -684,16 +710,16 @@ class ArmSim:
         sections instead of being lost at a chunk boundary that lands in one."""
         uc = self.uc
         uc.reg_write(UC_ARM_REG_PC, start_pc & ~1 | 1)
-        remaining = max_insn
-        budget = self._tick_interval
+        self._insns = 0
+        self._tick_mark = self._tick_interval
+        self._systick_due = False
         step = min(self._tick_interval, self._rtos_step)
-        while remaining > 0 and not self._halt:
+        while self._insns < max_insn and not self._halt:
             # Take a pending exception iff in thread mode with interrupts enabled
             # (both SysTick and PendSV sit at the lowest priority, so neither
             # preempts the other or a running handler). A SysTick that comes due
             # while interrupts are masked stays pending (one tick, like the real
-            # COUNTFLAG) rather than being dropped at a chunk boundary in a
-            # critical section.
+            # COUNTFLAG) rather than being dropped.
             if self._exc_depth == 0 and not (uc.reg_read(UC_ARM_REG_PRIMASK) & 1):
                 if self._systick_due:
                     csr = self.r32(SYST_CSR)
@@ -701,28 +727,28 @@ class ArmSim:
                     if csr & 1:                              # ENABLE: latch COUNTFLAG
                         self.w32(SYST_CSR, csr | (1 << 16))
                         if (csr & 2) and self._exc_entry(EXC_SYSTICK):   # TICKINT
-                            remaining -= 1; continue
+                            continue
                 if self._pendsv_pending() and self._exc_entry(EXC_PENDSV):
-                    remaining -= 1; continue
+                    continue
             self._exc_event = None
             pc = uc.reg_read(UC_ARM_REG_PC)
-            n = min(step, remaining)
+            # Run a quantum; the block hook stops us early at a safe boundary the
+            # moment a pending exception becomes takeable (e.g. a yield's PendSV
+            # right after its crit-exit), so the switch happens before the task
+            # runs on.
+            n = min(step, max_insn - self._insns)
             try:
-                uc.emu_start(pc | 1, STOP, count=n)
+                uc.emu_start(pc | 1, STOP, count=max(1, n))
             except UcError:
                 pass
             if self._halt or (uc.reg_read(UC_ARM_REG_PC) & ~1) == STOP:
                 break
             ev = self._exc_event
             if ev == "svc":
-                self._exc_entry(EXC_SVC); remaining -= 1
+                self._exc_entry(EXC_SVC)
             elif ev is not None:                             # an EXC_RETURN fetch
-                self._do_exc_return(ev); remaining -= 1
-            else:                                            # quantum elapsed
-                remaining -= n; budget -= n
-                if budget <= 0:
-                    self._systick_due = True
-                    budget += self._tick_interval
+                self._do_exc_return(ev)
+            # else: quantum elapsed or ICSR stop -> loop re-evaluates pending excs
         return self
 
     def run_reset(self, max_insn=500_000, vector_base=None):

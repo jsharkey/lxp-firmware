@@ -183,7 +183,8 @@ stack), **including the relay/control loop `sub_0801b3dc` as task id 1** (300-wo
 stack). It then starts the scheduler (`sub_0801c466` = `vPortStartFirstTask`:
 set PendSV pri, `PSP=0`, `PENDSVSET`, `cpsie i; b .`) and `enable_rtos()`
 context-switches into the first task, then runs the scheduler — thousands of
-clean PendSV switches — with `sub_0801b3dc` registered and waiting.
+clean PendSV switches that dispatch the registered tasks, including the
+relay/control task `sub_0801b3dc`.
 
 **How the scheduler picks a task** (reverse-engineered). The periodic driver
 `sub_0802f50c` runs each SysTick: per task it counts to the task's period and
@@ -194,16 +195,33 @@ the lookup table at `0x20002204`, then PENDSVSET). The idle task is id 0 — the
 lowest bit, i.e. highest priority — and is itself periodic, so it is re-marked
 ready and reselected constantly.
 
-**What's left (honest).** With the switch now correct, the readiness side is
-*observably* exercised — the tick marks the relay task (id 1) ready, the mask
-reaches e.g. `0x01c3` (ids 0,1,6,7,8) — yet at every *selection* the selector
-reads the mask as `0`, so it falls through to id 0 and **only the idle task ever
-runs**. The non-idle tasks' ready bits are set by the tick but cleared again
-before a yield selects them; untangling exactly where (and modelling the
-hardware those tasks then poll — e.g. a bounded "start op, wait ready" on the
-peripheral at `0x40006400`) is the next focused effort. The engine itself is
-sound: it dispatches whatever the firmware selects. **Validating the relay
-behaviour does not need any of this** — the relay tests below run the factory's
+**Why the ready bits were being cleared before selection — and the fix.** The
+tick marks the relay task (id 1) ready and the mask reaches e.g. `0x01c3` (ids
+0,1,6,7,8), yet selection kept reading the mask as `0` and falling through to the
+idle task. The cause was **PendSV taken too late**. A yield runs
+`selector → cur_id := <picked id> → PENDSVSET` inside a critical section and
+expects PendSV to switch the instant interrupts re-enable. The engine instead
+deferred it to the next run quantum, so the *still-running* idle task looped back
+into its wait and — now reading the just-updated `cur_id` — cleared **the newly
+selected task's** ready bit (`actual_running=0, cur_id=1 → clears bit 1`), and
+repeated down the mask until it was empty; the late PendSV then found only the
+idle task ready. The fix makes PendSV **prompt**: a per-block hook stops
+emulation at the next block boundary (a safe instruction boundary — stopping a
+store hook mid-write just re-executes it) as soon as a pending exception can be
+taken, so the switch happens at the yield's crit-exit, before idle runs on.
+
+With that, the scheduler **dispatches the real tasks**: id 1, 2, 5, 6, 7, 8, 9 all
+get switched in, and the relay/control task `sub_0801b3dc` runs under the
+scheduler and **drives the power-path relays** (TRANSFER_A/B, RUN_EN, SLOW,
+BYPASS) on its own — boot → config → scheduler → relay task, end to end, from
+`attach_config_flash()` + `enable_rtos()` alone.
+
+**What's left.** One periodic task does a bounded "start op, wait ready" poll on
+a peripheral at `0x40006400` that the harness doesn't model, so it spins to its
+timeout with interrupts off (the scheduler still makes progress — that task just
+wastes its slice; faking the ready bit at `0x40006404` roughly halves the run
+cost). Modelling that (and any siblings) is a loose end, not a blocker. **The
+relay parity tests below don't depend on any of this** — they run the factory's
 real relay code directly with seeded state.
 
 ### The relay parity tests (target-specific: shared contract, per-image drive)
@@ -256,17 +274,17 @@ Factory: seed its manual-mode flag + command word, invoke its relay updater
 override path is self-contained). Ours: `relay_set_override()` + `relay_poll()`
 (`src/relay.c`), TDD'd to match the same truth table.
 
-Committed groundwork toward running the firmware fully end-to-end: the M4 model,
-the peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`), the
+The firmware now runs fully end-to-end in the harness: the M4 model, the
+peripheral-ready fakes, the `SpiNorFlash` model (`attach_spi_flash()`), the
 config-flash provisioning (`attach_config_flash()`, which clears the boot config
-gate), SysTick injection, and the **`enable_rtos()` exception engine** (above) —
-which now context-switches cleanly through the scheduler, with the relay task
-registered and waiting. **Next** to run the relay *task* through the scheduler:
-work out why the tick's ready bits for the non-idle tasks are cleared before the
-selector sees them (so only the idle task is ever dispatched), and model the
-hardware those tasks poll — a scheduler/peripheral-fidelity problem, no longer an
-exception-engine one. Once the task runs, these relay checks could move from a
-seeded-state call into the common black-box file.
+gate), SysTick injection, and the **`enable_rtos()` exception engine** (above)
+together take the factory image from reset through config, into its preemptive
+scheduler, which **dispatches the relay/control task `sub_0801b3dc` — and it
+drives the power-path relays on its own**. So these relay checks *could* now move
+from a seeded-state direct call into a scheduler-driven black-box form; they are
+kept as direct calls for speed and determinism (the full run is millions of
+instructions), and because that form also validates our firmware, which has no
+such scheduler.
 
 ## The common tests — the SAME code against both images
 
