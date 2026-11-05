@@ -161,14 +161,14 @@ def test_modbus_charge_current_write_read():
 
 def test_can_battery_soc_soh_reaches_modbus():
     """Battery BMS CAN (docs/20) -> Modbus. The pack reports SOC/SOH on CAN1 ID
-    0x355; the ARM polls CAN1, caches it, and serves it as Modbus input register
-    5 (IR_SOC_SOH: low byte SOC %, high byte SOH %). Inject a 0x355 frame on the
-    battery bus, then read IR 5 over the dongle and confirm the values crossed
-    from CAN to Modbus.
+    0x355; the ARM takes it off CAN1, caches it, and serves it as Modbus input
+    register 5 (IR_SOC_SOH: low byte SOC %, high byte SOH %). Inject a 0x355 frame
+    on the battery bus, let the firmware propagate it, then read IR 5 over the
+    dongle and confirm the values crossed from CAN to Modbus.
 
-    SCAFFOLDING -- expected to fail for now: our firmware has no CAN reader yet,
-    and the factory polls CAN1 from an RTOS task the harness does not schedule.
-    The test pins the end-to-end contract (CAN -> register image -> Modbus)."""
+    Black box over two buses: CanBattery drives CAN1 (polled for our firmware,
+    interrupt-driven for the factory) and ModbusDongle drives USART3, neither
+    naming a symbol -- so the one test holds for both images."""
     from arm_sim_modbus import ModbusDongle
     from arm_sim_can import CanBattery
     IR_SOC_SOH = 5
@@ -179,6 +179,7 @@ def test_can_battery_soc_soh_reaches_modbus():
     mb = ModbusDongle(sim)        # boots the image + installs the UART hooks
 
     battery.send_soc_soh(SOC, SOH)       # pack announces state of charge/health
+    battery.settle()                     # let it propagate into the register image
 
     got = mb.read_input(IR_SOC_SOH)
     assert got == [(SOH << 8) | SOC], \
