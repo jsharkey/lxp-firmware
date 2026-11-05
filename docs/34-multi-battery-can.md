@@ -10,18 +10,19 @@ Short answers, from static RE of both ends plus harness probes:
 1. **Yes — the master emits per-pack + extended-stack telemetry frames** over
    the single CAN bus (beyond the aggregate `0x351/0x355/0x356/0x359/…` we
    already flow). The frame *ranges* are confirmed in the battery image.
-2. **CORRECTED — they ARE surfaced, on an undocumented high register range
-   (input registers 5000–5126).** This note first concluded the opposite; that was
-   wrong because the check swept only IR 0–239. The serializer routes input
-   registers **5000–5126 to a separate getter** (`sub_08020cc0`) that serves a
-   **per-pack array** (`0x2000691c`, stride `0x36`) filled from the CAN per-pack
-   frames by `sub_080205d4`. A harness probe injecting per-pack frames and reading
-   5000+ over the dongle returns the per-pack values (while IR 0–239 stays blank —
-   which is why the first sweep missed it). Full mechanism + proof in
-   **[§2b](#2b-correction--per-pack-data-is-surfaced-on-undocumented-registers-50005126)**
-   below. (The §2 checks that follow remain correct *as far as they go* — the
-   per-pack data genuinely is not in IR 0–239 — but the conclusion drawn from them
-   was not.)
+2. **Not on THIS pack — but the firmware does have an (unused) per-pack register
+   bank.** Careful version: the ARM has an **undocumented per-pack register bank at
+   input registers 5000–5126** (`sub_08020cc0` → per-pack array `0x2000691c`), fed by
+   CAN **`0x4xx`** frames (`sub_080205d4`). It is real and serves per-pack values
+   when `0x4xx` is injected. **But this EG4-LL pack emits no `0x4xx`** (it uses
+   `0x3xx`), so that bank is **dormant here**, and this pack's extended per-battery
+   frames (`0x311–0x321`, `0x370–0x381`) are parsed into **internal scalars that no
+   Modbus getter reads**. So for this inverter+battery, **only the aggregate block
+   (IR 81–106) reaches the dongle** — matching this note's first finding. (An earlier
+   revision over-stated this as "per-pack IS surfaced"; the battery image corrects it
+   — see **[§2b](#2b-the-per-pack-register-bank-ir-50005126--real-but-dormant-on-this-pack)**.
+   The §2 sweeps were right; the inference that the 5000 bank carries *this pack's*
+   data was not.)
 3. **Firmware-update-over-CAN is plausible and the primitives are present** (the
    battery self-programs flash and can reset to its bootloader), but the CAN-IAP
    protocol itself lives in the bootloader partition, which is **not in the App
@@ -94,15 +95,19 @@ frames are **received and buffered** but **not published to any Modbus register*
   [`docs/05`](05-dsp-link.md)/[`docs/08`](08-arm-dsp-config-protocol.md), reached
   by the ARM as master — not something the UART5 dongle issues for BMS data.)
 
-**Conclusion (corrected — see [§2b](#2b-correction--per-pack-data-is-surfaced-on-undocumented-registers-50005126)).**
-The per-battery data genuinely crosses the single CAN link, reaches the inverter's
-RAM, and **is served to the dongle Modbus** — on an **undocumented high register
-bank, input registers 5000–5126** (`sub_08020cc0`, per-pack array `0x2000691c`),
-fed from the CAN per-pack frames by `sub_080205d4`. It is simply **not** in the
-IR 0–239 space the aggregate block lives in, which is why the first sweep here
-concluded (wrongly) that nothing surfaced it. The dongle, a transparent conduit,
-relays whatever registers the cloud polls — including 5000+ — so an EG4 tool that
-reads the 5000 bank sees full per-pack detail over this same Modbus link.
+**Conclusion (final — see [§2b](#2b-the-per-pack-register-bank-ir-50005126--real-but-dormant-on-this-pack)).**
+The per-battery data genuinely crosses the single CAN link and reaches the
+inverter's RAM. The ARM *does* contain an **undocumented per-pack register bank
+(input registers 5000–5126**, `sub_08020cc0` / array `0x2000691c`) — but it is fed
+only by CAN **`0x4xx`** per-pack frames, which **this EG4-LL pack does not emit**
+(it uses `0x3xx`). This pack's extended per-battery frames are parsed into internal
+scalars that **no Modbus getter reads**. So on **this inverter+battery, only the
+aggregate block (IR 81–106) reaches the dongle**; the per-battery extended detail is
+received but **not surfaced** on any register. The 5000–5126 bank is a real feature
+for a *different* battery protocol (CAN `0x4xx` per-pack) and would surface full
+per-pack detail with such a pack — but sits dormant here. (An interim revision
+mistakenly reported this pack's data as reaching 5000+; the battery image corrects
+that.)
 *(This also explains quirk Q1 in [`docs/31`](31-factory-quirks.md): with the real
 max-cell-voltage frame `0x373` never wired to IR 101, the `0x355` high-res SOC
 field bleeds into that slot.)*
@@ -113,7 +118,7 @@ field bleeds into that slot.)*
 > (decode `0x311–0x321`/`0x370–0x381`, define our own register bank) — a
 > deliberate superset, flagged as such.
 
-## 2b. CORRECTION — per-pack data IS surfaced, on undocumented registers 5000–5126
+## 2b. The per-pack register bank (IR 5000–5126) — real, but dormant on this pack
 
 The §2 checks establish a true fact (the per-pack bytes are not in input registers
 **0–239**) but the conclusion — "no register, documented or undocumented" — was
@@ -219,17 +224,43 @@ analogs of the pack's V/I/SOC/SOH/temperature, min/max cell voltage & temperatur
 charge/discharge limits, cycle count / capacity, and version/identity — but the
 exact word-by-word assignment is deliberately left unlabeled rather than guessed.
 
-**So the answer flips:** per-pack telemetry **is** readable over the dongle Modbus
-on this `ceaa-07xx` image — just on a high, undocumented register bank (5000+)
-that no public EG4 map lists, not in the IR 0–239 space. The ARM does **not**
-aggregate to one logical pack after all; it keeps the per-pack detail and serves
-it on the 5000 range.
+**So the firmware *has* an undocumented per-pack register bank** (5000–5126, fed
+by CAN `0x4xx` via `sub_080205d4` → array `0x2000691c` → `sub_08020cc0`), proven to
+serve per-pack values when `0x4xx` frames are injected. Whether it is *fed* was the
+open question — now resolved below.
 
-> For **our** open firmware this *is* now a factory behaviour with an oracle
-> (`test_per_pack_telemetry_reaches_modbus`), so per-pack visibility can be matched
-> rather than treated as a superset — a `safety_cpu`-style module that fills a
-> per-pack array and serves it on the 5000 range would do it (TDD target, not yet
-> implemented).
+### Update (battery image decoded): the 5000 bank is DORMANT on this EG4-LL pack
+
+With the battery image (`BATT_IN280-Z03T13.bin`) now decoded, the per-pack feed
+question is settled, and it walks the headline **back toward the original**:
+
+- **This pack emits no `0x4xx`.** Its CAN TX frame-ID table (`@0x31a20`, 55 entries)
+  carries only `0x3xx`/`0x35x` (aggregate `0x351/355/356/359`, extended
+  `0x311–0x321`, `0x370–0x381`, ids `0x35a/b/c/e/f`); `0x400` appears only as an
+  *inbound* command the battery receives (§3). So the `0x4xx` feed the 5000 bank
+  needs **never arrives** from this battery → **the 5000–5126 bank is dormant here.**
+- **This pack's extended per-battery frames are parsed, but to internal scalars —
+  not to any served register.** The ARM handles `0x311–0x321` in a *different*
+  function (`sub_08021b68`, not the `0x4xx` parser), storing each frame's fields to
+  **fixed scalar RAM** (`0x2000a87e…0x2000a8a2`, `0x2000a9b2…`, big-endian), which
+  the Modbus getters (`sub_0803289c` / `fn_ceaa`) **do not read**. That is exactly
+  why §2's IR 0–239 sweep moved nothing — and it moves nothing on 5000+ either,
+  because that bank is a *different* (`0x4xx`) path.
+
+**Net, corrected:** for **this EG4-LL pack**, §2's original conclusion stands —
+only the **aggregate** block (IR 81–106) reaches the dongle; the per-battery
+extended detail (min/max cell V/T, per-pack V/SOC, version, serial) is received but
+**not surfaced on any Modbus register**. The 5000–5126 per-pack bank is a **real
+firmware feature for a *different* battery protocol** (one that streams per-pack
+telemetry on CAN `0x4xx`); it would light up with such a pack, but sits unused
+here. So "undocumented per-pack registers exist" is true of the **firmware**; "this
+inverter+battery surface per-pack data to the dongle" is **false** for this pack.
+
+> For **our** open firmware: the `0x4xx`→5000 register *path* has a firmware oracle
+> (`test_per_pack_telemetry_reaches_modbus`, synthetic `0x4xx` frames), so the
+> serving side can be matched if we choose to; but there is no point feeding it from
+> this pack's `0x3xx` frames unless we deliberately build per-pack visibility as a
+> superset. Not implemented.
 
 ## 3. Firmware update over CAN (extra credit)
 

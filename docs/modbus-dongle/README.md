@@ -129,6 +129,7 @@ RE-traced; `rsvd` = reserved/unused.
 | 144 | AFCIFlag | bits | arc alarm / self-test | idx |
 | 145-148 | AFCI_ArcCH1-4 | — | real-time arc | idx |
 | 149-152 | AFCI_MaxArcCH1-4 | — | max arc | idx |
+| **5000-5126** | **per-pack battery bank** | — | **undocumented**; CAN-`0x4xx`-fed, **dormant on the EG4-LL pack** | [→](input-5000_5126-perpack.md) |
 
 ## Index — holding registers (func `0x03/0x06`, `0x10` SN+time only)
 
