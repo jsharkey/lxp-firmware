@@ -15,11 +15,22 @@
 #include <stdbool.h>
 
 /* Decoded pack state (the subset the com-MCU consumes so far). Fields carry a
- * *_valid flag so a consumer only publishes what the pack has actually sent. */
+ * *_valid flag so a consumer only publishes what the pack has actually sent.
+ * Scalings are the CAN wire units (bms_can_map.h); the Modbus publish side
+ * (src/main.c) rescales to the register map (docs/04). */
 typedef struct {
+    /* 0x355 */
     uint8_t  soc;            /* state of charge, %  (0x355 [0:1]) */
     uint8_t  soh;            /* state of health, %  (0x355 [2:3]) */
     bool     soc_soh_valid;
+    /* 0x356 measurements (signed) */
+    int16_t  voltage_cv;     /* pack voltage,  0.01 V (0x356 [0:1]) */
+    int16_t  current_ca;     /* pack current,  0.01 A (0x356 [2:3], + = charge) */
+    int16_t  temp_dc;        /* temperature,   0.1 degC (0x356 [4:5]) */
+    bool     measured_valid;
+    /* 0x351 limits */
+    uint16_t charge_volt_dv; /* charge voltage limit, 0.1 V (0x351 [0:1]) */
+    bool     limits_valid;
 } bms_pack_t;
 
 /* Reset decoded state. */

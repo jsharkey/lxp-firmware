@@ -349,15 +349,26 @@ request rather than on a byte count.
 > every block regardless and reports the failure at the end (see *Running the
 > tests*), so the other blocks still show.
 
-**4. `test_can_battery_soc_soh_reaches_modbus`** — end-to-end **battery BMS CAN →
-Modbus** (docs/20). The pack reports SOC/SOH on CAN1 ID `0x355`; the ARM takes it
-off CAN1, caches the pack state, and serves it as Modbus **input register 5**
-(`IR_SOC_SOH`: low byte SOC %, high byte SOH %). The test injects a `0x355` frame
-on the battery bus, lets the firmware propagate it, then reads IR 5 over the
-dongle, asserting the values crossed from CAN to Modbus. The CAN plumbing is
-`tests/arm_sim_can.py` (`CanBattery`), which models the bxCAN receive FIFO 0 at
-`0x40006400` through the sim's `uc` handle — no `tools/arm_sim.py` change — and
-drives it **polled or interrupt-driven** so one test fits both images (below).
+**4. `test_can_battery_telemetry_reaches_modbus`** — end-to-end **battery BMS CAN
+→ Modbus** (docs/20). The pack streams telemetry on CAN1; the ARM takes it off
+the bus, caches it, and serves it over the dongle as Modbus **input registers**.
+The test injects the core frames, lets the firmware propagate them, then reads
+the registers back, asserting each data point crossed with the right register
+*and scaling* (the mapping/scaling was recovered from the factory oracle and
+cross-checked against the EG4 Modbus map — docs/20):
+
+| CAN | → IR | scale |
+|---|---|---|
+| `0x355` SOC / SOH | 5 | low byte / high byte |
+| `0x356` voltage | 4 (`Vbat`) | 0.01 V → 0.1 V, rounded |
+| `0x356` current | 98 (`BatCurrent_BMS`) | 0.01 A, signed, 1:1 |
+| `0x356` temperature | 103 (`MaxCellTemp_BMS`) | 0.1 °C, signed, 1:1 |
+| `0x351` charge-V limit | 83 (`ChargeVoltRef`) | 0.1 V, 1:1 (below the pack's clamp) |
+
+The CAN plumbing is `tests/arm_sim_can.py` (`CanBattery`), which models the bxCAN
+receive FIFO 0 at `0x40006400` through the sim's `uc` handle — no
+`tools/arm_sim.py` change — and drives it **polled or interrupt-driven** so one
+test fits both images (below).
 
 > **Green on both images.** Our firmware implements this end to end:
 > `can_port_init`/`can_port_poll` (`src/can/can_port.c`) drain CAN1 FIFO 0 each

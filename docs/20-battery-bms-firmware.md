@@ -216,21 +216,35 @@ byte (`==1` / `==5` / `==6` branches).
 
 ## Testing the CAN contract (harness scaffolding)
 
-A black-box test of this contract is started in the GPIO/IO harness
+A black-box test of this contract lives in the GPIO/IO harness
 ([`docs/19`](19-gpio-test-harness.md)): `tests/arm_sim_can.py` (`CanBattery`)
-stands in for the pack on CAN1, injecting telemetry frames (e.g. `0x355`
-SOC/SOH) by modelling the bxCAN receive FIFO 0 at `0x40006400` — the registers
-the com-MCU's **polled** reader touches (no IRQ; see the Status bind item above).
-The common test `test_can_battery_soc_soh_reaches_modbus` injects a `0x355`
-frame and checks the values surface on Modbus input register 5 (`IR_SOC_SOH`),
-pinning the full **CAN → register image → Modbus** path.
+stands in for the pack on CAN1, injecting telemetry frames by modelling the
+bxCAN receive FIFO 0 at `0x40006400`. The common test
+`test_can_battery_telemetry_reaches_modbus` injects the core frames and checks
+the values surface on the right Modbus input registers, pinning the full
+**CAN → register image → Modbus** path.
 
-Our com-MCU reimplementation now implements the receive side: `can_port_init` /
+**CAN → Modbus map (recovered from the factory oracle, cross-checked vs the EG4
+Modbus doc).** The factory image is the reference for both register choice and
+scaling; our firmware matches it, so the one test passes on both:
+
+| CAN field | → IR | scaling |
+|---|---|---|
+| `0x355` [0:1] SOC % / [2:3] SOH % | 5 `SOC/SOH` | low byte / high byte |
+| `0x356` [0:1] voltage | 4 `Vbat` | 0.01 V → 0.1 V, **rounded** |
+| `0x356` [2:3] current (s16) | 98 `BatCurrent_BMS` | 0.01 A, 1:1 |
+| `0x356` [4:5] temperature (s16) | 103 `MaxCellTemp_BMS` | 0.1 °C, 1:1 |
+| `0x351` [0:1] charge-V limit | 83 `ChargeVoltRef` | 0.1 V, 1:1, then the factory **clamps** to a cell-count max (~57.4 V here) |
+
+(The factory also routes `0x355` [4:5] into IR 101 `MaxCellVolt_BMS` — a 7.7 V
+"cell" — which looks like a field/quirk mismatch, so we don't reproduce it.)
+
+Our com-MCU reimplementation implements the receive side: `can_port_init` /
 `can_port_poll` (`src/can/can_port.c`) bring up CAN1 (remapped to PB8/PB9) and
 drain FIFO 0 each main-loop pass, `bms_can_on_frame` (`src/can/bms_can.c`,
-host-tested by `tests/test_bms_can.c`) decodes `0x355`, and `main` publishes
-SOC/SOH to `IR_SOC_SOH`. The ARM also sends a ~1 Hz keep-alive (`0x305`) to
-prompt the pack's telemetry.
+host-tested by `tests/test_bms_can.c`) decodes `0x355`/`0x356`/`0x351`, and
+`main` publishes the fields above (with the scalings) into the register image.
+The ARM also sends a ~1 Hz keep-alive (`0x305`) to prompt the pack's telemetry.
 
 The test now **passes against both images**. The factory reaches the same result
 by a different path: its CAN RX is interrupt-driven (it sets `CAN_IER` **FMPIE0**

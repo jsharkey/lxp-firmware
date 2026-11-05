@@ -44,10 +44,30 @@ int main(void)
         CHECK(p.soc == prev_soc, "short frame does not corrupt SOC");
     }
 
-    /* an unconsumed telemetry ID is reported as not-known (no update) */
+    /* 0x356 measurements: [0:1] V 0.01V, [2:3] I 0.01A s16, [4:5] T 0.1C s16 */
     {
-        uint8_t d[8] = {0};
-        CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_VIT, d, sizeof d), "0x356 not consumed yet");
+        uint8_t d[6] = { 0xCD, 0x14,            /* 5325 = 0x14CD */
+                         0x9C, 0xFF,            /* -100  = 0xFF9C (discharge) */
+                         0xE7, 0x00 };          /* 231 */
+        CHECK(bms_can_on_frame(&p, BMS_CAN_ID_VIT, d, sizeof d), "0x356 consumed");
+        CHECK(p.measured_valid, "0x356 marks measurements valid");
+        CHECK(p.voltage_cv == 5325, "0x356 decodes voltage");
+        CHECK(p.current_ca == -100, "0x356 decodes signed current");
+        CHECK(p.temp_dc == 231, "0x356 decodes temperature");
+    }
+
+    /* 0x351 limits: [0:1] charge voltage limit 0.1V */
+    {
+        uint8_t d[8] = { 0x30, 0x02, 0,0, 0,0, 0,0 };  /* 560 = 0x0230 */
+        CHECK(bms_can_on_frame(&p, BMS_CAN_ID_LIMITS, d, sizeof d), "0x351 consumed");
+        CHECK(p.limits_valid, "0x351 marks limits valid");
+        CHECK(p.charge_volt_dv == 560, "0x351 decodes charge voltage limit");
+    }
+
+    /* short 0x356 is rejected */
+    {
+        uint8_t d[4] = {1,2,3,4};
+        CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_VIT, d, sizeof d), "0x356 too short -> ignored");
     }
 
     printf("test_bms_can: %d checks, %d failed\n", g_run, g_fail);
