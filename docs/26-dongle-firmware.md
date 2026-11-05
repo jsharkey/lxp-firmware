@@ -71,8 +71,21 @@ The image carries a whole **baud table** (`0x42003240…`, 2400 → 921600), i.e
 dongle is field‑configurable to match whatever the inverter port runs; the only
 baud *written into code* is `115200`, and that is the **debug console**, not the
 inverter link. So the dongle can't be used to prove a specific baud number — it
-just has to be set to the inverter's rate (the EG4/Luxpower convention, and the
-value our docs/04 recovered on the ARM side, is **19200 8N1**).
+just has to be set to the inverter's rate. On this unit the ARM configures
+**UART5 at 9600 8N1** (post‑boot `USART_BRR` read,
+[`docs/25`](25-modbus-register-spaces.md)/[`docs/13`](13-mppt-controller.md)), so a
+dongle on UART5 is provisioned to 9600.
+
+> **Baud discrepancy to flag (spec 19200 vs observed 9600).** The public EG4
+> 18kPV Modbus spec and [`docs/04`](04-modbus.md) cite **19200 8N1** for the
+> external Modbus, and 19200 is the rate the ARM runs on **USART3** (and the rate
+> our skeleton's USART3‑bound Modbus uses). But the ARM configures **UART5 at
+> 9600**, and UART5 is where the dongle handler lives (docs/08). Two readings fit:
+> this model's external dongle port simply runs 9600 (the dongle's configurable
+> baud set to match), or the spec's 19200 is nominal/other‑model. The dongle
+> firmware can't settle it (its baud is config‑driven, not a literal); a **bus
+> capture** on the physical dongle port would. Either way it does **not** move the
+> dongle back to USART3 — the register handler is on UART5 regardless of baud.
 
 ## Mapping that onto the ARM
 
@@ -91,6 +104,16 @@ against the two things the dongle firmware just proved — **external RS‑485**
 Only **UART5** satisfies both conditions. The external‑RS‑485 requirement knocks
 out the internal DSP/telemetry links; the master/slave direction specifically
 knocks out **USART3**, which the ARM drives *as the master* toward the DSP.
+
+This is not just elimination — the ARM‑side RE has the positive locator too:
+[`docs/08`](08-arm-dsp-config-protocol.md) finds the dongle's standard‑Modbus
+register handler `sub_0802afe2` as a scheduler task on **UART5 `0x40005000`**
+(RX buffer `0x20008ca4`), serving `0x03/0x04/0x06/0x10` out of the central
+settings store `0x20009854`. The dongle firmware's "RS‑485 master, ARM = slave"
+signature is exactly what that handler is the ARM end of. The ARM's one
+serializer `sub_0803373c` is dual‑mode (flag `0x2000aa0b` bit 0): **LE + 10‑byte
+SN** to the dongle, **big‑endian + block‑tagged** to the DSP — so the shared
+EG4 frame family is real, but the dongle leg of it is UART5.
 
 ## Resolving the docs/04 ↔ docs/16 contradiction
 
@@ -123,11 +146,35 @@ i.e. **UART5**, confirming docs/16. The "Modbus‑on‑USART3" label in the code
 really the **DSP control link**; the external Modbus the dongle speaks is on
 **UART5**.
 
+## Reconciling docs/25 (which had said "the slave is USART3")
+
+[`docs/25`](25-modbus-register-spaces.md) §1 earlier reached the opposite
+tentative call — that the one EG4‑Modbus register slave is **USART3** and that
+"UART5 at 9600 is unlikely to be the dongle." Both of its arguments fall to the
+evidence here, and docs/25 has been corrected to match:
+
+- **"EG4 is 19200, UART5 is 9600, so UART5 isn't the dongle."** Void — the
+  dongle's baud is **field‑configurable** (§ above); it is simply set to UART5's
+  9600. Baud is not a discriminator.
+- **"A black‑box `0x03` probe replies only on USART3, not UART5."** That is a
+  false negative: the UART5 dongle handler (`sub_0802afe2`) is a **gated
+  scheduler task** that a cold probe can't start — docs/08 flags exactly this
+  ("cold runs don't build a response"). The USART3 reply the probe *did* get is
+  the ARM's dual‑mode bridge serializer in its LE+SN mode, and/or an artefact of
+  our own reimplementation wiring Modbus to USART3 (docs/04) — which is also why
+  the `tests/arm_sim_modbus.py` harness hooks USART3. None of that makes USART3
+  the dongle port.
+
+So the dongle firmware doesn't just add a vote for UART5 — it removes the only
+concrete objections that stood against it.
+
 ## Conclusion
 
 - **The dongle is on ARM UART5** (`0x40005000`, TX `PC12` / RX `PD2`, direction/DE
   candidate `PA15`), as an **RS‑485 half‑duplex** bus with the **ARM as Modbus
-  slave**, **8N1**, baud set to the inverter's rate (19200 by EG4 convention).
+  slave**, **8N1**, at UART5's configured **9600** (docs/25/13) — note the
+  spec‑vs‑observed baud discrepancy flagged above (spec cites 19200; UART5 reads
+  9600).
 - **USART3 is *not* the dongle** — it is the ARM→DSP (C2000 SCI‑B) control /
   bootloader link that happens to reuse the same EG4 frame family.
 - This is **conclusive on medium, role, and by‑elimination which UART**, within

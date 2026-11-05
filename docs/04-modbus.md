@@ -5,16 +5,27 @@ subsystem of the reimplementation and the most fully specified one (the public
 EG4 18kPV-12LV protocol doc is the authority; the 12000XP shares it).
 
 - Engine (transport-agnostic, host-testable): `src/modbus/modbus.c`
-- UART/RS-485 port (USART3): `src/modbus/modbus_port.c`
+- UART/RS-485 port: `src/modbus/modbus_port.c` (currently bound to USART3 in our
+  skeleton; the factory dongle port is **UART5** — see the Status note below and
+  [`docs/26`](26-dongle-firmware.md))
 - Register map: `include/inv/modbus_map.h`
 - API: `include/inv/modbus.h`
 - Tests (host): `tests/test_modbus.c` → `make test`
 
 ## Link
 
-RS-485, UART, **19200 bps, 8N1**. Min polling period 1 s. Register width 2 bytes.
+RS-485, UART, **19200 bps, 8N1** (per the EG4 spec; our skeleton uses 19200 on
+USART3). Min polling period 1 s. Register width 2 bytes.
 Function codes: `0x03` read holding, `0x04` read input, `0x06` write single,
 `0x10` write multiple (spec: only serial number + time).
+
+> **Observed baud on the factory dongle port differs from the spec.** The ARM
+> configures its external dongle UART (**UART5**) at **9600**, not 19200 (dynamic
+> `USART_BRR` read — [`docs/25`](25-modbus-register-spaces.md)/[`docs/13`](13-mppt-controller.md));
+> 19200 is the rate on **USART3** (the DSP link). The dongle's own baud is
+> field‑configurable ([`docs/26`](26-dongle-firmware.md)), so it is set to match
+> UART5. Treat 9600 as the value to use on the real dongle port pending a bus
+> capture; the register map and framing below are baud‑independent.
 
 ## Framing (EG4/Luxpower variant — not stock Modbus)
 

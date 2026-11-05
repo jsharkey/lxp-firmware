@@ -120,7 +120,7 @@ Interrupt usage is sparse — the board is mostly **polled**:
 |---|---|---|
 | SysTick | `0x080018A5` | system timebase |
 | PVD (IRQ1) | `0x080028A0` | programmable voltage detector (brown-out / power-fail save) |
-| USART3 (IRQ39) | `0x08002898` | serial comms (RX) — almost certainly the link to the DSP and/or RS485 |
+| USART3 (IRQ39) | `0x08002898` | serial comms (RX) — **now confirmed the ARM↔DSP (SCI-B) link**; the external RS-485 dongle is a *separate* port, UART5 (see docs/16, docs/25, docs/26) |
 | all other 58 IRQs | `0x080029A8` | shared default handler (`b.w .`) |
 
 Peripheral literal references (USART1/2/3, GPIO ports, ADC, timers, etc.) also
@@ -165,3 +165,9 @@ The exact ARM↔DSP link (USART3? CAN? both?) and its message format are the
 **single most valuable thing to document next** — it is the hard interface our
 reimplementation must honor, and it cannot be fully recovered from the ARM
 binary alone without either (a) the protocol spec, or (b) a bus capture.
+
+> **Resolved since:** the ARM↔DSP link is **USART3** (DSP SCI-B — shared CRC-16,
+> `0x21/0x22/0x23` bootloader, config push), with DSP→ARM telemetry on **USART2**;
+> the external RS-485 **dongle** is a distinct link on **UART5**. See
+> [`docs/05`](05-dsp-link.md), [`docs/08`](08-arm-dsp-config-protocol.md),
+> [`docs/16`](16-arm-io-map.md), and [`docs/26`](26-dongle-firmware.md).

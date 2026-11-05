@@ -322,9 +322,12 @@ the two images can match despite different internals.
 
 **2. `test_boots_and_configures_usart3_gpio`** — boots the image from its reset
 vector and asserts `GPIOB->CRH` is configured for USART3 (PB10 = AF-PP `0xB`,
-PB11 = floating-in `0x4`). Both firmwares bring the RS485/dongle Modbus link up
-the same way, so this doubles as a boot smoke test (the harness runs each image
-through its init, not just isolated functions) and a shared-behaviour check.
+PB11 = floating-in `0x4`). Both firmwares bring USART3 up the same way, so this
+doubles as a boot smoke test (the harness runs each image through its init, not
+just isolated functions) and a shared-behaviour check. (In the factory image
+USART3 is the ARM↔DSP link; the external dongle's EG4-Modbus is a separate port,
+UART5 — see [`docs/26`](26-dongle-firmware.md). Our reimplementation currently
+binds its Modbus slave to USART3 as a simplification — [`docs/04`](04-modbus.md).)
 
 **3. `test_modbus_charge_current_write_read`** — wire-level **dongle Modbus**
 over USART3 (docs/04): set holding register 101 (`HR_CHARGE_CURR`) to 42 with a
@@ -336,10 +339,22 @@ image that speaks the EG4 dongle protocol (`addr func SN[10] body CRC`,
 little-endian, CRC-16/MODBUS; see `include/inv/modbus.h`). The UART plumbing is
 `tests/arm_sim_modbus.py` (`ModbusDongle`), which hooks the USART3 data/status
 registers through the sim's `uc` handle (no `tools/arm_sim.py` change) and runs
-with SysTick on so the RTU inter-frame timer advances. USART3 currently also
-carries the DSP config push (a placeholder collision — `src/dsp/dsp_link_port.c`),
-so it stops on the first contiguous, CRC-valid response frame matching the
-request rather than on a byte count.
+with SysTick on so the RTU inter-frame timer advances. In *our* reimplementation
+USART3 currently also carries the DSP config-push placeholder
+(`src/dsp/dsp_link_port.c`), so the harness stops on the first contiguous,
+CRC-valid response frame matching the request rather than on a byte count.
+
+> **UART binding, factory vs here.** The harness exercises the EG4-Modbus
+> register contract over **USART3** because that is where our reimplementation
+> wires its Modbus slave. In the **factory** image the register slave the dongle
+> talks to is on **UART5** (handler `sub_0802afe2`; the dongle is an RS-485
+> master — [`docs/08`](08-arm-dsp-config-protocol.md), [`docs/26`](26-dongle-firmware.md)),
+> and **USART3 is the ARM↔DSP link**. These tests are symbol-free and purely
+> behavioural, so the contract they pin (register read/write, framing, scaling)
+> is UART-independent and stays valid; only the port the bytes are injected on
+> differs. The old "USART3 carries both dongle Modbus and the DSP push" reading
+> (a shared-wire collision) was a reimplementation placeholder artefact, retracted
+> in [`docs/25`](25-modbus-register-spaces.md) — the factory uses separate UARTs.
 
 > **Expected-red for now.** This passes against our firmware (whose Modbus RX is
 > polled in `mb_port_poll`) but **fails against the factory image**, which parses

@@ -276,13 +276,20 @@ Evidence, all from the ARM image:
   | ARM UART | baud | pins | transceiver | peer |
   |---|---|---|---|---|
   | USART3 | 19200 | PB10/PB11 | TTL (no DE pin) | **DSP control link** (internal) |
-  | USART2 | 19200 | PA2/PA3 | **RS-485** (DE on `PC2`, driven in its ISR `0x0801BDE4`) | external bus (unidentified) |
+  | USART2 | 19200 | PA2/PA3 | **RS-485** (DE on `PC2`, driven in its ISR `0x0801BDE4`) | **DSP-domain telemetry** (DSP→ARM, RX) — see docs/22/23 |
   | UART4 | 2400 | PC10/PC11 | RS-485 (DE on `PA15`) | external (meter / BMS-UART) |
   | UART5 | 9600 | PC12/PD2 | RS-485 (DE on `PA15`) | **external RS-485 dongle / Modbus** |
 
   Only USART3 is a plain point-to-point TTL link — the DSP. USART2/UART4/UART5 all
   toggle an RS-485 direction GPIO, i.e. they are external multidrop buses, not an
   on-board link to the MPPT.
+
+  > Peer updates since this table was first written: **UART5 = the external dongle**
+  > is confirmed from the dongle's own firmware (an RS-485 half-duplex *master*
+  > datalogger — [`docs/26`](26-dongle-firmware.md)), with its ARM-side handler
+  > `sub_0802afe2` at `0x40005000` ([`docs/08`](08-arm-dsp-config-protocol.md)); and
+  > **USART2** is now identified as the DSP→ARM telemetry link, not an unidentified
+  > external bus ([`docs/22`](22-arm-dsp-core-split.md), [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md)).
 - **The ARM does no analog metering** (docs/16: no ADC analog-in pins). It cannot
   measure PV itself; the numbers must arrive from a measuring peer.
 - **The DSP writes the ARM's telemetry register array** (docs/05, docs/08): the
