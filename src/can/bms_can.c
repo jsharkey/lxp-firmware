@@ -35,14 +35,15 @@ bool bms_can_on_frame(bms_pack_t *pack, uint32_t id, const uint8_t *data, uint8_
         pack->charge_volt_dv = rd_le16(data);
         pack->limits_valid = true;
         return true;
-    case BMS_CAN_ID_ALARM_A:           /* 0x359: [0:1] protection, [2:3] alarm */
+    case BMS_CAN_ID_ALARM_A:           /* 0x359: [0:1] protection, [2:3] alarm, [4] modules */
         if (dlc < 4) return false;
         pack->fault_bits = rd_le16(data);
         pack->warn_bits  = rd_le16(data + 2);
+        if (dlc >= 5) pack->module_count = data[4];
         pack->alarms_valid = true;
         return true;
         /* 0x35A (ALARM_B) is received by the factory but not published to any
-         * Modbus register (see docs/29), so we don't consume it. */
+         * Modbus register (see docs/31), so we don't consume it. */
     default:
         return false;                   /* other telemetry IDs not consumed yet */
     }

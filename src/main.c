@@ -54,8 +54,9 @@ static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
          * (~57.4 V on this pack); we report the pack's limit as-is. */
         g_rt.input_reg[IR_BMS_CHG_VOLT_REF] = g_bms.charge_volt_dv;
     if (g_bms.alarms_valid) {             /* 0x359 protection/alarm bitfields, 1:1 */
-        g_rt.input_reg[IR_BMS_FAULTCODE] = g_bms.fault_bits;
-        g_rt.input_reg[IR_BMS_WARNCODE]  = g_bms.warn_bits;
+        g_rt.input_reg[IR_BMS_FAULTCODE]    = g_bms.fault_bits;
+        g_rt.input_reg[IR_BMS_WARNCODE]     = g_bms.warn_bits;
+        g_rt.input_reg[IR_BMS_PARALLEL_NUM] = g_bms.module_count;  /* 0x359 [4] module count */
     }
 }
 

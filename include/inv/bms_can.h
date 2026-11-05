@@ -34,6 +34,7 @@ typedef struct {
     /* 0x359 protection / alarm bitfields */
     uint16_t fault_bits;     /* protection bitfield (0x359 [0:1]) */
     uint16_t warn_bits;      /* alarm/warning bitfield (0x359 [2:3]) */
+    uint8_t  module_count;   /* number of pack modules (0x359 [4]) */
     bool     alarms_valid;
 } bms_pack_t;
 

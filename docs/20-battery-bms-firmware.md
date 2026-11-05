@@ -237,13 +237,20 @@ scaling; our firmware matches it, so the one test passes on both:
 | `0x351` [0:1] charge-V limit | 83 `ChargeVoltRef` | 0.1 V, 1:1, then the factory **clamps** to a cell-count max (~57.4 V here) |
 | `0x359` [0:1] protection bits | 99 `FaultCode_BMS` | bitfield, 1:1 |
 | `0x359` [2:3] alarm bits | 100 `WarningCode_BMS` | bitfield, 1:1 |
+| `0x359` [4] module count | 96 `BatParallelNum` | 1:1 |
 
-The factory also maps `0x359` [4] module count → IR 96 `BatParallelNum`
-(correct), mirrors the protection/alarm words into IR 88/89, and has two quirks
-in this area — `0x355` [4:5] → IR 101 (a 7.7 V "cell"), the `0x359` `"PN"` marker
-→ IR 97 capacity, and `0x35A` is received but never published. We don't
-reproduce those; they are catalogued in
-[`docs/29` — factory quirks](29-factory-quirks.md).
+The factory also mirrors the `0x359` protection/alarm words into IR 88/89
+(`BatStatus3/4`, duplicates we don't bother reproducing), and has quirks in this
+area — `0x355` [4:5] → IR 101 (a 7.7 V "cell"), the `0x359` `"PN"` marker → IR 97
+capacity, and `0x35A` received but never published — catalogued in
+[`docs/31` — factory quirks](31-factory-quirks.md).
+
+**Not yet flowed (needs more RE):** `0x35C` (charge/discharge request flags) is
+*bit-translated* into IR 87 (`BatStatus2`) and IR 95 (`BatStatus_INV`) — not a
+raw copy (e.g. request bits 4/5 → `0x10`, bit 6 → `0x02`, bit 7 → `0x01` in
+IR 95; IR 87 carries the raw request byte in its high byte with bit 3 dropped).
+Flowing it faithfully needs the per-bit flag semantics decoded first. `0x35B`
+(ext status) / `0x35E` / `0x35F` reach none of these registers.
 
 Our com-MCU reimplementation implements the receive side: `can_port_init` /
 `can_port_poll` (`src/can/can_port.c`) bring up CAN1 (remapped to PB8/PB9) and
