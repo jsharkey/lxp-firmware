@@ -10,10 +10,13 @@
 The factory firmware **serves** a per-pack battery bank on input registers
 **5000-5126**, and it is a real, reachable part of the dongle surface (the dongle
 is a transparent conduit, so a cloud poll of 5000+ is relayed like any other). But
-on the **attached EG4-LL pack it is DORMANT** — it reads back all-zero — because it
-is fed only by CAN **`0x4xx`** per-pack frames, which that pack does not emit (it
-uses `0x3xx`, handled on a different path that lands in internal scalars no getter
-reads). So:
+it is **DORMANT across the EG4 battery line** — it reads back all-zero — because it is
+fed only by CAN **`0x4xx`** per-pack frames, which no EG4 pack emits. **Three EG4
+battery images were checked** (`BATT_IN280-Z03T13`/EG4-LL, `BATT_AW280-Z02T30`/EG4-LL,
+`BATT_WM314-Z03T21`/EG4-314 on a different MCU); all stream per-pack/extended detail
+on `0x3xx` (`0x311–0x329`, `0x370–0x381`), none on `0x4xx`. The ARM parses those
+`0x3xx` frames on a different path into internal scalars that no getter reads
+(docs/34 §2b). So:
 
 - **Documented here** because it is a real, undocumented part of the register
   surface, and a different battery (one that streams per-pack telemetry on CAN
