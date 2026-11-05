@@ -186,6 +186,64 @@ def test_can_battery_soc_soh_reaches_modbus():
         "CAN SOC=%d/SOH=%d did not reach Modbus IR 5 (got %r)" % (SOC, SOH, got)
 
 
+def test_modbus_acfirst_window_tracks_rtc():
+    """AC-First load-priority window vs. the ARM real-time clock (docs/22).
+
+    Program AC-First window 0 to 06:00-08:00 by Modbus (holding regs 152/153,
+    each packed (minute<<8)|hour), set the clock over the wire (regs 13/14), and
+    sweep it across both edges. The firmware evaluates the window against its own
+    RTC and reports "AC-First window active now" as bit 8 of *input* register 126
+    -- the only externally observable signal that moves with the window (a full
+    IR 0-255 scan on the factory oracle finds exactly this one). The boundary is
+    start-inclusive / end-exclusive: active at 06:00, off at 08:00. Re-pointing
+    the window (02:00-04:00 -> 06:00-08:00) moves the active band with it, so the
+    bit tracks the configured times, not a fixed range.
+
+    Pure wire-level black box -- frame requests on the UART, read the reply -- so
+    the same spec holds for any image that speaks the EG4 dongle protocol. NB:
+    input register 126 (this status word) is a *different register space* from
+    holding registers 126-131 (the OptimalChg_DisChg config table): same number,
+    different space, different meaning -- see docs/22.
+
+    TDD scaffolding: proven on the factory oracle; our firmware does not yet
+    evaluate the AC-First windows against the RTC, so this is expected to fail on
+    our build until we implement it (cf. the CAN->Modbus test above)."""
+    from arm_sim_modbus import ModbusDongle
+    HR_ACFIRST_START_0, HR_ACFIRST_END_0 = 152, 153
+    HR_TIME_DATE_HOUR, HR_TIME_MIN_SEC   = 13, 14
+    IR_ACFIRST_WIN_STATUS                = 126
+    ACFIRST_WIN_ACTIVE                   = 1 << 8
+
+    def enc(hour, minute):                        # window register packing
+        return ((minute & 0xFF) << 8) | (hour & 0xFF)
+
+    mb = ModbusDongle(_sim())
+    mb.write_single(HR_ACFIRST_START_0, enc(6, 0))   # window 0 start 06:00
+    mb.write_single(HR_ACFIRST_END_0,   enc(8, 0))   # window 0 end   08:00
+
+    def window_active_at(hour, minute):
+        mb.write_single(HR_TIME_DATE_HOUR, 1 | (hour << 8))   # date=1, hour
+        mb.write_single(HR_TIME_MIN_SEC,   minute & 0xFF)     # minute, sec=0
+        for _ in range(6):                  # let the periodic evaluator re-run
+            mb.sim.run(300_000)
+        reg = None
+        for _ in range(4):                  # tolerate a transient missed reply
+            got = mb.read_input(IR_ACFIRST_WIN_STATUS)
+            if got:
+                reg = got[0]
+                break
+        assert reg is not None, "no reply reading IR %d" % IR_ACFIRST_WIN_STATUS
+        return bool(reg & ACFIRST_WIN_ACTIVE), reg
+
+    # (clock, expected-active) across the 06:00-08:00 window edges
+    for (h, m), exp in [((5, 59), False), ((6, 0), True),
+                        ((7, 30), True),  ((8, 0), False)]:
+        active, reg = window_active_at(h, m)
+        assert active == exp, (
+            "AC-First window 06:00-08:00 at %02d:%02d: active=%s (IR126=0x%04x), "
+            "expected %s" % (h, m, active, reg, exp))
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 def _main(argv):
     # Optional single positional arg: the image to test. (argparse would reject
