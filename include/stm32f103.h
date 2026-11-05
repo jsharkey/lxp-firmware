@@ -44,6 +44,7 @@ typedef struct {
 #define RCC_CFGR_PPRE2_DIV1  (0UL << 11)
 #define RCC_CFGR_PLLSRC_HSE  (1UL << 16)
 #define RCC_CFGR_PLLMULL9    (7UL << 18)   /* x9 */
+#define RCC_APB2ENR_AFIOEN   (1UL << 0)
 #define RCC_APB2ENR_IOPAEN   (1UL << 2)
 #define RCC_APB2ENR_IOPBEN   (1UL << 3)
 #define RCC_APB2ENR_IOPCEN   (1UL << 4)
@@ -77,8 +78,12 @@ typedef struct {
 #define USART1 ((USART_TypeDef *)(APB2PERIPH_BASE + 0x3800UL)) /* 0x40013800 */
 #define USART3 ((USART_TypeDef *)(APB1PERIPH_BASE + 0x4800UL)) /* 0x40004800 */
 #define USART_SR_TXE  (1UL << 7)
+#define USART_SR_TC   (1UL << 6)
 #define USART_SR_RXNE (1UL << 5)
-#define USART_CR1_UE  (1UL << 13)
+#define USART_CR1_UE     (1UL << 13)
+#define USART_CR1_TXEIE  (1UL << 7)
+#define USART_CR1_TCIE   (1UL << 6)
+#define USART_CR1_RXNEIE (1UL << 5)
 #define USART_CR1_TE  (1UL << 3)
 #define USART_CR1_RE  (1UL << 2)
 
@@ -87,7 +92,6 @@ typedef struct {
     __IO uint32_t EVCR; __IO uint32_t MAPR; __IO uint32_t EXTICR[4]; __IO uint32_t MAPR2;
 } AFIO_TypeDef;
 #define AFIO ((AFIO_TypeDef *)(APB2PERIPH_BASE + 0x0000UL))   /* 0x40010000 */
-#define RCC_APB2ENR_AFIOEN       (1UL << 0)
 #define AFIO_MAPR_CAN_REMAP      (3UL << 13)
 #define AFIO_MAPR_CAN_REMAP_PB89 (2UL << 13)   /* CAN1: RX=PB8, TX=PB9 (docs/16) */
 
@@ -124,6 +128,11 @@ typedef struct {
 #define CAN_RIR_RTR         (1UL << 1)
 #define CAN_RIR_IDE         (1UL << 2)
 #define CAN_FMR_FINIT       (1UL << 0)
+#define CAN_IER_FMPIE0      (1UL << 1)         /* FIFO0 message-pending interrupt */
+
+/* ---- external IRQ numbers (STM32F103 high-density) ---- */
+#define USB_LP_CAN1_RX0_IRQn  20
+#define USART3_IRQn           39
 
 /* ---- Cortex-M3 core: SysTick, SCB, NVIC ---- */
 typedef struct {
