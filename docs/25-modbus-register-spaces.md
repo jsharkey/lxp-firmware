@@ -90,9 +90,11 @@ Your intuition holds: they are **not** one wire. The corrected per-link map
   config (dual-mode serializer `sub_0803373c`, BE+block-tagged to the DSP) and
   the firmware-update/bootloader `0x21/0x22/0x23` ([`docs/05`](05-dsp-link.md),
   [`docs/08`](08-arm-dsp-config-protocol.md)). It is *not* the external dongle.
-- **USART2** (19200, **RX only**) carries **DSP-domain telemetry** inbound
-  (operating mode + PV/grid V/F → `0x20009e54`), decoded in
-  [`docs/22`](22-arm-dsp-core-split.md).
+- **USART2** (19200, **RX only**) carries telemetry inbound from the
+  **redundant/safety CPU** (its *own* grid/PV V·F samples plus a relayed DSP
+  operating-mode byte → `0x20009e54`). Peer corrected from "DSP" per
+  [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) / [`docs/30`](30-safety-cpu-arm-handoff.md)
+  (superseding the docs/22 reading).
 - **UART5 (9600)** is the **external RS-485 dongle / EG4-Modbus register slave** —
   handler `sub_0802afe2` at `0x40005000`, buffer `0x20008ca4`
   ([`docs/08`](08-arm-dsp-config-protocol.md)), confirmed from the dongle side as
@@ -200,7 +202,9 @@ evaluate the AC-First windows against the RTC).
   input-vs-holding register-space split; and the AC-First comparison site
   `sub_080352d0` → `IR 126 bit 8` funnel, not pushed to the DSP.
 - **Inherited / cross-referenced:** the DSP SCI-B identity and bootloader/CRC
-  ([`docs/05`](05-dsp-link.md)); USART2 as DSP-domain telemetry and the ARM/DSP
+  ([`docs/05`](05-dsp-link.md)); USART2 as the **redundant/safety-CPU** telemetry
+  link (peer corrected from "DSP" — [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md),
+  [`docs/30`](30-safety-cpu-arm-handoff.md)) and the ARM/DSP
   feedback-loop split ([`docs/22`](22-arm-dsp-core-split.md), [`docs/23`](23-dsp-sci-a-crosscheck-handoff.md));
   the UART pin/peer map and RS-485 driver-enable pins ([`docs/16`](16-arm-io-map.md));
   and the dual-mode (LE+SN dongle vs BE block-tagged DSP) serializer
