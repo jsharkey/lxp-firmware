@@ -102,6 +102,7 @@ test:
 # already-built .bin), so it stays green on our firmware alone; point it at a
 # prebuilt .bin with FACTORY_BIN=/path (LXP_FACTORY_BIN is honoured too).
 FACTORY_BIN ?= $(or $(LXP_FACTORY_BIN),reference/com_flat.bin)
+HAVE_FACTORY := $(or $(strip $(LXP_FACTORY_HEX)),$(wildcard $(FACTORY_BIN)))
 
 # The factory flat .bin: convert the vendor Intel .hex (gaps filled with 0xFF,
 # every byte at its true flash address -- see hex2bin). Built only if missing;
@@ -115,23 +116,32 @@ $(FACTORY_BIN):
 
 factory: $(FACTORY_BIN)
 
-# @-silence the invocations so each file's own banner header is the sole
-# block delimiter (the banner names the test file's block and the image).
+# The four test-file invocations (shared by the aggregate and the per-half
+# convenience targets, so the command lines live in one place).
+SIM_OURS_COMMON = python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
+SIM_OURS_SELF   = python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
+SIM_FAC_COMMON  = python3 tests/test_arm_sim.py $(FACTORY_BIN)
+SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
+
+# Every block runs even if an earlier one fails; the target fails only at the end
+# if any did -- so a red test (e.g. the expected-red dongle/CAN scaffolding)
+# never hides the blocks after it. Each file @-prints its own banner header,
+# which stays the sole block delimiter (the recipes are @-silent).
 test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-	@python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
-	@python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
+	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; exit $$rc
 
 test-sim-factory: $(FACTORY_BIN)
-	@python3 tests/test_arm_sim.py $(FACTORY_BIN)
-	@python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
+	@rc=0; $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; exit $$rc
 
-test-sim: test-sim-ours
-ifneq ($(or $(strip $(LXP_FACTORY_HEX)),$(wildcard $(FACTORY_BIN))),)
-test-sim: test-sim-factory
-else
-test-sim:
-	@echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only"
-endif
+# Aggregate: build/convert whatever's needed up front (the factory .bin only when
+# an image is available), run all blocks, then fail if any did. Green on our
+# firmware alone when there is no factory image.
+test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN))
+	@rc=0; \
+	$(SIM_OURS_COMMON) || rc=1; \
+	$(SIM_OURS_SELF) || rc=1; \
+	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
+	exit $$rc
 
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App
