@@ -46,18 +46,41 @@ byte**:
   **canonicalisation** step (when the `[1]==8` qualifier is present it validates
   the composite against the known `states.h` values, defaulting to `0x08`).
 
-## The honest caveat about the upstream peer
+## The upstream peer — decoded, and it is a control-processor (DSP) link
 
-The mode byte arrives on **USART2**, and firmware alone does **not** pin USART2's
-physical peer — [`docs/05`](05-dsp-link.md)/[`docs/16`](16-arm-io-map.md) list the
-five same-framed links (DSP SCI-B, BMS, meter/CT, MPPT, external RS-485 dongle)
-and note the UART↔peer map needs the schematic. What *is* confirmed: **USART3** is
-the DSP's SCI-B (the bootloader `0x21/0x22/0x23` and the shared CRC-16 prove it,
-docs/05). The operating mode is this unit's own real-time power state, which only
-the **DSP** produces — so the telemetry carrying it is almost certainly a DSP
-link (plausibly a second DSP SCI on USART2, complementary to the SCI-B config
-link on USART3). That origin is a **strong inference, not a proof**; the chain
-above is proven only back to "received on USART2."
+The mode byte arrives on **USART2**. Decoding the frame it comes in confirms the
+peer is a **control processor carrying DSP-domain telemetry**, not an external
+meter/dongle:
+
+**It is the EG4 frame family** (docs/05's anchor). The driver `sub_080259d8`
+validates `0x20008084` as `addr · type `**`[1]==1`**` · … · CRC-16`, where the CRC
+is the table-driven EG4 Modbus CRC-16 (`sub_08014bec`, init `0xFFFF`, lo/hi tables
+`0x0803eb70`/`0x0803ec70` — the lookup-table twin of the DSP's own `0xA001` CRC).
+The `type==1` byte is the same telemetry/config type as the DSP config frames
+(docs/08) and the DSP's own uplink (`[1]=1`, docs/10).
+
+**It carries the inverter's own real-time power measurements.** The input-register
+getter `sub_0803289c` sources these straight from the USART2 bank `0x20009e54`:
+
+| IR reg | quantity | bank offset |
+|---|---|---|
+| 1 / 2 | **PV1 / PV2 voltage** | `+0x4c` / `+0x4e` |
+| 12 / 13 / 14 | **grid voltage R / S / T** | `+0x20` / `+0x28` / `+0xb6` |
+| 15 | **grid frequency** | `+0x5e` |
+| 0 (via the classifier) | **operating mode** | `+0x00` |
+
+PV voltage, three-phase grid voltage and grid frequency are produced only by the
+power-electronics controller (grid-sync + MPPT) — i.e. the **DSP**. (Battery V/SOC
+come from a *different* bank, the CAN/BMS one; energy counters are ARM-accumulated
+in `0x20009954`.) So USART2 is an **inter-processor link bearing DSP telemetry**,
+confirming the mode's origin.
+
+> Residual, honest limit: firmware alone still can't prove USART2 is *physically*
+> the DSP's second SCI versus routed via the third (redundant safety) CPU — that
+> needs the schematic. But the **data is DSP-domain** (operating mode + the DSP's
+> own V/F/PV measurements, EG4-framed), which is what matters for the split below.
+> **USART3** is the confirmed DSP SCI-B (bootloader + CRC, docs/05); USART2 is the
+> complementary telemetry direction.
 
 ## The split, and why the evidence looked contradictory
 
