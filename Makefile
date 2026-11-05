@@ -127,6 +127,8 @@ SIM_OURS_SELF   = python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin
 SIM_OURS_HMI    = python3 tests/test_hmi_panel.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
 SIM_FAC_COMMON  = python3 tests/test_arm_sim.py $(FACTORY_BIN)
 SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
+# Cross-image: settings persisted by one firmware are read by the other (needs both).
+SIM_CROSS       = python3 tests/test_persist_crossimage.py $(BUILD)/$(TARGET).bin $(FACTORY_BIN)
 
 # Every block runs even if an earlier one fails; the target fails only at the end
 # if any did -- so a red test (e.g. the expected-red dongle/CAN scaffolding)
@@ -166,7 +168,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_OURS_COMMON) || rc=1; \
 	$(SIM_OURS_SELF) || rc=1; \
 	$(SIM_OURS_HMI) || rc=1; \
-	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
+	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows

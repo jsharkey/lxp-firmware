@@ -19,6 +19,26 @@
 #include "inv/relay.h"
 #include "inv/bms_can.h"
 #include "inv/bms_can_map.h"
+#include "inv/config_flash.h"
+
+/* Holding registers that persist to the SPI config flash (docs/23 field map).
+ * The wire value is scaled to the on-flash units the factory uses so a record
+ * written here is read correctly by the factory firmware and vice-versa. */
+static void settings_persist_hr(uint16_t reg, uint16_t val)
+{
+    switch (reg) {
+    case HR_CHARGE_CURR:  config_set_u16(CFG_SLOT_MAIN, CFG_OFF_CHARGE_CURR, val * 10u); break;
+    case HR_DISCHG_CURR:  config_set_u16(CFG_SLOT_MAIN, CFG_OFF_DISCHG_CURR, val * 10u); break;
+    default: break;   /* not persisted (yet) */
+    }
+}
+
+/* Seed the holding-register image from the config flash at boot (inverse scale). */
+static void settings_seed_hr(uint16_t *hold)
+{
+    hold[HR_CHARGE_CURR] = config_get_u16(CFG_SLOT_MAIN, CFG_OFF_CHARGE_CURR) / 10u;
+    hold[HR_DISCHG_CURR] = config_get_u16(CFG_SLOT_MAIN, CFG_OFF_DISCHG_CURR) / 10u;
+}
 
 /* Shared system snapshot the subsystems read/write. */
 typedef struct {
@@ -79,7 +99,8 @@ static mb_exception_t mb_rd_hold(void *c, uint16_t a, uint16_t *o) {
 static mb_exception_t mb_wr_hold(void *c, uint16_t a, uint16_t v) {
     (void)c;
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
-    g_rt.holding_reg[a] = v;    /* TODO: validate ranges; persist to EEPROM */
+    g_rt.holding_reg[a] = v;    /* TODO: validate ranges */
+    settings_persist_hr(a, v);  /* journal persisted settings to the config flash */
     return MB_OK;
 }
 
@@ -97,7 +118,11 @@ static bool hmi_read(hmi_regspace_t sp, uint16_t r, uint16_t *o) {
     return false;
 }
 static bool hmi_write(uint16_t r, uint16_t v) {
-    if (r < 256) { g_rt.holding_reg[r] = v; return true; }  /* TODO: validate + persist */
+    if (r < 256) {
+        g_rt.holding_reg[r] = v;       /* TODO: validate */
+        settings_persist_hr(r, v);     /* journal persisted settings to the config flash */
+        return true;
+    }
     return false;
 }
 static const hmi_io_t g_hmi_io = {
@@ -134,6 +159,9 @@ int main(void) {
     g_rt.holding_reg[HR_COM_ADDR] = g_mb.address;
     (void)MENU__COUNT;                       /* HMI model available */
     (void)v;                                 /* name/model_code used by HMI/DSP */
+
+    config_flash_init();                     /* SPI NOR up; load persisted settings */
+    settings_seed_hr(g_rt.holding_reg);      /* persisted values override the defaults */
 
     systick_init_1ms();
     mb_port_init(&g_mb);
@@ -187,6 +215,7 @@ int main(void) {
             size_t n = dsp_push_next(&g_dsp, &g_dsp_src, frame, sizeof frame);
             if (n) dsp_link_tx(frame, n);
         }
-        /* TODO: fault/state machine, settings persistence */
+        config_flash_poll();    /* journal any changed settings to the SPI config flash */
+        /* TODO: fault/state machine */
     }
 }

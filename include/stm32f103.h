@@ -50,6 +50,7 @@ typedef struct {
 #define RCC_APB2ENR_IOPCEN   (1UL << 4)
 #define RCC_APB2ENR_IOPDEN   (1UL << 5)
 #define RCC_APB2ENR_IOPEEN   (1UL << 6)
+#define RCC_APB2ENR_SPI1EN   (1UL << 12)
 #define RCC_APB2ENR_USART1EN (1UL << 14)
 #define RCC_APB1ENR_USART3EN (1UL << 18)
 
@@ -86,6 +87,24 @@ typedef struct {
 #define USART_CR1_RXNEIE (1UL << 5)
 #define USART_CR1_TE  (1UL << 3)
 #define USART_CR1_RE  (1UL << 2)
+
+/* ---- SPI (SPI1 drives the external config/settings NOR flash, docs/21) ---- */
+typedef struct {
+    __IO uint32_t CR1; __IO uint32_t CR2; __IO uint32_t SR; __IO uint32_t DR;
+    __IO uint32_t CRCPR; __IO uint32_t RXCRCR; __IO uint32_t TXCRCR;
+    __IO uint32_t I2SCFGR; __IO uint32_t I2SPR;
+} SPI_TypeDef;
+#define SPI1 ((SPI_TypeDef *)(APB2PERIPH_BASE + 0x3000UL))   /* 0x40013000 */
+#define SPI_SR_RXNE     (1UL << 0)
+#define SPI_SR_TXE      (1UL << 1)
+#define SPI_SR_BSY      (1UL << 7)
+#define SPI_CR1_CPHA    (1UL << 0)
+#define SPI_CR1_CPOL    (1UL << 1)
+#define SPI_CR1_MSTR    (1UL << 2)
+#define SPI_CR1_BR_DIV8 (2UL << 3)   /* fPCLK/8 */
+#define SPI_CR1_SPE     (1UL << 6)
+#define SPI_CR1_SSI     (1UL << 8)
+#define SPI_CR1_SSM     (1UL << 9)
 
 /* ---- AFIO (alternate-function remap) ---- */
 typedef struct {

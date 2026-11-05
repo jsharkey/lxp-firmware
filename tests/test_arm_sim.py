@@ -269,6 +269,16 @@ def test_modbus_acfirst_window_tracks_rtc():
             "expected %s" % (h, m, active, reg, exp))
 
 
+def _boot_budget(path):
+    """Instructions to run before the dongle transacts. Our compact MCU image
+    paints a bit-banged LCD splash at boot and needs a long pre-roll before it
+    serves Modbus; the ~512 KB factory flat image boots fast, and a long pre-roll
+    would instead let its *debounced* config flush fire during boot and race our
+    write (leaving the slot mid-rewrite). Pick by image size -- ours is tens of
+    KB, the factory flat image is hundreds."""
+    return 1_000_000 if os.path.getsize(path) > 0x40000 else 5_000_000
+
+
 def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
     """Write `reg`=`value` over Modbus, let the firmware journal it to the SPI
     config flash, then COLD BOOT -- a brand-new ArmSim (fresh CPU + fresh RAM)
@@ -291,11 +301,12 @@ def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
     if is_intel_hex(path):
         raise ValueError("%s is an Intel .hex; pass a flat .bin (make factory)" % path)
     CONFIG_END = 0xC000                       # the six 8 KB slots live in 0x0..0xBFFF
+    boot = _boot_budget(path)
 
     # --- cold boot #1: factory-provisioned config flash; write, let it flush ---
     sim1 = ArmSim(path)
     dev = sim1.attach_config_flash()          # a valid record per slot, as a programmed unit ships
-    mb1 = ModbusDongle(sim1, systick=systick)
+    mb1 = ModbusDongle(sim1, systick=systick, boot_insn=boot)
     baseline = bytes(dev.mem[:CONFIG_END])
     echo = mb1.write_single(reg, value)
     used = 0
@@ -307,7 +318,7 @@ def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
     # --- cold boot #2: fresh CPU + RAM, SAME flash device (the only NV state) ---
     sim2 = ArmSim(path)
     sim2.attach_spi_flash(flash=dev)
-    mb2 = ModbusDongle(sim2, systick=systick)
+    mb2 = ModbusDongle(sim2, systick=systick, boot_insn=boot)
     return echo, flushed, mb2.read_holding(reg)
 
 

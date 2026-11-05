@@ -92,7 +92,12 @@ class ModbusDongle:
     perform one request/response transaction each."""
 
     def __init__(self, sim, addr=DEFAULT_ADDR, sn=DEFAULT_SN,
-                 systick=20_000, boot_insn=1_000_000, txn_insn=4_000_000):
+                 systick=20_000, boot_insn=4_000_000, txn_insn=4_000_000):
+        # boot_insn covers the full power-on path before the main loop services
+        # Modbus. Our firmware paints a boot splash on the real LCD (a bit-banged
+        # TFT, ~millions of emulated instructions), so 1M was too tight and left
+        # the first request unanswered; 4M boots both images with margin (the
+        # factory, which boots faster, just idles the remainder).
         self.sim = sim
         self.addr = addr
         self.sn = bytes(sn)
