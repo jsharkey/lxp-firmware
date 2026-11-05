@@ -32,10 +32,18 @@ KEYS = ["PA8", "PA11", "PC8", "PC9"]
 CAN_BASE = 0x40006400          # bxCAN; fake its "ready" bits so the CAN-poll task
 CAN_END  = 0x40006420          # doesn't burn its slice spinning (docs/19)
 
+# SysTick cadence: how many emulated instructions between injected 1 ms ticks.
+# The firmware's splash/init/redraw waits are measured in ticks, so a smaller
+# interval = a faster emulated clock = those waits finish in far fewer
+# instructions. 4000 is the sweet spot measured on this image (boot ~3x faster
+# than the harness default of 20000, identical screen); going much lower makes
+# the SysTick ISR preempt the display task so often it never finishes a repaint.
+TICK = 4000
+
 
 class FactoryHmi:
     def __init__(self, image="reference/com_flat.bin", symbols="reference/symbols.csv",
-                 verbose=True):
+                 verbose=True, tick=TICK):
         self.verbose = verbose
         self.sim = ArmSim.from_image(image, symbols=symbols)
         self.sim.attach_config_flash(cs_pin="PA4", spi_base=0x40013000)
@@ -43,8 +51,8 @@ class FactoryHmi:
         self.tft = attach_tft(self.sim)
         for k in KEYS:
             self.sim.set_input(k, 1)       # keys released (pull-ups) before boot
-        self.sim.enable_rtos(interval=20000)
-        self.sim.enable_systick(interval=20000)
+        self.sim.enable_rtos(interval=tick)
+        self.sim.enable_systick(interval=tick)
         self._booted = False
 
     @staticmethod
@@ -58,36 +66,41 @@ class FactoryHmi:
         try: self.sim.run(n)
         except Exception: pass
 
-    def boot(self, warmup=42_000_000):
+    def boot(self, warmup=2_000_000):
         """Boot through config + scheduler until the display task has painted a
-        stable screen. Returns the number of lit pixels."""
+        stable screen. Returns self."""
         t0 = time.time()
-        self._log("factory HMI: booting through RTOS (~90s) ...")
+        self._log("factory HMI: booting through RTOS ...")
         try: self.sim.run_reset(max_insn=warmup)
         except Exception: pass
-        self._settle(max_chunks=10)
+        self._settle(chunk=2_000_000, max_chunks=20, quiet=2, need=800)
         self._booted = True
         self._log("  booted, screen settled (%d px, %.0fs)"
                   % (int((self.tft.gram != 0).sum()), time.time() - t0))
         return self
 
-    def _settle(self, chunk=4_000_000, max_chunks=8, stable=2):
-        """Run until the GRAM stops changing (a full redraw has landed), or the
-        chunk budget is spent. Returns when `stable` consecutive chunks match."""
+    def _settle(self, chunk=800_000, max_chunks=30, quiet=2, jitter=30, need=200):
+        """Run until the screen goes quiet — a repaint has landed and successive
+        chunks differ by at most `jitter` pixels (the on-screen clock changes a
+        few pixels each second, which must not count as "still drawing") — then
+        stop. Stopping *promptly* matters: the emulated clock is fast, so a long
+        settle would burn enough device-time to trip the firmware's menu idle
+        timeout and bounce back to the overview before we capture the new screen."""
         prev = self.tft.gram.copy()
-        same = 0
+        still = 0
         for _ in range(max_chunks):
             self._run(chunk)
             cur = self.tft.gram
-            if np.array_equal(cur, prev) and int((cur != 0).sum()) > 200:
-                same += 1
-                if same >= stable:
+            diff = int((cur != prev).sum())
+            if diff <= jitter and int((cur != 0).sum()) >= need:
+                still += 1
+                if still >= quiet:
                     break
             else:
-                same = 0
+                still = 0
             prev = cur.copy()
 
-    def press(self, key, hold=5_000_000):
+    def press(self, key, hold=3_000_000):
         """Press one key (active-low) and run until the screen settles."""
         if key not in KEYS:
             raise ValueError("unknown key %r (use %s)" % (key, KEYS))

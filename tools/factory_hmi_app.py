@@ -26,10 +26,10 @@ from factory_hmi import FactoryHmi, W, H
 # Recovered key map (docs/23). The panel has 4 keys; names are the behaviour
 # observed driving the factory menus.
 KEY_BUTTONS = [
-    ("PA11", "Menu / Up",  "▲"),
-    ("PA8",  "Next / Down", "▼"),
-    ("PC8",  "Enter",       "⏎"),
-    ("PC9",  "Esc / Back",  "←"),
+    ("PC9",  "Up",    "▲"),
+    ("PA8",  "Down",  "▼"),
+    ("PA11", "Enter", "⏎"),
+    ("PC8",  "Esc",   "←"),
 ]
 
 # FSTN-style palette (dark ink on a pale blue-green panel).
@@ -129,7 +129,7 @@ async function press(pin){ const el=document.querySelector(`.key[data-k="${pin}"
   try{const s=await(await fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({key:pin})})).json(); show(s);}catch(e){setBusy(true,'error — retry');}
   if(el) el.classList.remove('flash'); }
-const KMAP={ArrowUp:'PA11',ArrowDown:'PA8',Enter:'PC8',Escape:'PC9',Backspace:'PC9'};
+const KMAP={ArrowUp:'PC9',ArrowDown:'PA8',Enter:'PA11',Escape:'PC8',Backspace:'PC8'};
 document.addEventListener('keydown',e=>{const p=KMAP[e.key]; if(p){e.preventDefault();
   if(!document.querySelector('.key').disabled) press(p);}});
 poll();
