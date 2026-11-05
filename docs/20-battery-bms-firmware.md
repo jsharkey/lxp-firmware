@@ -229,17 +229,17 @@ Our com-MCU reimplementation now implements the receive side: `can_port_init` /
 `can_port_poll` (`src/can/can_port.c`) bring up CAN1 (remapped to PB8/PB9) and
 drain FIFO 0 each main-loop pass, `bms_can_on_frame` (`src/can/bms_can.c`,
 host-tested by `tests/test_bms_can.c`) decodes `0x355`, and `main` publishes
-SOC/SOH to `IR_SOC_SOH` — so the test **passes against our firmware**. The ARM
-also sends a ~1 Hz keep-alive (`0x305`) to prompt the pack's telemetry.
+SOC/SOH to `IR_SOC_SOH`. The ARM also sends a ~1 Hz keep-alive (`0x305`) to
+prompt the pack's telemetry.
 
-It still **fails against the factory image**. The Modbus read-back half now
-works (the dongle harness drives USART3 by interrupt), so the failure is on the
-CAN ingest side: the factory's CAN RX is interrupt-driven (`IER` FMPIE0) and,
-once the harness models the `MSR` init handshake and pends `CAN1_RX0`, its ISR
-*does* drain the frame — but the decoded SOC/SOH still doesn't surface at
-`IR_SOC_SOH`, because a further factory-internal step (CAN ring → consumer task
-→ register image) isn't driven in the harness. Full breakdown in
-[`docs/19` → *Why the factory is red*](19-gpio-test-harness.md).
+The test now **passes against both images**. The factory reaches the same result
+by a different path: its CAN RX is interrupt-driven (it sets `CAN_IER` **FMPIE0**
+and receives in the `CAN1_RX0` ISR, *not* a poll loop — correcting the bind item
+above), and a periodic task copies the decoded SOC/SOH into its register image
+(observed at RAM `0x2000d7b0`) a scheduler cycle later. The `CanBattery` harness
+drives that by modelling the CAN `MSR` init handshake and pending `CAN1_RX0`, and
+the test `settle()`s to let the consumer task publish before polling. Full
+write-up in [`docs/19` → *How both images pass*](19-gpio-test-harness.md).
 
 ## Reproduce the frame analysis
 
