@@ -61,21 +61,23 @@ uint32_t uart3_tx(const uint8_t *buf, uint32_t len)
 
 void USART3_IRQHandler(void)
 {
-    uint32_t sr = USART3->SR;
-
-    /* RX: a byte arrived. Reading DR clears RXNE. Drop on overflow rather than
-     * stall the ISR — the RTU inter-frame gap resynchronises the frame. */
-    if (sr & USART_SR_RXNE) {
+    /* RX: drain every byte currently available (reading DR clears RXNE). Draining
+     * in a loop — rather than one byte per interrupt — keeps a burst together as
+     * one RTU frame instead of spreading it across poll ticks. Drop on overflow. */
+    while (USART3->SR & USART_SR_RXNE) {
         uint8_t b = (uint8_t)USART3->DR;
         (void)rb_put(&rx_ring, b);
     }
 
-    /* TX: data register empty and we have more to send. */
-    if ((sr & USART_SR_TXE) && (USART3->CR1 & USART_CR1_TXEIE)) {
+    /* TX: while the data register is empty and we have bytes, shift them out. On
+     * hardware TXE gates this to one byte per interrupt; the loop simply avoids a
+     * wasted interrupt when DR is immediately ready again. */
+    if (USART3->CR1 & USART_CR1_TXEIE) {
         uint8_t b;
-        if (rb_get(&tx_ring, &b)) {
+        while ((USART3->SR & USART_SR_TXE) && rb_get(&tx_ring, &b)) {
             USART3->DR = b;
-        } else {
+        }
+        if (rb_is_empty(&tx_ring)) {
             /* nothing left: stop TXE, wait for the last byte to fully leave the
              * shift register (TC) before releasing the RS-485 driver. */
             USART3->CR1 &= ~USART_CR1_TXEIE;
@@ -84,7 +86,7 @@ void USART3_IRQHandler(void)
     }
 
     /* TC: final byte has left the wire — hand the bus back to receive. */
-    if ((sr & USART_SR_TC) && (USART3->CR1 & USART_CR1_TCIE)) {
+    if ((USART3->SR & USART_SR_TC) && (USART3->CR1 & USART_CR1_TCIE)) {
         USART3->CR1 &= ~USART_CR1_TCIE;
         USART3->SR &= ~USART_SR_TC;             /* clear TC (rc_w0) */
         tx_active = 0;
