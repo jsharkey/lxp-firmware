@@ -139,9 +139,10 @@ def test_modbus_charge_current_write_read():
     request on the UART, let the firmware's own loop answer, parse the reply --
     so the same test holds for any image that speaks the EG4 dongle protocol.
 
-    NOTE: this may fail against either image while their dongle-Modbus paths are
-    still being built out (e.g. the factory parses RX in the USART3 IRQ, which
-    the harness does not yet fire). That is expected for now."""
+    Works against both images: our firmware polls USART3, while the factory is
+    interrupt-driven (RX and TX). ModbusDongle drives both the same way -- it
+    delivers the USART3 IRQ via the RTOS engine when the firmware has armed it
+    (see arm_sim_modbus.py)."""
     from arm_sim_modbus import ModbusDongle
     HR_CHARGE_CURR = 101
 

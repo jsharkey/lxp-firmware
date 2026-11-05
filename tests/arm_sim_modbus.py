@@ -12,9 +12,18 @@ How it drives the UART without modifying tools/arm_sim.py: it adds its own
 Unicorn hooks on the USART3 data/status registers through the sim's `uc`
 handle. On a status read it raises RXNE while a request byte is queued; on a
 data read it hands over the next queued byte; on a data write it captures the
-byte the firmware transmitted. SysTick injection is enabled so the firmware's
-millisecond time base advances (its RTU inter-frame gap and our poll loop both
-need it).
+byte the firmware transmitted.
+
+Polled vs interrupt-driven, as one black box: our firmware polls USART3 in its
+loop (CR1 has neither RXNEIE nor TXEIE), so the hooks above are all it needs.
+The factory never polls -- it receives on the USART3 RX interrupt and transmits
+from the TX interrupt. So the transaction loop watches CR1: whenever the firmware
+has armed an interrupt (RXNEIE with a byte queued, or TXEIE), it delivers the
+USART3 IRQ via the RTOS engine (sim.pend_irq), running the firmware's own ISR to
+take a byte or emit one. A polled firmware arms neither, so nothing is pended --
+the same code drives both. (This is why it runs under enable_rtos, not plain
+SysTick injection; the engine also boots the factory's RTOS, and SysTick still
+advances the firmware's ms time base for RTU framing.)
 
 USART3 currently carries the DSP config push as well as the dongle Modbus (a
 known placeholder collision -- see src/dsp/dsp_link_port.c), so the captured TX
@@ -36,7 +45,12 @@ from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 USART3 = 0x40004800
 MB_SR  = USART3 + 0x00     # status register
 MB_DR  = USART3 + 0x04     # data register
+MB_CR1 = USART3 + 0x0C     # control register 1
 SR_RXNE = 1 << 5           # read-data-register-not-empty
+CR1_RXNEIE = 1 << 5        # RX-not-empty interrupt enable
+CR1_TXEIE  = 1 << 7        # TX-empty interrupt enable
+USART3_VEC = 16 + 39       # NVIC USART3_IRQn=39 -> exception vector 55 (both images)
+_TXN_CHUNK = 40_000        # instructions per step while driving a transaction
 
 # Device defaults our firmware boots with (src/main.c). check_sn is off, so the
 # SN is only echoed back, not matched -- any 10 bytes work as a stand-in.
@@ -78,7 +92,7 @@ class ModbusDongle:
     perform one request/response transaction each."""
 
     def __init__(self, sim, addr=DEFAULT_ADDR, sn=DEFAULT_SN,
-                 systick=20_000, boot_insn=1_200_000, txn_insn=2_000_000):
+                 systick=20_000, boot_insn=2_000_000, txn_insn=4_000_000):
         self.sim = sim
         self.addr = addr
         self.sn = bytes(sn)
@@ -89,7 +103,16 @@ class ModbusDongle:
         self._match = None         # validator(window) -> True when it's our reply
         self._resp = None          # the extracted response frame, once seen
         self._install_hooks()
-        sim.enable_systick(systick)
+        # The factory boots only with a valid config flash (docs/21); provide one
+        # unless the caller already attached an SPI device. Inert for images that
+        # don't use the config flash (e.g. our firmware).
+        if getattr(sim, "spi_flash", None) is None:
+            sim.attach_config_flash()
+        # Use the exception engine, not plain SysTick injection: the factory's
+        # dongle UART is interrupt-driven (RX and TX), so the transaction loop
+        # must be able to deliver the USART3 IRQ (sim.pend_irq); the engine also
+        # runs the factory's RTOS. A polled firmware (ours) is unaffected.
+        sim.enable_rtos(systick)
         sim.run_reset(max_insn=boot_insn)   # boot through init into the loop
 
     # -- UART glue (added on top of arm_sim's own peripheral hooks) ----------
@@ -131,7 +154,19 @@ class ModbusDongle:
         self._rlen = rlen
         self._match = match
         self._resp = None
-        self.sim.run(self._txn_insn)        # resume the loop; hook stops on reply
+        remaining = self._txn_insn
+        while self._resp is None and remaining > 0:
+            # Interrupt-driven firmware (the factory) receives on the USART3 RX
+            # IRQ and transmits from its TX IRQ -- it never polls. When it has
+            # armed either (CR1.RXNEIE with a byte still queued, or CR1.TXEIE),
+            # deliver that IRQ through the RTOS engine so its ISR runs. A polled
+            # firmware (ours) arms neither, so we never pend and its own SR/DR
+            # polling -- serviced by the hooks below -- drives the exchange.
+            cr1 = self.sim.r32(MB_CR1)
+            if (cr1 & CR1_RXNEIE and self._rx) or (cr1 & CR1_TXEIE):
+                self.sim.pend_irq(USART3_VEC)
+            self.sim.run(_TXN_CHUNK)        # resume; on_dr_write stops us on a reply
+            remaining -= _TXN_CHUNK
         return self._resp
 
     def write_single(self, reg, val):
