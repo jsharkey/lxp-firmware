@@ -109,9 +109,9 @@ class FactoryHmi:
     # gitignored directory and is DERIVED from the firmware image — so a factory
     # cache is proprietary and must never be committed; each user generates their
     # own once.
-    CACHE_VER = 1
+    CACHE_VER = 2          # v2: patient boot settle (v1 could cache a mid-draw frame)
     CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".hmi_cache")
-    _RTOS_ATTRS = ("_exc_depth", "_thread_on_psp", "_msp", "_systick_due", "_pendsv_req")
+    _RTOS_ATTRS = ("_exc_depth", "_thread_on_psp", "_msp", "_systick_due", "_pendsv_set")
 
     def _cache_path(self):
         try:
@@ -176,11 +176,7 @@ class FactoryHmi:
         self._log("booting %s ..." % os.path.basename(self.firmware))
         try: self.sim.run_reset(max_insn=warmup)
         except Exception: pass
-        # Settle on any stable non-blank screen. The floor must be low — the
-        # factory overview is ~1500 lit px but the open build's "hello world" is
-        # only tens — and the picture stabilises only after a full draw (mid-draw
-        # chunks keep changing), so a low floor doesn't stop us early.
-        self._settle(chunk=2_000_000, max_chunks=24, quiet=2, need=10)
+        self._settle_boot()
         self._booted = True
         self._log("  booted, screen settled (%d px, %.0fs)"
                   % (int((self.tft.gram != 0).sum()), time.time() - t0))
@@ -188,6 +184,40 @@ class FactoryHmi:
             try: self._save_cache(cp)
             except Exception as e: self._log("cache save failed (%s)" % e)
         return self
+
+    def _settle_boot(self, chunk=2_000_000, max_chunks=40, quiet=6, jitter=90, need=10):
+        """Settle the *boot* screen — PATIENT, because boot is cached once and a
+        mistake here is cached forever.
+
+        The firmware paints the overview in bursts with brief pauses between
+        elements; a pause can span a whole chunk (measured: one ~2 M-instruction
+        chunk of zero change at a partial, ~1355-px frame), after which a big
+        redraw burst completes the screen. The finished screen then stays quiet
+        essentially forever (apart from the ticking clock). So a short settle
+        (the old quiet=2) can latch a mid-draw pause and cache a *fragmented*
+        screen — which is exactly the corruption seen on machines whose chunk/
+        draw alignment makes that pause land across two chunks.
+
+        Patience separates the two cleanly: wait for `quiet` consecutive chunks
+        that each differ by <= `jitter` px (far longer than any mid-draw pause,
+        far shorter than the finished screen's indefinite quiet). `jitter`
+        ignores the on-screen clock (tens of px); a real draw moves hundreds+.
+        `need` is a low non-blank floor so the open build's sparse "hello world"
+        (tens of px) settles too. Costs a few seconds more on the *first* boot
+        only; every later launch restores from cache instantly."""
+        prev = self.tft.gram.copy()
+        still = 0
+        for _ in range(max_chunks):
+            self._run(chunk)
+            cur = self.tft.gram
+            diff = int((cur != prev).sum())
+            if diff <= jitter and int((cur != 0).sum()) >= need:
+                still += 1
+                if still >= quiet:
+                    break
+            else:
+                still = 0
+            prev = cur.copy()
 
     def _settle(self, chunk=800_000, max_chunks=30, quiet=2, jitter=90, need=200):
         """Run until the screen goes quiet — a repaint has landed and successive
