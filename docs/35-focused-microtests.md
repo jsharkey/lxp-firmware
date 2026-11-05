@@ -92,39 +92,53 @@ by default (`profile="auto"`), **identifies the right one by probing** the image
 | `com_flat` | `reference/com_flat.bin` (05-series) | `0x0801ece8` → `sub_0801eb4c` | `0x2000a718` (+1 min, +2 hr) | `0x20009854+0x64` | bit 24 of `0x2000a758` | via `tools/emu_acfirst.py` |
 | `ceaa07` | ceaa-07xx (07-series) | `sub_080352d0` | `0x2000d850` | `0x2000c85c+0x64` | bit 24 of `0x2000d890` | **✔ green on `ceaa-07xx_vE_260214`** |
 
-## Does the AC-First evaluator test any other windows? No.
+## Does the AC-First evaluator test any other windows? No — but there's a family.
 
-Proven by tracing which config bytes `sub_080352d0` reads during an isolated
-call (`reference/com_flat.bin` = ceaa-07xx): it reads RTC `+1`/`+2` (minute,
-hour) and **exactly the three AC-First window pairs** —
-config `+0x64/+0x66`, `+0x68/+0x6a`, `+0x6c/+0x6e` (= HR 152-157) — **and no
-other config offset**. So it evaluates all **three** AC-First windows (the suite
-exercises each slot) but nothing else.
+`sub_080352d0` reads RTC `+1`/`+2` (minute, hour) and **exactly the three
+AC-First window pairs** (config `+0x64/+0x66`, `+0x68/+0x6a`, `+0x6c/+0x6e` =
+HR 152-157) — and no other config offset (proven by tracing its config reads). So
+it evaluates all **three** AC-First windows and nothing else.
 
-## Extending the pattern to the other time windows
+The *other* schedules each have their **own** evaluator with the same structure.
+They were found by scanning the image for the evaluator fingerprint — a
+`now = 60*hour + minute` computation (`movs rX, #0x3c` + `mla`) — and reading the
+config offset each then loops over (3 windows, 4-byte stride):
 
-The other RTC-vs-window features each have their **own** evaluator (not a shared
-one). Confirmed statically for AC-charge: **`sub_0801d8dc` reads the RTC and the
-AC-charge windows** at config `+0x3a..+0x44` (= HR 68-73, per
-[`docs/23`](23-arm-config-writer.md)); charge-priority / forced-discharge
-(HR 74-89) and OptimalChg (HR 126-131) will have theirs.
+| evaluator | window cfg | result | feature | wired? |
+|---|---|---|---|---|
+| `sub_080352d0` | `0x2000c85c+0x64` | statusbit `0x2000d890`.24 | **AC-First** (HR 152-157) | ✔ `acfirst` |
+| `sub_08034590` | `0x2000c85c+0x3a` | mask byte `0x2000dbb7` | **AC-charge** (HR 68-73), gated by ACChargeType (config `+0x33` bits 1-3) | ✔ `acchg` |
+| `…@0x080349ba` | `0x2000cd5c+0x70` | mask byte `0x2000dbb8` | a slot-5 schedule (charge-priority / forced-discharge — identify) | ○ open |
 
-To add one:
+(A fourth `now=60*h+m` site, `0x08032118`, has no window loop — a clock getter,
+not an evaluator.)
 
-1. Find its evaluator (`tools/ramxref.py <config-offset> load` on the window's
-   config byte names the readers; cross-check it also reads the RTC).
-2. Resolve its **isolated-call setup** and **result location** — this is the real
-   work. The AC-First evaluator happens to be self-contained (computes its own
-   base pointers), so a cold `Emu.call()` just works. **`sub_0801d8dc` does not**:
-   a context-free call faults (branches to `pc=0`), so it needs some initialized
-   state (a function-pointer/table) seeded first. Find the result flag by diffing
-   RAM in-window vs out (the method in `tools/emu_acfirst.py`).
-3. Add a `FactoryBackend` profile for it and its vectors. Our
-   `acfirst_window_active()` is a **generic** start-incl/end-excl/wrap predicate,
-   so it is the oracle for every one of these window types — reuse it (or add a
-   thin wrapper) rather than writing new window logic.
+> **Correction.** An earlier draft of this doc named `sub_0801d8dc` as the
+> AC-charge evaluator. That is wrong: `sub_0801d8dc` is the **holding-register
+> getter** (a big switch that *returns* HR 68-73 values), and `sub_080241a8` is a
+> settings-change detector — neither compares windows to the clock. The real
+> AC-charge evaluator is **`sub_08034590`** (now wired).
 
-The test body never changes; only the backend profile + vectors grow.
+## Wiring an evaluator (the AC-charge worked example)
+
+Evaluators are listed per **window type** in `EVALUATORS` (each with image
+variants, auto-probed). AC-charge (`sub_08034590`) was added by:
+
+1. **Find it** — scan for the `now=60*h+m` fingerprint; note the window config
+   offset (`+0x3a`) and the per-window result byte (`0x2000dbb7`), e.g. by
+   diffing RAM in-window vs out.
+2. **Its enable gate** — unlike AC-First, it exits early unless
+   **ACChargeType ≠ 0** (config `+0x33` bits 1-3); the spec seeds `enable=(0x33,
+   0x02)` ("by time"). (It is otherwise self-contained, so `Emu.call()` works.)
+3. **Reuse the oracle** — our `acfirst_window_active()` is a **generic**
+   start-incl/end-excl/wrap predicate, so it is the oracle for *every* window
+   type. The **same VECTORS** run against it and the factory AC-charge evaluator;
+   `test_acchg_factory_agrees_with_ours` passing proves AC-charge shares AC-First's
+   window semantics.
+
+The test body never changes; only the `EVALUATORS` entry + (shared) vectors do.
+Still open: the slot-5 evaluator above, and OptimalChg (HR 126-131, a different
+48-slot 2-bit structure rather than start/end pairs).
 
 See also: [`docs/25`](25-modbus-register-spaces.md) (the AC-First observable and
 the IR 126 funnel), [`docs/19`](19-gpio-test-harness.md) (the full-sim harness

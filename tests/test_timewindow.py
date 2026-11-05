@@ -64,8 +64,8 @@ def _ours():
     return _ours_cache[0]
 
 
-def _factory_or_skip():
-    fb = FactoryBackend(FACTORY_IMAGE, SYMBOLS, PROFILE)
+def _factory_or_skip(window_type):
+    fb = FactoryBackend(FACTORY_IMAGE, SYMBOLS, window_type=window_type, profile=PROFILE)
     if not fb.available():
         raise Skip("needs unicorn + factory image (%s)" % FACTORY_IMAGE)
     return fb
@@ -81,33 +81,49 @@ def _check_against_spec(backend):
     assert not fails, "%s\n        " % backend.name + "\n        ".join(fails)
 
 
-# --- the tests (same vectors, each backend) ---------------------------------
+def _agrees_with_ours(backend):
+    ob = _ours()
+    diffs = []
+    for name, windows, hour, minute, _expected in VECTORS:
+        f = backend.active(windows, hour, minute)
+        o = ob.active(windows, hour, minute)
+        if f != o:
+            diffs.append("%02d:%02d %-28s factory=%s ours=%s"
+                         % (hour, minute, name, f, o))
+    assert not diffs, "%s\n        " % backend.name + "\n        ".join(diffs)
+
+
+# --- the tests (ONE set of vectors, each backend / window type) -------------
+# Our acfirst_window_active() is a generic start-incl/end-excl/wrap predicate, so
+# it is the oracle for EVERY factory window evaluator.
 def test_ours_matches_spec():
     """Our compiled acfirst_window_active() satisfies the window spec."""
     _check_against_spec(_ours())
 
 
-def test_factory_matches_spec():
-    """The factory evaluator, called in isolation, satisfies the same spec."""
-    _check_against_spec(_factory_or_skip())
+def test_acfirst_factory_matches_spec():
+    """The factory AC-First evaluator (HR152-157), in isolation, matches the spec."""
+    _check_against_spec(_factory_or_skip("acfirst"))
 
 
-def test_factory_agrees_with_ours():
-    """The factory oracle and our firmware agree on every vector."""
-    fb = _factory_or_skip()
-    ob = _ours()
-    diffs = []
-    for name, windows, hour, minute, _expected in VECTORS:
-        f = fb.active(windows, hour, minute)
-        o = ob.active(windows, hour, minute)
-        if f != o:
-            diffs.append("%02d:%02d %-28s factory=%s ours=%s"
-                         % (hour, minute, name, f, o))
-    assert not diffs, "\n        ".join(diffs)
+def test_acfirst_factory_agrees_with_ours():
+    """Factory AC-First evaluator and our firmware agree on every vector."""
+    _agrees_with_ours(_factory_or_skip("acfirst"))
+
+
+def test_acchg_factory_matches_spec():
+    """The factory AC-charge evaluator (HR68-73), in isolation, matches the spec."""
+    _check_against_spec(_factory_or_skip("acchg"))
+
+
+def test_acchg_factory_agrees_with_ours():
+    """Factory AC-charge evaluator and our firmware agree on every vector --
+    i.e. the AC-charge windows share AC-First's window semantics."""
+    _agrees_with_ours(_factory_or_skip("acchg"))
 
 
 if __name__ == "__main__":
     have = os.path.exists(FACTORY_IMAGE)
     label = "ours=acfirst.c  factory=%s" % (
         os.path.basename(FACTORY_IMAGE) if have else "(none)")
-    sys.exit(run_tests("time-window micro-contract (AC-First)", label, globals()))
+    sys.exit(run_tests("time-window micro-contract (AC-First + AC-charge)", label, globals()))
