@@ -28,7 +28,8 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
-from arm_sim_contract import RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES
+from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
+                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B)
 from arm_sim_runner import Skip, run_tests
 
 # Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
@@ -97,6 +98,38 @@ def test_systick_advances_tick_counter():
     assert off.r32(off.sym("g_ticks")) == 0, "g_ticks advanced without SysTick"
     on = _ours(); on.enable_systick(20_000); on.run_reset(max_insn=800_000)
     assert on.r32(on.sym("g_ticks")) > 0, "SysTick injection did not advance g_ticks"
+
+
+# --- safety-CPU telemetry -> Modbus input registers (docs/30, docs/33) ------
+# Our side of the shared telemetry contract. The fake safety CPU writes the
+# decoded fields into our telemetry bank (g_safety_bank, by symbol); our loop's
+# safety_cpu_publish() must copy them into the input-register image with the EG4
+# scaling, so the dongle reads them back with the right register + scale and
+# tracks changes over time. The factory oracle side is in
+# test_arm_sim_factory_only.py; both assert SAFETY_TELEMETRY.
+def _safety_ours():
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_safety import FakeSafetyCpu
+    sim = _ours()
+    bank = sim.sym("g_safety_bank")
+    return FakeSafetyCpu(sim, bank, ModbusDongle(sim))
+
+
+def test_safety_cpu_telemetry_reaches_modbus():
+    """Safety-CPU telemetry (grid/PV/bus V, frequency, radiator temps, inverter
+    current) must reach the dongle's Modbus input registers with the right
+    register and scaling, and must TRACK CHANGES over time (a second, fluctuated
+    snapshot reads back its new values). Our safety_cpu_publish() must match the
+    shared contract (and thus the factory oracle)."""
+    fake = _safety_ours()
+    for label, snapshot in (("A", SAFETY_TELEMETRY_A), ("B", SAFETY_TELEMETRY_B)):
+        fake.send(snapshot)
+        for name, raw in snapshot.items():
+            _off, ir, _sc = SAFETY_TELEMETRY[name]
+            exp = fake.expected(name, raw)
+            got = fake.served(name)
+            assert got == exp, ("ours snapshot %s: %s -> IR %d = %r, expected "
+                                "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
