@@ -18,6 +18,19 @@ The six power-path relay pins from docs/16 are driven by four logic functions:
 
 ## The shared machinery (proven)
 
+> **CORRECTION (see [`docs/22`](22-arm-dsp-core-split.md) for the full trace).**
+> The IR_STATE provenance stated here was wrong. **Modbus IR_STATE (input reg 0)
+> is the byte at `0x2000a0d8 + 0x90`**, served by the input-register getter
+> `sub_0803289c` (reg-0 case) and written **only** by the classifier
+> `sub_0801b480`. The addresses below — `0x2000d0e4+0xa0` and the telemetry
+> struct `0x2000ce5c` — are **not materialized anywhere in the image** (0 pc-rel
+> / 0 movw+movt), and `sub_0801a678` writes no mode byte (it is a float-heavy
+> compute routine). The *architectural* point still holds — the mode is derived
+> from received telemetry, not computed by the ARM — but via `0x20009e54[0]`
+> (filled by `sub_08024d74` from a received frame), not `0x2000ce5c`. The exact
+> **relay** state-source address (what the PC6/PB3 gates read) needs re-pinning;
+> it is not `0x2000d0e4+0xa0`.
+
 **1. The operating mode = IR_STATE (input register 0).** The resolver
 `sub_0801a678` reads the DSP telemetry struct `0x2000ce5c` (bytes `[0]`/`[1]` =
 the DSP's working-state) and writes a mode byte to **`0x2000d0e4 + 0xa0`** plus
@@ -83,10 +96,11 @@ Driven **together**, which is the signature of the grid/EPS transfer switch.
 
 > **Correction to [`docs/16`](16-arm-io-map.md).** docs/16 noted PC6 as tied to
 > the *output-priority / AC-First* setting (reading `+0xa0 == 2` as "AC First").
-> That is **wrong**: `+0xa0` is **IR_STATE** (working mode); `== 2` is
-> `STATE_PROGRAMMING`, not AC-First. PC6 is gated by the **operating mode**, not
-> `HR_OUTPUT_PRIO_CFG` (145). (This does not change docs/14's conclusion about
-> the AC-First *time windows* ending in telemetry.)
+> That is **wrong**: the gating value is **IR_STATE** (working mode, authoritative
+> source `0x2000a0d8+0x90` — see the CORRECTION above and [`docs/22`](22-arm-dsp-core-split.md));
+> `== 2` is `STATE_PROGRAMMING`, not AC-First. PC6 is gated by the **operating
+> mode**, not `HR_OUTPUT_PRIO_CFG` (145). (This does not change docs/14's
+> conclusion about the AC-First *time windows* ending in telemetry.)
 
 ### PC5 — slow, state-change gated (`sub_08017022`)
 
