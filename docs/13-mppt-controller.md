@@ -419,11 +419,16 @@ What the DSP images actually show (direct reads):
 - **18kPV DSP:** **SCI‑A/B/C**, **table-driven** CRC (the same Modicon-table
   family as the MPPT — no `0xA001`). Port roles:
   - **SCI‑B** — the ARM link (type-1 `0x49`/`0x41` + `0x21/0x22/0x23`; docs/10).
-  - **SCI‑C** — a bidirectional **sub-controller telemetry link** (`FUN_0009EEFA`):
+  - **SCI‑C** — a bidirectional inter-processor link (`FUN_0009EEFA`):
     RX frames start **`'T'` (0x54)**, TX frames start **`'D'` (0x44)**, 30-byte,
     CRC‑16 big-endian; each RX frame carries **~7 big-endian u16s + a status byte**
     into `DAT_000111C8…D2`, consumed by the DSP's **control loops**
     (`FUN_0009145D`/`FUN_00095779`), not forwarded verbatim to the ARM.
+    **Update: this is the redundant / safety-CPU cross-check link, not the MPPT**
+    — the DSP votes (median-of-3) and cross-checks these samples and gates
+    operation on agreement + peer liveness (E027). See
+    [`docs/29`](29-safety-cpu.md). (The CBAA MPPT's `0x42` framing appears on
+    neither DSP.)
   - an **ASCII console** as above.
   None of these is the CBAA `0x42`/`0x01` framing.
 
