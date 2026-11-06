@@ -67,7 +67,15 @@ def _sim():
         raise ValueError("%s is an Intel .hex; test_arm_sim.py takes a flat .bin "
                          "only -- convert it first (`make factory` or "
                          "tools/hex2bin.py)" % path)
-    return ArmSim(path)
+    sim = ArmSim(path)
+    # Front-panel keys idle high (the firmware enables pull-ups; a real idle key
+    # reads high, active-low). The harness does not model the pull-ups, so drive
+    # them high explicitly -- as tools/factory_hmi.py does -- otherwise the keys
+    # float low and read as a phantom press, which the HMI acts on. (PA8/PA11 UP/
+    # DOWN, PC8/PC9 ENTER/ESC -- the factory key pins, docs/16.)
+    for k in ("PA8", "PA11", "PC8", "PC9"):
+        sim.set_input(k, 1)
+    return sim
 
 
 def _observe_pb7():

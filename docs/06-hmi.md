@@ -1,11 +1,12 @@
 # HMI (LCD + keypad menu system)
 
 Status: **architecture reverse-engineered; a faithful data-driven navigation
-engine built with host-tested navigation; the front-panel keypad implemented.**
-Remaining work: full menu population, and rendering the menu on the real display
-— the monochrome graphic LCD (`src/hmi/lcd_tft.c`, `docs/28`). There is **no**
-character LCD on this hardware; an earlier 20×4 HD44780 stand-in was removed once
-the real panel was decoded.
+engine, host-tested; the front-panel keypad implemented; the menu renders on the
+real display** — the monochrome graphic LCD (`src/hmi/lcd_tft.c`, `docs/28`), with
+the four keys navigating it (verified on-screen via `make hmi-sim`). There is
+**no** character LCD on this hardware; an earlier 20×4 HD44780 stand-in was
+removed once the real panel was decoded. Remaining work: full menu population, and
+partial/dirty redraw so live INFO values refresh without a full repaint.
 
 ## How the stock HMI works (RE)
 

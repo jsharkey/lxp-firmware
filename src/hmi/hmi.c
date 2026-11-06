@@ -117,6 +117,37 @@ void hmi_key(hmi_t *h, hmi_key_t key)
     }
 }
 
+/* Compose and draw one visible row (0 = top). Shared by the full render and the
+ * incremental (one-row-per-call) path. Assumes io->draw_row is non-NULL. */
+void hmi_render_row(hmi_t *h, uint8_t row)
+{
+    if (!h->io->draw_row) return;
+    uint8_t rows = h->io->rows ? h->io->rows : 4;
+    if (row >= rows) return;
+
+    const hmi_menu_t *m = cur(h);
+    uint8_t idx = (uint8_t)(*ptop(h) + row);
+    if (idx >= m->count) { h->io->draw_row(row, "", false); return; }
+    const hmi_item_t *it = &m->items[idx];
+    char val[24] = "", line[40];
+
+    if (it->kind == HMI_SUBMENU) {
+        snprintf(line, sizeof line, "%s>", it->label);
+    } else if (it->kind == HMI_ACTION) {
+        snprintf(line, sizeof line, "%s", it->label);
+    } else {
+        uint16_t v = 0;
+        bool editing_this = h->editing && idx == *psel(h);
+        uint16_t raw = editing_this ? (uint16_t)h->edit_val : (read_val(h, it, &v) ? v : 0);
+        hmi_format_value(it, raw, val, sizeof val);
+        if (editing_this)
+            snprintf(line, sizeof line, "%s[%s]", it->label, val);
+        else
+            snprintf(line, sizeof line, "%s%s", it->label, val);
+    }
+    h->io->draw_row(row, line, idx == *psel(h));
+}
+
 void hmi_render(hmi_t *h)
 {
     /* No display backend wired (e.g. only the keypad is connected): nothing to
@@ -124,30 +155,7 @@ void hmi_render(hmi_t *h)
      * supplying draw_row. */
     if (!h->io->draw_row) return;
 
-    const hmi_menu_t *m = cur(h);
     uint8_t rows = h->io->rows ? h->io->rows : 4;
     if (h->io->clear) h->io->clear();
-
-    for (uint8_t r = 0; r < rows; r++) {
-        uint8_t idx = (uint8_t)(*ptop(h) + r);
-        if (idx >= m->count) { h->io->draw_row(r, "", false); continue; }
-        const hmi_item_t *it = &m->items[idx];
-        char val[24] = "", line[40];
-
-        if (it->kind == HMI_SUBMENU) {
-            snprintf(line, sizeof line, "%s>", it->label);
-        } else if (it->kind == HMI_ACTION) {
-            snprintf(line, sizeof line, "%s", it->label);
-        } else {
-            uint16_t v = 0;
-            bool editing_this = h->editing && idx == *psel(h);
-            uint16_t raw = editing_this ? (uint16_t)h->edit_val : (read_val(h, it, &v) ? v : 0);
-            hmi_format_value(it, raw, val, sizeof val);
-            if (editing_this)
-                snprintf(line, sizeof line, "%s[%s]", it->label, val);
-            else
-                snprintf(line, sizeof line, "%s%s", it->label, val);
-        }
-        h->io->draw_row(r, line, idx == *psel(h));
-    }
+    for (uint8_t r = 0; r < rows; r++) hmi_render_row(h, r);
 }

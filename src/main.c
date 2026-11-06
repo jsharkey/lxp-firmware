@@ -147,12 +147,10 @@ static bool hmi_write(uint16_t r, uint16_t v) {
     }
     return false;
 }
-/* Register access only; no display backend yet. The front-panel display is the
- * graphic LCD (lcd_tft) — the menu's on-screen rendering is future work there, so
- * draw_row/clear are NULL (hmi_render is a safe no-op) while the keypad still
- * drives the recovered navigation state machine. */
+/* Register access + the display backend: the menu renders on the graphic LCD
+ * (src/hmi/hmi_tft.c -> src/hmi/lcd_tft.c), the front panel's only display. */
 static const hmi_io_t g_hmi_io = {
-    hmi_read, hmi_write, NULL, NULL, 0
+    hmi_read, hmi_write, hmi_tft_draw_row, hmi_tft_clear, HMI_TFT_ROWS
 };
 static hmi_t g_hmi;
 
@@ -197,21 +195,24 @@ int main(void) {
     relay_set_override(0, 0);           /* relays idle until a mode/override drives them */
     relay_set_mode(STATE_STANDBY);      /* run-enable relay follows the operating mode */
 
+    /* Bring up the real graphic LCD (docs/28) — the front panel's only display,
+     * same panel and wire format as the factory image (the HMI simulator renders
+     * it identically) — then paint the menu. Done after the comms GPIO is
+     * configured so the LCD bit-bang doesn't reorder their bring-up. */
     hmi_keypad_init();
-    hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
-
-    /* Bring up the real graphic LCD (docs/28) and post a "hello world" — proof
-     * our firmware drives the same panel as the factory image, in the same wire
-     * format (the HMI simulator renders this identically). This is the front
-     * panel's only display; there is no character LCD on this hardware. Done
-     * after the comms GPIO is configured so it doesn't reorder their bring-up. */
     lcd_tft_init();
-    lcd_text(LCD_PANEL_X0, 24, "Hello World!");
+    hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
+    /* The initial menu is painted once from inside the loop (below), not here: a
+     * full-panel bit-bang repaint is millions of instructions, and doing it in
+     * init would delay the loop reaching mb_port_poll past the comms boot
+     * budget. */
 
     for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
     dsp_push_init(&g_dsp);
 
     uint32_t last_dsp = 0, last_bms = 0, last_rtc = 0;
+    bool hmi_painting = true;           /* paint the initial menu, one row per pass */
+    uint8_t paint_row = 0;
     for (;;) {
         if ((uint32_t)(g_ticks - last_rtc) >= 1000) {   /* 1 Hz wall-clock tick */
             last_rtc = g_ticks;
@@ -260,11 +261,21 @@ int main(void) {
                 g_rt.input_reg[IR_ACFIRST_STATUS] &= (uint16_t)~IR_ACFIRST_WIN_ACTIVE;
         }
 
-        /* Front-panel keys drive the recovered menu navigation. Rendering the
-         * menu on the graphic LCD (lcd_tft) is future work; until then hmi_render
-         * has no display backend (g_hmi_io), so we just advance the state. */
+        /* Front-panel keys drive the menu. A key (or the first pass) marks the
+         * screen dirty; the repaint is then spread ONE ROW per loop iteration
+         * (below) instead of all at once. A full-panel bit-bang repaint is
+         * millions of instructions — doing it in a single pass would stall the
+         * cooperative loop (Modbus, CAN, DSP push) for that whole time. Painting
+         * a row at a time keeps each pass cheap so comms stays serviced. */
         int key = hmi_keypad_poll();
-        if (key >= 0) hmi_key(&g_hmi, (hmi_key_t)key);
+        if (key >= 0) {
+            hmi_key(&g_hmi, (hmi_key_t)key);
+            paint_row = 0; hmi_painting = true;   /* restart the incremental repaint */
+        }
+        if (hmi_painting) {
+            hmi_render_row(&g_hmi, paint_row);
+            if (++paint_row >= HMI_TFT_ROWS) hmi_painting = false;
+        }
 
         /* Push the next DSP config block (~one per 20 ms => full 8-block
          * snapshot ~6x/s). TODO: fill g_dsp_src timestamp from the RTC. */

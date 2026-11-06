@@ -81,7 +81,8 @@ typedef struct {
 
 void hmi_init(hmi_t *h, const hmi_menu_t *root, const hmi_io_t *io);
 void hmi_key(hmi_t *h, hmi_key_t key);   /* advance the state machine */
-void hmi_render(hmi_t *h);               /* draw the current view     */
+void hmi_render(hmi_t *h);               /* draw the whole current view */
+void hmi_render_row(hmi_t *h, uint8_t row); /* draw one row (incremental repaint) */
 
 /* Format a value string for an item (exposed for tests). Returns `buf`. */
 const char *hmi_format_value(const hmi_item_t *it, uint16_t raw, char *buf, size_t n);
@@ -97,5 +98,13 @@ extern const hmi_menu_t hmi_root_menu;
  * hmi_render a no-op — headless but valid, as when only the keypad is wired). */
 void hmi_keypad_init(void);
 int  hmi_keypad_poll(void);   /* returns an hmi_key_t, or -1 if no key */
+
+/* ---- Menu renderer on the graphic LCD (src/hmi/hmi_tft.c) ----
+ * The display backend for the engine above: wire these into the hmi_io_t as
+ * draw_row/clear, with HMI_TFT_ROWS as `rows`. Paints the menu rows on the
+ * monochrome panel (src/hmi/lcd_tft.c), selection marked with a '>' cursor. */
+#define HMI_TFT_ROWS 10
+void hmi_tft_clear(void);
+void hmi_tft_draw_row(uint8_t row, const char *text, bool sel);
 
 #endif /* INV_HMI_H */

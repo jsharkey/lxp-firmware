@@ -92,7 +92,14 @@ class FactoryHmi:
 
     @staticmethod
     def _can_ready(uc, access, addr, size, value, ud):
-        uc.mem_write(addr & ~3, (0xFFFFFFFF).to_bytes(4, "little")); return True
+        # Model an IDLE bus: the RX-FIFO registers RF0R/RF1R (base+0x0C/+0x10)
+        # read empty (FMP=0) so a polled receiver (our can_port_poll) sees no
+        # pending message and returns, instead of draining phantom frames
+        # forever. Every other bxCAN status read keeps the all-ones "ready" fake
+        # that stops the factory CAN task spinning its slice (docs/19).
+        a = addr & ~3
+        val = 0 if a in (CAN_BASE + 0x0C, CAN_BASE + 0x10) else 0xFFFFFFFF
+        uc.mem_write(a, val.to_bytes(4, "little")); return True
 
     def _log(self, *a):
         if self.verbose: print(*a, flush=True)
