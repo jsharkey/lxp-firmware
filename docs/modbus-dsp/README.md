@@ -71,11 +71,11 @@ the **same spec against both images**: [`tests/test_dsp_push.py`](../../tests/te
 | block | `b300` bit | role | doc |
 |---|---|---|---|
 | 0 | `0x001` | **output priority / AC-First + grid-charge core** | [→](block-00-output-priority.md) |
-| 1 | `0x002` | config group (targets `0xB23x`) | [→](block-01.md) |
-| 2 | `0x004` | config group (targets `0xABxx`) | [→](block-02.md) |
+| 1 | `0x002` | **battery charge/discharge limit set** (`0xB23x`) — *inferred* | [→](block-01.md) |
+| 2 | `0x004` | **measurement calibration gains** (`0xABxx`, Q10 unity=`0x400`) — *inferred* | [→](block-02.md) |
 | 3–6 | `0x008`–`0x040` | **grid-charge "slot" parameters** (change-detect triplets) | [→](block-03_06-gridcharge-slots.md) |
-| 7 | `0x080` | config group (targets `0xABFx`/`0xACxx`) | [→](block-07.md) |
-| 8 | `0x100` | config group (targets `0xABDx`/`0xABEx`) | [→](block-08.md) |
+| 7 | `0x080` | **measurement calibration gains, cont.** (`0xABFx`/`0xACxx`) — *inferred* | [→](block-07.md) |
+| 8 | `0x100` | **2 calibration gains + 2 reserved** (`0xABDx`/`0xABEx`) — *inferred* | [→](block-08.md) |
 
 ## Index — other frames on this wire
 
