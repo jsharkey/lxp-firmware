@@ -1,0 +1,144 @@
+# Field provenance — holding register → ARM struct → DSP block offset
+
+> **ARM↔DSP link.** Closes (as far as the firmware allows) the leg from a dongle
+> **holding register** through the **ARM settings/working RAM** to the **DSP config
+> block offset** documented per-block in this tree. See the [index](README.md).
+
+## The real builder (in `com_flat.bin`)
+
+docs/10 named the push builder `FUN_080273b4`/`FUN_08026830` — those are addresses
+from a Ghidra import **based at `0x08005000`**, so they don't resolve in our flat
+image (`0x08000000`). The equivalent functions in `reference/com_flat.bin` are:
+
+| function | role |
+|---|---|
+| `sub_080258ca` | **frame builder**: writes the 20-byte header (`[0]=0x41`, `[1]=1`, `[3]=0x36`, status `[5:8]` from `STATUS 0x2000a0d8+0x88`, …) then calls the per-block filler and rotates the block-id counter `0x2000a9eb` |
+| `sub_08024dfc(buf, 0x14, block_id)` | **per-block filler**: `buf[0x14]=block_id`, then big-endian field values from ARM RAM into `buf[0x15]+` — the mirror of the DSP's `FUN_00092EE2` |
+
+The maps below are from emulating `sub_08024dfc` for each block id 0–8 and recording,
+for every payload byte it writes, **which RAM address it read** (reliable — it is the
+real builder, not a guess).
+
+## The key finding: the push serializes DERIVED WORKING state, not raw registers
+
+The builder does **not** read the holding-register settings struct field-by-field.
+It reads four ARM-internal regions, most of them **one processing step removed** from
+the holding registers:
+
+| region | addresses | blocks | what it is |
+|---|---|---|---|
+| **slot records** | `0x2000a330`–`0x2000a390` | 0, 3, 4, 5, 6 | grid-charge / AC-First **slot records**, *computed* from the schedule (writers `sub_08022e8c`/`sub_08023746`/`sub_08023b30`, the `docs/07` slot-commit family) |
+| **battery limits** | `0x2000a68c`–`0x2000a69f` | 1 | battery charge/discharge **limits**, *computed* from BMS + settings (writers `sub_0800adc8`/`sub_0800db42`/`sub_0801ddc0`) |
+| **ext-settings** | `0x20009908`–`0x20009944` | 2, 7, 8 | a settings area **default-initialised to `0x400`** by `sub_08012f66`; **not** served by the holding getter `fn_ceaa` (so no read-register exposes it) |
+| **canonical settings** | `0x20009854`–`0x20009906` | 0, 3 (a few) | the holding-register settings struct — these fields **do** map to a holding register (via `fn_ceaa`) |
+| slot-enable mask | `0x2000a7a8` | 0, 3–6 | → DSP `0xAD54` (the per-slot active mask) |
+| status/misc | `0x2000a0e0`, `0x2000a169`, `0x2000a172`, `0x2000a9e8`, `0x2000a936` | 0, 8 | live status, not settings |
+
+So a holding register reaches the DSP as:
+`holding reg → (write handler / periodic compute) → working struct → block field → DSP RAM`.
+The middle hop is real work (schedule → slot records, BMS → limits), **not** a copy —
+which is why the config isn't a register image on the wire.
+
+## Directly-mapped fields (holding register confirmed)
+
+Where the builder reads the canonical settings struct, the holding register is known
+(from the `fn_ceaa` map below). Confirmed:
+
+| block·off | ARM source | holding reg | DSP target (docs/10) | note |
+|---|---|---|---|---|
+| **0 · `0x28`** | `0x2000986c` | **HR 20 `PVInputModel`** | `0xAD8D` | validated by offset + name |
+| 3 · `0x28` | `0x20009883` | **HR 119** | — | reg from `fn_ceaa`; DSP target not aligned here |
+| 3 · `0x2a` | `0x2000987e` | **HR 19** | `0xAD87` (validated) | — |
+
+**Output priority / AC-First** (the headline field, [`block-00`](block-00-output-priority.md)):
+the builder reads it from the **working** location `0x2000a343` (low byte → block 0
+`0x1E` → DSP `0xADA8`), *not* directly from its holding register **HR 145
+`OutputPrioConfig`**. So `HR 145 → (write) 0x2000a343 → block0[0x1E] → 0xADA8` — the
+value is correct, but it travels through the working copy, consistent with the
+"derived, not raw" model.
+
+## Per-block ARM-source map (reliable)
+
+Each row: payload offset, width (bytes the source occupies), and the ARM RAM it is
+read from (classified above). **HR n** = a canonical-settings field with a known
+holding register.
+
+### Block 0
+| off | w | ARM source |
+|---|---|---|
+| `0x15` | 2 | settings `0x20009861` |
+| `0x17` | 2 | settings `0x2000985f` |
+| `0x19` | 2 | slot-record `0x2000a330` |
+| `0x1b` | 2 | slot-record `0x2000a332` |
+| `0x1d` | 2 | slot-record `0x2000a343` (low byte = **output priority** → `0xADA8`) |
+| `0x1f` | 2 | slot-record `0x2000a336` |
+| `0x21` | 2 | slot-record `0x2000a338` |
+| `0x23`/`0x24` | 1+1 | slot-record `0x2000a33a`/`0x2000a33b` |
+| `0x25` | 2 | slot mask `0x2000a7a8` → `0xAD54` |
+| `0x27` | 1 | status `0x2000a169` |
+| `0x28` | 1 | **HR 20 `PVInputModel`** → `0xAD8D` |
+| `0x29` | 2 | status `0x2000a0e0` |
+| `0x2b` | 2 | slot-record `0x2000a334` |
+| `0x2d` | 1 | status `0x2000a9e8` |
+| `0x2e` | 1 | status `0x2000a172` |
+
+### Block 1 — all from the battery-limits working struct `0x2000a68c…0x2000a69f`
+`0x15`←`a68c` · `0x16`←`a69f` · `0x17`←`a69e` · `0x18`←`a690` · `0x1a`←`a692` ·
+`0x1c`←`a698` · `0x1e`←`a69a` · `0x20`(8B)←`a68e` · `0x28`←`a69c`.
+
+### Block 2 — all from ext-settings `0x20009912…0x20009934`
+`0x15`(4B)←`9914` · `0x19`←`991a` · `0x1b`←`991e` · `0x1d`←`991c` · `0x1f`←`9920` ·
+`0x21`←`9912` · `0x23`←`9922` · `0x25`←`9924` · `0x27`←`9926` · `0x29`←`9928` ·
+`0x2b`←`9932` · `0x2d`←`9934`.
+
+### Block 3
+`0x15`←slot mask · `0x17`←`a33c` · `0x19`←`a33e` · `0x1b`←`a342` · `0x1c`←`a340` ·
+`0x1d`←`a344` · `0x1f`←`a346` · `0x21`←`a348` · `0x22`←`a349` · `0x23`←`a350` ·
+`0x25`←`a352` · `0x26`←`a354` · **`0x28`←HR 119** · **`0x2a`←HR 19 → `0xAD87`**.
+
+### Blocks 4, 5, 6 — all slot records + slot mask
+Block 4: mask, then `a370 a372 a374 a376 a378 a37a`, mask, `a36a a36c a36e a36f`.
+Block 5: mask, then `a37c a37e a380 a382 a384 a386 a362 a364 a366 a367 a368 a388`.
+Block 6: mask, then `a356 a358 a35a a34a a34c a34e a34f a35c a35e a360`.
+
+### Block 7 — all from ext-settings `0x20009936…0x20009944` + `0x2000992a…0x20009930`
+`0x15`←`9936` · `0x17`←`9938` · `0x19`←`993a` · `0x1b`←`993c` · `0x1d`←`992a` ·
+`0x1f`←`992c` · `0x21`←`993e` · `0x23`←`9940` · `0x25`←`992e` · `0x27`←`9930` ·
+`0x29`←`9942` · `0x2b`←`9944`.
+
+### Block 8
+`0x15`←ext-settings `990a` · `0x17`←`990c` · `0x19`←status `0x2000a936` · `0x1b`←`9910`.
+
+## Appendix — holding register → canonical settings offset (`fn_ceaa`)
+
+The read getter `fn_ceaa` (`0x08032000`) maps **89** holding registers to the
+canonical settings struct `0x20009854`. This is the reg↔struct half for the fields the
+builder reads from that struct (and a useful map in its own right for the ARM packer).
+Selected entries (full sweep in the commit that landed this doc):
+
+| settings addr | HR | | settings addr | HR |
+|---|---|---|---|---|
+| `+0x18` `0x986c` | 20 `PVInputModel` | | `+0x3a` `0x988e` | 68 (AC-charge window) |
+| `+0x13` `0x9867` | 21 `FuncEn` | | `…0x9898` | 73 |
+| `+0x2a` `0x987e` | 19 | | `0x98b8…0x98c2` | 152–157 (AC-First windows) |
+| `+0x2f` `0x9883` | 119 | | `0x98c4`/`0x98c6` | 147/148 (battery capacity) |
+| `0x98f0…0x98f9` | 103–109 (lead-acid) | | `0x9900…0x9906` | 194–198 (generator charge) |
+
+(The AC-First **window times** HR 152–157 live in the settings struct but are **not**
+read by any config block — they are evaluated ARM-side against the RTC, docs/07 — so
+they do not appear in the per-block maps above.)
+
+## Status — what's closed, what's left
+
+- **Closed:** the **struct → block offset** half, completely — every payload field of
+  all 9 blocks is mapped to its exact ARM source address and source struct, from the
+  real builder.
+- **Closed (subset):** **holding reg → block** for the fields the builder reads
+  directly from the canonical settings struct (HR 20 → block0; HR 19/119 → block3;
+  plus the `fn_ceaa` map).
+- **Open (one layer):** the **holding reg → working struct** hop for the derived
+  regions — slot records (from the HR 64–89 schedule via the slot-commit builders),
+  battery limits, and the ext-settings area. These need the intermediate functions
+  traced (writers listed above) or a **live USART3 capture** (write a holding reg over
+  the dongle, watch which `0x41`-frame byte changes) — the definitive method, since
+  the push is not scheduler-driven in the `arm_sim` harness.

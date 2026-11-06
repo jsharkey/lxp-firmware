@@ -53,6 +53,13 @@ word.
   (`0x001…0x100`, +`0x200` from block 3); the DSP treats the config as complete
   once all bits are set.
 
+**Field provenance** (holding register → ARM struct → block offset) is in
+[`field-provenance.md`](field-provenance.md): the real builder (`sub_080258ca` →
+`sub_08024dfc`), every block field's exact ARM source address, and the finding that
+the push serializes **derived working structs** (slot records, battery limits), not
+raw holding registers — with the directly-mapped registers (e.g. HR 20 → block 0) and
+the remaining one-layer hop called out.
+
 ## Index — config blocks (ARM → DSP, SOF `0x41`, block id @ `0x14`)
 
 | block | `b300` bit | role | doc |

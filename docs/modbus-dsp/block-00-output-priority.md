@@ -71,6 +71,14 @@ dongle holding reg (output-priority / AC-charge enable / grid-charge slots)
   → DSP AC-First FSM (g_outputPrio==2 && g_acChargeFlags&8)
 ```
 
+**ARM-side source (docs [field-provenance](field-provenance.md)):** the builder
+reads output priority from the *working* location `0x2000a343` (low byte), not
+directly from its holding register **HR 145 `OutputPrioConfig`** — i.e.
+`HR 145 → (write) 0x2000a343 → this block's 0x1E → DSP 0xADA8`. Most of this block's
+other fields come from the grid-charge **slot-record** working struct
+(`0x2000a330…`), except `0x28` which is read directly from **HR 20 `PVInputModel`**
+(→ `0xAD8D`) and the slot-enable mask `0x25` (`0x2000a7a8` → `0xAD54`).
+
 The window **start/stop times** for AC First are evaluated ARM-side against the RTC
 and are **not** in this block — they drive the schedule the ARM pushes elsewhere
 (docs/07/08); this block carries the *selector* and *enable*, which is what makes
