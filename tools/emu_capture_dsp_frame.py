@@ -2,7 +2,7 @@ import sys, struct
 sys.path.insert(0,"tools")
 from emu import Emu
 from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1
-emu=Emu("reference/com_flat.bin","reference/symbols_named.csv")
+emu=Emu("reference/ceaa-07xx_vE_260214.bin","reference/symbols_named.csv")
 # seed RAM 0..0xC000 with per-word markers = word index
 blob=bytearray()
 for w in range(0,0xC000//2): blob+=struct.pack("<H", w & 0xFFFF)

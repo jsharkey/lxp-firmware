@@ -96,7 +96,7 @@ CRC). Two quick checks sharpen "safety CPU vs relayed DSP copy":
 
 ## RESOLUTION (ARM side): **PROVEN — USART2 ⇔ safety CPU.** The ARM *reports* the mismatch/version status straight out of the USART2 frame.
 
-Resolved from the factory ARM image (`reference/com_flat.bin`), tracing the Modbus
+Resolved from the factory ARM image (`reference/ceaa-07xx_vE_260214.bin`), tracing the Modbus
 fault/warning words back through the state classifier into the USART2 parsers. This
 is the hand-off's **first outcome branch** and the **"Reported"** shape of Lead 2:
 the ARM does **not** compute the cross-check — it copies a status word the USART2

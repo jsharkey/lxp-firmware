@@ -29,7 +29,7 @@ toggle identically in both runs are housekeeping (LCD refresh, RS-485 DE,
 keypad scan, fan/LED PWM) and are *not* the AC-First relay.
 
 Read-only: executes the flat image in a sandbox; touches no hardware.
-Usage:  python3 tools/emu_gpio_acfirst.py      # from repo root (needs reference/com_flat.bin)
+Usage:  python3 tools/emu_gpio_acfirst.py      # from repo root (needs reference/ceaa-05xx_com_vE_250325.bin)
 
 Honest caveat (same as emu_acfirst.py): sub_0801f184 is a gated scheduler task;
 a cold single-pass run does not exercise every branch. A null result here
@@ -42,7 +42,7 @@ from emu import Emu
 from unicorn import UC_HOOK_MEM_WRITE
 from unicorn.arm_const import UC_ARM_REG_PC
 
-IMG = os.environ.get("ACF_IMG", "reference/com_flat.bin")
+IMG = os.environ.get("ACF_IMG", "reference/ceaa-05xx_com_vE_250325.bin")
 SYM = os.environ.get("ACF_SYM", "reference/symbols.csv")
 
 SETTINGS = 0x20009854

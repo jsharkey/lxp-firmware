@@ -30,7 +30,7 @@ Short answers, from static RE of both ends plus harness probes:
 
 Sources: battery App `reference/BATT_IN280-Z03T13.bin` (HC32F460, flat App @
 `0x00020000`; proprietary, gitignored) via `tools/batt_canmap.py` + Thumb
-disassembly; factory ARM `reference/com_flat.bin` via `tools/arm_sim.py` probes;
+disassembly; factory ARM `reference/ceaa-07xx_vE_260214.bin` via `tools/arm_sim.py` probes;
 the dongle register surface in [`docs/modbus-dongle/`](modbus-dongle/README.md)
 and [`docs/33`](33-usart2-telemetry-bank.md); battery basics in
 [`docs/20`](20-battery-bms-firmware.md).

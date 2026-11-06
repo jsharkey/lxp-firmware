@@ -7,7 +7,7 @@ deps with `pip install capstone pyelftools`.
 > **Run all analysis on the flat image, not the raw `.bin`.** The vendor `.bin`
 > is a gap-stripped concatenation of non-contiguous flash regions, so its byte
 > offsets are not true flash addresses (see `docs/01`). Convert the `.hex` first:
-> `python3 hex2bin.py firmware.hex com_flat.bin` → use `com_flat.bin` everywhere.
+> `python3 hex2bin.py firmware.hex ceaa-07xx_vE_260214.bin` → use `ceaa-07xx_vE_260214.bin` everywhere.
 
 | Script | Purpose |
 |---|---|
@@ -37,15 +37,15 @@ deps with `pip install capstone pyelftools`.
 Dynamic analysis example (validate + call a function):
 
 ```bash
-python3 emu.py ../reference/com_flat.bin --selftest          # in-firmware CRC == 0x4B37
-python3 emu.py ../reference/com_flat.bin --call 0x08001482   # run a handler, capture TX
+python3 emu.py ../reference/ceaa-07xx_vE_260214.bin --selftest          # in-firmware CRC == 0x4B37
+python3 emu.py ../reference/ceaa-07xx_vE_260214.bin --call 0x08001482   # run a handler, capture TX
 ```
 
 Example:
 
 ```bash
-python3 hex2bin.py firmware.hex com_flat.bin
-python3 recurse.py com_flat.bin --out ../reference
+python3 hex2bin.py firmware.hex ceaa-07xx_vE_260214.bin
+python3 recurse.py ceaa-07xx_vE_260214.bin --out ../reference
 ```
 
 ## Recommended next tooling (not yet added)

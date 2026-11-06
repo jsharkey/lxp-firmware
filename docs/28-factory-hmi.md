@@ -143,14 +143,14 @@ The page shows the 240×160 panel (FSTN-tinted) and the four keys as buttons (al
 arrow keys / Enter / Esc). It boots once (a spinner shows — the open build in
 ~14 s, the factory in ~20 s), then each press runs the firmware and repaints.
 Needs `pip install unicorn numpy pillow`; the factory image also needs
-`reference/com_flat.bin`.
+`reference/ceaa-07xx_vE_260214.bin`.
 
 Headless, from a script:
 
 ```python
 from factory_hmi import FactoryHmi
 FactoryHmi().boot().save_png("hello.png")                  # open-source build
-h = FactoryHmi("reference/com_flat.bin").boot()            # factory image
+h = FactoryHmi("reference/ceaa-07xx_vE_260214.bin").boot()            # factory image
 h.save_png("overview.png")
 for k in ["PA11", "PA8", "PA8", "PA8", "PA11"]:            # -> Common settings
     h.press(k)

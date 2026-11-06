@@ -14,7 +14,7 @@ oracle and our reimplementation are proven to agree -- parity by shared contract
 The Makefile's `test-sim` target invokes this twice, once per image:
 
     python3 tests/test_arm_sim.py build/firmware.bin          # our firmware
-    python3 tests/test_arm_sim.py reference/com_flat.bin      # factory oracle (flat .bin)
+    python3 tests/test_arm_sim.py reference/ceaa-07xx_vE_260214.bin      # factory oracle (flat .bin)
 
 Target-specific tests (which must name internal symbols or addresses, so they
 cannot be shared) live in their own files:

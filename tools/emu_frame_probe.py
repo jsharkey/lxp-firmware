@@ -23,7 +23,7 @@ from emu import Emu
 SETTINGS=0x20009854; RX=0x20007490; FRAME=0x20009414; BUILDER=0x08014fec
 
 def probe(cls, length=0x40):
-    emu=Emu("reference/com_flat.bin","reference/symbols.csv")
+    emu=Emu("reference/ceaa-07xx_vE_260214.bin","reference/symbols.csv")
     emu.wbytes(SETTINGS, bytes([i & 0xff for i in range(256)]))  # settings[i]=i
     emu.wbytes(RX, bytes(0x100))
     emu.uc.mem_write(RX+0, bytes([0x01, cls & 0xff]))            # addr, class

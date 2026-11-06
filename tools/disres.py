@@ -14,7 +14,7 @@ Read-only static analysis. Requires: pip install capstone.
 
 Usage: python3 tools/disres.py ADDR [ADDR...] [--img F] [--sym F]
    ADDR is a hex function address (0x........).
-   defaults: --img reference/com_flat.bin  --sym reference/symbols.csv
+   defaults: --img reference/ceaa-07xx_vE_260214.bin  --sym reference/symbols.csv
 """
 import sys, struct, csv, bisect, argparse
 from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB
@@ -22,7 +22,7 @@ from capstone.arm import ARM_OP_IMM, ARM_OP_MEM, ARM_OP_REG, ARM_REG_PC
 
 ap = argparse.ArgumentParser()
 ap.add_argument("addrs", nargs="+", help="hex function addresses")
-ap.add_argument("--img", default="reference/com_flat.bin")
+ap.add_argument("--img", default="reference/ceaa-07xx_vE_260214.bin")
 ap.add_argument("--sym", default="reference/symbols.csv")
 ap.add_argument("--base", default="0x08000000")
 args = ap.parse_args()

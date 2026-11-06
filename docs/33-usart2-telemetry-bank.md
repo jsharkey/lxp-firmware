@@ -17,7 +17,7 @@ documents (1) how
 the bank is filled from the wire frame, (2) its field map, and (3) **which fields reach
 the external Modbus dongle** as input/holding registers.
 
-Everything here is from the factory ARM image `reference/com_flat.bin` (12000XP
+Everything here is from the factory ARM image `reference/ceaa-07xx_vE_260214.bin` (12000XP
 `ceaa-07xx`): the parsers `sub_080259d8` / `sub_08024d74` / `sub_080241a8` (write side)
 and a sweep of the register getters `sub_0803289c` (input) / `fn_ceaa` (holding) over
 every register, recording which bank offset each reads (read side).

@@ -21,7 +21,7 @@ FLAG=0x2000aa0b
 SETTINGS=0x20009854; IMG=0x2000691c
 
 def run(start,count,cls=3):
-    emu=Emu("reference/com_flat.bin","reference/symbols.csv")
+    emu=Emu("reference/ceaa-07xx_vE_260214.bin","reference/symbols.csv")
     emu.wbytes(SETTINGS, bytes([i&0xff for i in range(256)]))
     # seed register image region with a recognizable pattern too
     emu.wbytes(IMG, bytes([0x55]*0x1000))

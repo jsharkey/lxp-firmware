@@ -18,7 +18,7 @@ task would act on (the override path is self-contained -- no boot needed).
 Usage (same style as test_arm_sim.py -- the image is a command-line argument, a
 flat .bin; a .hex is rejected, convert it first with `make factory`):
 
-    python3 tests/test_arm_sim_factory_only.py reference/com_flat.bin
+    python3 tests/test_arm_sim_factory_only.py reference/ceaa-07xx_vE_260214.bin
 
 The factory image is never committed (it is proprietary); with no image argument
 the tests SKIP. Needs `pip install unicorn`.
@@ -193,7 +193,7 @@ FAC_RTC_PRESCALE = 0x2000dba7
 
 def _factory_rtc():
     """A factory sim with its RTC registered; SKIPs if this image's clock does
-    not behave as ceaa-07xx (e.g. the 05-series reference/com_flat.bin, whose RTC
+    not behave as ceaa-07xx (e.g. the 05-series reference/ceaa-07xx_vE_260214.bin, whose RTC
     advance is a different function) -- per-image discipline, like the timewindow
     profiles."""
     sim = _factory()

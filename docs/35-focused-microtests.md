@@ -99,7 +99,7 @@ by default (`profile="auto"`), **identifies the right one by probing** the image
 
 | profile | image | evaluator | RTC | windows | status bit | verified |
 |---|---|---|---|---|---|---|
-| `com_flat` | `reference/com_flat.bin` (05-series) | `0x0801ece8` → `sub_0801eb4c` | `0x2000a718` (+1 min, +2 hr) | `0x20009854+0x64` | bit 24 of `0x2000a758` | via `tools/emu_acfirst.py` |
+| `ceaa05` | `reference/ceaa-05xx_com_vE_250325.bin` (05-series) | `0x0801ece8` → `sub_0801eb4c` | `0x2000a718` (+1 min, +2 hr) | `0x20009854+0x64` | bit 24 of `0x2000a758` | via `tools/emu_acfirst.py` |
 | `ceaa07` | ceaa-07xx (07-series) | `sub_080352d0` | `0x2000d850` | `0x2000c85c+0x64` | bit 24 of `0x2000d890` | **✔ green on `ceaa-07xx_vE_260214`** |
 
 ## Does the AC-First evaluator test any other windows? No — but there's a family.

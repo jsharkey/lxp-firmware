@@ -109,18 +109,23 @@ test:
 # the factory half only when an image is available (a .hex to convert, or an
 # already-built .bin), so it stays green on our firmware alone; point it at a
 # prebuilt .bin with FACTORY_BIN=/path (LXP_FACTORY_BIN is honoured too).
-FACTORY_BIN ?= $(or $(LXP_FACTORY_BIN),reference/com_flat.bin)
-HAVE_FACTORY := $(or $(strip $(LXP_FACTORY_HEX)),$(wildcard $(FACTORY_BIN)))
+# Canonical reference image: the 07-series 12000XP (ceaa-07xx_vE_260214). Drop the
+# vendor .hex under reference/ -- the flat .bin is NAMED AFTER IT (so the filename
+# says which image, instead of a generic com_flat.bin). Override the hex with
+# LXP_FACTORY_HEX, or point straight at a prebuilt .bin with LXP_FACTORY_BIN.
+FACTORY_HEX ?= $(or $(LXP_FACTORY_HEX),$(firstword $(wildcard reference/*ceaa-07xx*.hex)))
+FACTORY_BIN ?= $(or $(LXP_FACTORY_BIN),$(if $(FACTORY_HEX),reference/$(basename $(notdir $(FACTORY_HEX))).bin,reference/ceaa-07xx_vE_260214.bin))
+HAVE_FACTORY := $(or $(strip $(FACTORY_HEX)),$(wildcard $(FACTORY_BIN)))
 
 # The factory flat .bin: convert the vendor Intel .hex (gaps filled with 0xFF,
 # every byte at its true flash address -- see hex2bin). Built only if missing;
-# `make factory` is the friendly alias.
+# `make factory` is the friendly alias. The .bin is named after the .hex.
 $(FACTORY_BIN):
-	@test -n "$(LXP_FACTORY_HEX)" || { \
-	  echo "$@: set LXP_FACTORY_HEX=/path/to/vendor.hex to build the factory image"; \
+	@test -n "$(FACTORY_HEX)" || { \
+	  echo "$@: drop the 07-series vendor .hex under reference/ (or set LXP_FACTORY_HEX=/path)"; \
 	  exit 1; }
 	@mkdir -p $(dir $@)
-	python3 tools/hex2bin.py "$(LXP_FACTORY_HEX)" "$@"
+	python3 tools/hex2bin.py "$(FACTORY_HEX)" "$@"
 
 factory: $(FACTORY_BIN)
 

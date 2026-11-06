@@ -6,12 +6,12 @@ addresses (and their bit-band aliases). Complements tools/gpio_map.py, which
 maps the pins; here you see which UART/SPI/CAN/timer blocks own the AF pins.
 
 Read-only static scan. Usage: python3 tools/periph_map.py [flat.bin] [symbols.csv]
-   defaults: reference/com_flat.bin  reference/symbols.csv
+   defaults: reference/ceaa-07xx_vE_260214.bin  reference/symbols.csv
 """
 import sys, struct, bisect, csv
 from collections import defaultdict
 
-FW  = sys.argv[1] if len(sys.argv) > 1 else "reference/com_flat.bin"
+FW  = sys.argv[1] if len(sys.argv) > 1 else "reference/ceaa-07xx_vE_260214.bin"
 SYM = sys.argv[2] if len(sys.argv) > 2 else "reference/symbols.csv"
 BASE = 0x08000000
 d = open(FW, "rb").read(); N = len(d)

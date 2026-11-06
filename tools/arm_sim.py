@@ -4,7 +4,7 @@ arm_sim — a GPIO-instrumented STM32F103 emulator for the EG4 com-MCU firmware.
 
 One harness that runs BOTH:
   * our open-source firmware   (build/firmware.bin + build/firmware.elf symbols)
-  * a factory reference image  (reference/com_flat.bin + reference/symbols.csv)
+  * a factory reference image  (reference/ceaa-07xx_vE_260214.bin + reference/symbols.csv)
 
 so tests can assert the same observable GPIO behaviour against the factory image
 (the oracle) and against our reimplementation as features land.
@@ -271,7 +271,7 @@ class ArmSim:
 
     # ---- construction helpers -------------------------------------------
     @classmethod
-    def factory(cls, image="reference/com_flat.bin", symbols="reference/symbols.csv"):
+    def factory(cls, image="reference/ceaa-07xx_vE_260214.bin", symbols="reference/symbols.csv"):
         return cls(image, load_symbols_csv(symbols))
 
     @classmethod

@@ -22,7 +22,7 @@ import sys, os, struct, csv, bisect
 from capstone import *
 from capstone.arm import *
 
-FW   = os.environ.get("RAMXREF_FW", "reference/com_flat.bin")
+FW   = os.environ.get("RAMXREF_FW", "reference/ceaa-07xx_vE_260214.bin")
 BASE = 0x08000000
 data = open(FW, "rb").read(); N = len(data); END = BASE + N
 def rd32(a):

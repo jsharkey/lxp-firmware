@@ -420,7 +420,7 @@ stays unproven; what is solid is the **Modbus register-group** path above.
 ## Worked example — AC-First registers 152–157 (PROVEN, ARM `.hex`)
 
 Tracing Modbus regs 152–157 (the "AC First" load-priority time windows) through
-the ARM, confirmed byte-exact against `reference/com_flat.bin`:
+the ARM, confirmed byte-exact against `reference/ceaa-07xx_vE_260214.bin`:
 
 **1. Register → settings-struct offset.** The Modbus register dispatch `fn_ceaa`
 (`0x08032000`) has an explicit per-register `switch`; the case stubs read the
