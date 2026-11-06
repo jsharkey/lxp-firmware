@@ -266,6 +266,7 @@ class ArmSim:
         self._tick_mark = 0                    # next _insns value at which a SysTick comes due
         self._pending_irqs = []                # peripheral IRQ vector numbers awaiting delivery
         self._pendsv_set = False               # mirror of ICSR.PENDSVSET (cheap flag for the block hook)
+        self._rtc = None                       # RTC/wall-clock profile (configure_rtc)
         self._build()
 
     # ---- construction helpers -------------------------------------------
@@ -477,6 +478,49 @@ class ArmSim:
             if (pc & ~1) != STOP:
                 raise RuntimeError("emu fault %s at pc=0x%08x" % (e, pc))
         return uc.reg_read(UC_ARM_REG_R0)
+
+    # ---- RTC / wall-clock control (opt-in; configure per image) ---------
+    # Both firmwares keep a 7-byte software calendar
+    # (sec,min,hour,day,month,year,weekday -- docs/36) advanced one second at a
+    # time by their own tick function. A test registers the image's calendar
+    # address and tick with configure_rtc(), then forces the time with set_rtc()
+    # or walks it forward with advance_rtc() -- running the firmware's real
+    # carry / days-in-month / leap logic, no boot needed.
+    def configure_rtc(self, calendar, tick=None, prescale=None, calls_per_sec=1):
+        """Register the image's calendar: `calendar` = base of the 7-byte struct;
+        `tick` = the 1 s advance fn (address or symbol name); `prescale` = an
+        optional counter byte the tick divides; `calls_per_sec` = tick() calls
+        per second (the factory halves it via `prescale`, so 2; ours is 1)."""
+        self._rtc = {"cal": calendar, "tick": tick, "prescale": prescale,
+                     "cps": max(1, int(calls_per_sec))}
+        return self
+
+    def _rtc_cfg(self):
+        if not self._rtc:
+            raise RuntimeError("no RTC configured; call configure_rtc() first")
+        return self._rtc
+
+    def set_rtc(self, sec=0, minute=0, hour=0, day=1, month=1, year=24):
+        """Force the calendar to a specific time (direct RAM poke; no boot)."""
+        c = self._rtc_cfg()
+        self.wbytes(c["cal"], bytes([sec & 0xFF, minute & 0xFF, hour & 0xFF,
+                                     day & 0xFF, month & 0xFF, year & 0xFF]))
+        if c["prescale"] is not None:
+            self.wbytes(c["prescale"], b"\x00")     # start the next second cleanly
+
+    def get_rtc(self):
+        """Return the calendar as (sec, minute, hour, day, month, year)."""
+        return tuple(self.rbytes(self._rtc_cfg()["cal"], 6))
+
+    def advance_rtc(self, seconds):
+        """Walk the clock forward `seconds` s by calling the image's own tick
+        function, so the firmware's real carry/days-in-month/leap logic runs."""
+        c = self._rtc_cfg()
+        if c["tick"] is None:
+            raise RuntimeError("configure_rtc(tick=...) required to advance")
+        fn = self.sym(c["tick"]) if isinstance(c["tick"], str) else c["tick"]
+        for _ in range(int(seconds) * c["cps"]):
+            self.call(fn)
 
     def vector_base(self):
         """Locate the Cortex-M vector table (initial SP in RAM, reset PC in

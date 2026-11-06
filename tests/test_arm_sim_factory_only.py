@@ -28,7 +28,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
-                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B)
+                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
+                              RTC_WALK)
 from arm_sim_runner import Skip, run_tests
 
 # Factory flat-.bin image under test. Set by the __main__ runner from argv.
@@ -174,78 +175,54 @@ def test_per_pack_telemetry_reaches_modbus():
 
 
 # --- RTC software calendar: walk the clock forward (docs/36) ----------------
-# sub_08018bc0 is the factory's 1-second RTC tick / calendar-advance. The
-# calendar is a 7-byte struct at 0x2000d850: +0 sec, +1 min, +2 hour, +3 day,
-# +4 month, +5 year (offset from 2000), +6 weekday. Each pass bumps a prescaler
-# byte at 0x2000dba7 and advances the calendar on every second call (2 calls =
-# +1 s), carrying sec->min->hour->day->month->year with days-in-month
-# (sub_08016914) and leap-year handling. Self-contained: no boot needed (it only
-# touches the calendar + two pure helpers), same isolated-call style as above.
+# The factory's 1 s RTC tick/calendar-advance is sub_08018bc0; the calendar is a
+# 7-byte struct at 0x2000d850 (+0 s,+1 min,+2 hr,+3 day,+4 mon,+5 yr,+6 wd) and a
+# prescaler byte at 0x2000dba7 makes it advance every 2nd call (2 calls = +1 s).
+# We register it with the simulator's RTC control (sim.configure_rtc / set_rtc /
+# advance_rtc) and run the shared RTC_WALK contract -- the SAME vectors our
+# firmware is held to in test_arm_sim_self_only.py. Self-contained: no boot.
 #
-# This is the proven "walk the ARM RTC forward" mechanism that every time-of-day
-# feature keys off -- including the energy-counter DAILY ROLLOVER the dongle
-# exposes at IR 28-37 (docs/modbus-dongle/input-028_059-energy-counters.md). That
-# rollover test is a FOLLOW-UP, still blocked: on this image the energy counters
-# read 0 at cold boot and the accumulator/daily-reset + their register struct are
-# not yet located (RE hand-off in docs/36). This test pins the clock foundation.
+# This clock is the foundation every time-of-day feature keys off -- including
+# the energy-counter DAILY ROLLOVER at IR 28-37
+# (docs/modbus-dongle/input-028_059-energy-counters.md), a FOLLOW-UP still blocked
+# on locating that image's energy struct/accumulator (RE hand-off in docs/36).
 FAC_RTC_TICK     = 0x08018bc0
-FAC_CALENDAR     = 0x2000d850   # +0 s, +1 min, +2 hr, +3 day, +4 mon, +5 yr, +6 wd
-FAC_RTC_PRESCALE = 0x2000dba7   # bumped per call; calendar advances every 2nd call
+FAC_CALENDAR     = 0x2000d850
+FAC_RTC_PRESCALE = 0x2000dba7
 
 
-def _rtc_walk(start, seconds):
-    """Seed the calendar to `start` = (sec,min,hr,day,mon,yr) and call the factory
-    RTC tick enough times to advance `seconds` seconds; return the new
-    (sec,min,hr,day,mon,yr)."""
-    sim = _factory()
-    sim.wbytes(FAC_CALENDAR, bytes(list(start) + [0]))   # +weekday
-    sim.wbytes(FAC_RTC_PRESCALE, b"\x00")
-    for _ in range(2 * seconds):                          # 2 calls == +1 s
-        sim.call(FAC_RTC_TICK)
-    c = sim.rbytes(FAC_CALENDAR, 6)
-    return tuple(c)
-
-
-def _require_07_rtc():
-    """These addresses are ceaa-07xx-specific (docs/36). Probe the tick: on any
-    other image (e.g. the 05-series reference/com_flat.bin, whose RTC advance is a
-    different function) a +1 s walk won't land exactly, so SKIP rather than assert
-    against the wrong image -- the same per-image discipline as the timewindow
+def _factory_rtc():
+    """A factory sim with its RTC registered; SKIPs if this image's clock does
+    not behave as ceaa-07xx (e.g. the 05-series reference/com_flat.bin, whose RTC
+    advance is a different function) -- per-image discipline, like the timewindow
     profiles."""
+    sim = _factory()
+    sim.configure_rtc(FAC_CALENDAR, FAC_RTC_TICK, FAC_RTC_PRESCALE, calls_per_sec=2)
     try:
-        got = _rtc_walk((0, 0, 0, 1, 1, 24), 1)
+        sim.set_rtc(0, 0, 0, 1, 1, 24)
+        sim.advance_rtc(1)
     except Exception as e:                       # wrong image can fault the call
         raise Skip("RTC tick probe faulted (not ceaa-07xx?): %s" % e)
-    if got != (1, 0, 0, 1, 1, 24):
+    if sim.get_rtc() != (1, 0, 0, 1, 1, 24):
         raise Skip("RTC tick 0x%08x did not advance 0x%08x by 1 s -- image is not "
-                   "ceaa-07xx_vE_260214 (this clock test is 07-series-specific, "
-                   "docs/36)" % (FAC_RTC_TICK, FAC_CALENDAR))
+                   "ceaa-07xx_vE_260214 (07-series-specific, docs/36)"
+                   % (FAC_RTC_TICK, FAC_CALENDAR))
+    return sim
 
 
 def test_rtc_calendar_walks_forward():
     """Walk the factory RTC forward across second/minute/hour/day/month/year and
-    leap boundaries and confirm the calendar accumulates correctly (the carry
-    chain + days-in-month + leap year). The factory image is the oracle; this is
-    the clock foundation the energy daily-rollover (docs/36) will build on.
+    leap boundaries (the shared RTC_WALK contract) and confirm the calendar
+    accumulates correctly. The factory image is the oracle; our firmware is held
+    to the same vectors in test_arm_sim_self_only.py.
 
-    07-series-specific (addresses in docs/36); SKIPs on other images. Confirmed
-    green on ceaa-07xx_vE_260214."""
-    _require_07_rtc()
-    # (label, start (s,min,hr,day,mon,yr), +seconds, expected (s,min,hr,day,mon,yr))
-    CASES = [
-        ("tick +1s",            (0, 0, 0, 1, 1, 24),   1, (1, 0, 0, 1, 1, 24)),
-        ("minute carry",        (58, 0, 0, 1, 1, 24),  4, (2, 1, 0, 1, 1, 24)),
-        ("hour carry",          (58, 59, 0, 1, 1, 24), 4, (2, 0, 1, 1, 1, 24)),
-        ("day carry",           (58, 59, 23, 1, 1, 24),4, (2, 0, 0, 2, 1, 24)),
-        ("30-day month -> next",(58, 59, 23, 30, 4, 24),4,(2, 0, 0, 1, 5, 24)),
-        ("non-leap Feb (2023)", (58, 59, 23, 28, 2, 23),4,(2, 0, 0, 1, 3, 23)),
-        ("leap Feb (2024)",     (58, 59, 23, 28, 2, 24),4,(2, 0, 0, 29, 2, 24)),
-        ("leap Feb29 -> Mar",   (58, 59, 23, 29, 2, 24),4,(2, 0, 0, 1, 3, 24)),
-        ("year roll",           (58, 59, 23, 31, 12, 24),4,(2, 0, 0, 1, 1, 25)),
-    ]
-    for label, start, secs, exp in CASES:
-        got = _rtc_walk(start, secs)
-        assert got == exp, ("RTC walk %s: from %r +%ds = %r, expected %r"
+    07-series-specific (addresses in docs/36); SKIPs on other images."""
+    sim = _factory_rtc()
+    for label, start, secs, exp in RTC_WALK:
+        sim.set_rtc(*start)
+        sim.advance_rtc(secs)
+        got = sim.get_rtc()
+        assert got == exp, ("factory RTC walk %s: from %r +%ds = %r, expected %r"
                             % (label, start, secs, got, exp))
 
 
