@@ -136,7 +136,7 @@ hardware the dongle can never reach us. The factory serves the dongle on
   UART5, and the README "Port note" plus docs/04 are updated.
 
 ### T02 — Run the factory's RTOS tasks in the simulator
-**Status:** `[ ]` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
+**Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
 
 The factory's mode/relay loop (`sub_0801b3dc`) and the USART2 frame task
 (`sub_080259d8`) are **PendSV-switched RTOS tasks** that never get the CPU in
