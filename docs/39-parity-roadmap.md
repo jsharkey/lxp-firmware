@@ -287,7 +287,7 @@ and [`wiring/ARM-USART2-safety`](wiring/ARM-USART2-safety.md).
 - Record `rx-timeout → fault` behaviour for T08.
 
 ### T06 — Operating-state classifier + fault/warning composer (`sub_0801b480`)
-**Status:** `[ ]` · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
+**Status:** `[~] claude 2026-11-06` · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
 
 [`docs/22`](22-arm-dsp-core-split.md) says the ARM's mode module is a
 **classifier, not a power FSM**:
