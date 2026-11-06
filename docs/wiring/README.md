@@ -115,7 +115,7 @@ Panel keys, relays, fans and indicators are driven directly on ARM GPIOs. The
 | Power-path relays | PA12+PB3, PB2+PC6, PC5, PD11 | 4 logic fns; gated by operating mode + grid status; silkscreen identity inferred — see docs/18 | ✔ pins / ~ role |
 | Cooling fans | PE9/PE11/PE13/PE14 | TIM1 CH1–4 PWM (remap→PE) | ✔ AF / ~ peer |
 | Buzzer | PC7 | TIM3 CH2 PWM (remap) | ~ |
-| Aux PWM | PD15 | TIM4 CH4 — fan / LCD backlight | ~ |
+| **Front-panel LED ring** | PD15 | **TIM4 CH4 PWM + DMA1-Ch7** serial addressable-LED (WS2812-family) data line; colour/pattern from IR_STATE (IR 0) — see [`docs/40`](../40-led-ring.md). *(not a fan / LCD backlight)* | ✔ pin / ~ chip |
 | 1-/2-wire bus | PB6 (out) + PB7 (in/out) | bit-banged; temp sensor / share line | ~ |
 | Status LED / heartbeat | PB1, PD10, PD14 | indicator / run line / LCD-backlight-or-strobe | ~ |
 

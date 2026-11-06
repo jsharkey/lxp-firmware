@@ -26,6 +26,12 @@ The same `IR_STATE` value also **gates the power-path relays** inside the ARM
 (run-enable follows the mode) — see [`docs/18`](../../18-power-path-relays.md). That
 is an internal consumer, not something the dongle sees.
 
+It also **drives the front-panel LED ring's colour**: the mapper at `0x08016fcc`
+reads this operating-mode byte (`0x2000d0e4+0xa0`) plus the two companion
+extended-status dwords (`+0x98`/`+0x9c`) and selects the ring's mode/colour — a
+running state shows the green pattern, a warning the yellow/amber one. Full chain
+(PD15 / TIM4-CH4 PWM+DMA serial LED) in [`docs/40`](../../40-led-ring.md).
+
 ## Operating modes (spec Table 9)
 
 | code | mode | code | mode |

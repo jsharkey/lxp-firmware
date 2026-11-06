@@ -68,7 +68,7 @@ confirmed by other docs; others follow the standard pin-out.**
 | PA4, PC4 | SPI1 chip-selects (GPIO) | two SPI1 devices — **LCD controller + config EEPROM/flash** | high CS / med peer |
 | PE9 / PE11 / PE13 / PE14 | TIM1 CH1–4 PWM (remap→PE) | **cooling fans** (HMI "Fan1–5 …") | high AF / med peer |
 | PC7 | TIM3 CH2 PWM (remap) | single PWM — **buzzer** candidate | high AF / low peer |
-| PD15 | TIM4 CH4 PWM (remap) | single PWM — aux (fan / LCD backlight) | high AF / low peer |
+| PD15 | TIM4 CH4 PWM (remap) | **front-panel LED ring** — TIM4-CH4 PWM + DMA1-Ch7 (TIM4_UP) serial addressable-LED (WS2812-family) data line, colour from IR_STATE; see [`docs/40`](40-led-ring.md) (corrects the earlier "aux fan / LCD backlight" read) | high AF / ~ peer |
 
 PE8/PE10/PE12/PE15 sit on TIM1's complementary/break pins but are configured as
 **GPIO inputs**, not used as TIM1 outputs.
