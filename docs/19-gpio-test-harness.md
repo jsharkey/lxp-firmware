@@ -224,6 +224,49 @@ cost). Modelling that (and any siblings) is a loose end, not a blocker. **The
 relay parity tests below don't depend on any of this** — they run the factory's
 real relay code directly with seeded state.
 
+### T02 in progress — feeding the peer links on the wire (hand-off)
+
+The scheduler running (above) is half of [`docs/39`](39-parity-roadmap.md) T02.
+The other half is driving the **peer-ingest tasks** black-box so a test can feed
+raw bytes and watch IRs change (no internal-function call). Findings so far,
+against `reference/com_flat.bin` (ceaa-07xx) under `attach_config_flash()` +
+`enable_rtos()`:
+
+- **USART2 RX is RXNE-interrupt-driven, *not* DMA.** At the idle after boot
+  `USART2->CR1` (`0x4000440C`) = `0x20AC` (UE|TE|RE|**RXNEIE**|TXEIE) and
+  `USART2->CR3` (`0x40004414`) = 0 (**no DMAR**). So a harness feeds it exactly
+  like `tests/arm_sim_modbus.py` feeds the dongle on USART3: set `SR.RXNE`, hand
+  the next byte on the `DR` read, and `pend_irq(16+38)` (USART2 vector 54) while
+  bytes remain. (This **corrects** the "factory uses DMA" note on the T05/T02
+  roadmap cards — our RXNE driver will *match* the factory, not merely substitute
+  for DMA.)
+- **The byte path.** The USART2 RX ISR (DR read at `0x080369fa`, via
+  `FUN_0801bb0e`) pushes 12-byte `{byte, periph=0x40004400, flags}` items onto a
+  FreeRTOS queue at `0x2000df7c` and yields (ready bitmask `0x2000da16`, selector
+  `0x0801c544`). A consumer in `0x0801b6xx–0x0801bexx` drains it; a sibling loop
+  there is the **comms-loss supervisor** (counts missing-frame ticks to
+  thresholds 3/100 → E017, `0x8019fb0` is its "frame ready?" probe, which stays
+  0 while no frame assembles).
+- **Open crux.** Feeding a candidate EG4 "type-1" frame
+  (`[0]=0x49 [1]=1 [2:3]=len BE [4]=mode [5:9]=fault …`, CRC-16/MODBUS) gets the
+  bytes queued, but the consumer only **occasionally and non-deterministically**
+  writes the staging buffer `0x20008084` (which `sub_08024d74` reads, docs/30),
+  and the validator/distributor `sub_080259d8`/`sub_08024d74` and classifier
+  `sub_0801b480` have **not** yet been driven, so `BANK` (`0x20009e54`) does not
+  change. A length/CRC/SOF sweep (SOF∈{0x49,0xA5,none} × len × CRC{lsb,msb,none})
+  found no accepted format, and `CR1.IDLEIE`=0 rules out IDLE-line framing. The
+  remaining fact to nail is the consumer's **frame-completion condition** (what
+  `0x8019fb0` waits on / how bytes advance to a validated frame) — single-step
+  the consumer from a `0x2000df7c` read. Once a frame reaches `BANK`, a *running*
+  mode byte should flow classifier→`IR_STATE`→relay→**PC6**, giving the second
+  T02 demo for free.
+- **Relay/PC6 (the T02 state→PC6 demo) is gated on the same root cause.** The
+  relay task's PC6 output **evolves on its own** over emulated time and is
+  multi-input (state + DSP/fault + debounce + config), so injecting a lone
+  "state" byte does not control it; the classifier never runs (no USART2
+  telemetry), so `IR_STATE` is never set from the bank. Cracking the USART2
+  ingest unblocks both.
+
 ### The relay parity tests (target-specific: shared contract, per-image drive)
 
 The relays can't be reached as a pure black box: the factory drives them from an

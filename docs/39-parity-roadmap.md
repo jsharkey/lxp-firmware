@@ -139,6 +139,17 @@ hardware the dongle can never reach us. The factory serves the dongle on
 ### T02 — Run the factory's RTOS tasks in the simulator
 **Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
 
+> **Progress (2026-11-06, docs/19 §"T02 in progress").** Scheduler + relay task
+> run under `enable_rtos()` + `attach_config_flash()` (already proven). The
+> USART2 peer-ingest path is mapped: **RXNE-interrupt-driven (not DMA)**, fed via
+> the `ModbusDongle` pattern on vector `16+38`; bytes queue at `0x2000df7c` and a
+> `0x0801b6xx` consumer drains them. **Still open:** the consumer's frame-
+> completion condition — a fed type-1 frame does not yet reliably assemble to
+> staging `0x20008084` / fire `sub_080259d8` / update `BANK 0x20009e54`, so
+> neither "USART2 bytes → IR" (a) nor "state → PC6" (b, gated on the same
+> classifier) is green yet. Full recipe + the one remaining unknown are in
+> docs/19; that is the continuation point.
+
 The factory's mode/relay loop (`sub_0801b3dc`) and the USART2 frame task
 (`sub_080259d8`) are **PendSV-switched RTOS tasks** that never get the CPU in
 the harness ([`docs/19`](19-gpio-test-harness.md) §"The factory runs a
@@ -224,7 +235,10 @@ and [`wiring/ARM-USART2-safety`](wiring/ARM-USART2-safety.md).
 - **Ours first is OK here.** A host-tested parser (`src/safety/safety_rx.c`)
   with frames built from the docs/33 layout: good CRC, bad CRC, truncated,
   unknown tag, resync after garbage. Add a USART2 driver (RS-485, check docs/16
-  for the DE pin). The factory uses DMA; we need not.
+  for the DE pin). **Correction (T02 harness RE, docs/19):** the factory USART2
+  RX is **RXNE-interrupt-driven, not DMA** (`CR1=0x20AC` RXNEIE set, `CR3` DMAR
+  clear), so our RXNE driver matches it; a harness feeds it like `ModbusDongle`
+  feeds USART3, pending vector `16+38`.
 - **Oracle:** once T02 lands, a common sim test feeds the **same raw bytes** to
   both images and compares the served IRs. Until then, the existing bank-level
   common test is the oracle for the serve half.
