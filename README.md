@@ -34,6 +34,8 @@ Communication MCU.
 
 ## Status: bootstrapping (reverse-engineering the spec)
 
+> **Parity work queue:** the prioritised, parallelisable task list toward factory-behaviour parity (oracle-first TDD, micro vs simulator tests, claim protocol) is [`docs/38-parity-roadmap.md`](docs/38-parity-roadmap.md). Claim a task there before starting.
+
 This is an early-stage effort. There is a verified understanding of the target
 and a recovered data model — but **not yet** a buildable replacement firmware.
 Honest picture of where things stand:
