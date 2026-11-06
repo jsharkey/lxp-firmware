@@ -146,8 +146,12 @@ static bool hmi_write(uint16_t r, uint16_t v) {
     }
     return false;
 }
+/* Register access only; no display backend yet. The front-panel display is the
+ * graphic LCD (lcd_tft) — the menu's on-screen rendering is future work there, so
+ * draw_row/clear are NULL (hmi_render is a safe no-op) while the keypad still
+ * drives the recovered navigation state machine. */
 static const hmi_io_t g_hmi_io = {
-    hmi_read, hmi_write, hmi_lcd_draw_row, hmi_lcd_clear, 4
+    hmi_read, hmi_write, NULL, NULL, 0
 };
 static hmi_t g_hmi;
 
@@ -192,22 +196,21 @@ int main(void) {
     relay_set_override(0, 0);           /* relays idle until a mode/override drives them */
     relay_set_mode(STATE_STANDBY);      /* run-enable relay follows the operating mode */
 
-    hmi_lcd_init();
     hmi_keypad_init();
     hmi_init(&g_hmi, &hmi_root_menu, &g_hmi_io);
-    hmi_render(&g_hmi);
 
     /* Bring up the real graphic LCD (docs/28) and post a "hello world" — proof
      * our firmware drives the same panel as the factory image, in the same wire
-     * format (the HMI simulator renders this identically). Done after the comms
-     * GPIO is configured so it doesn't reorder their bring-up. */
+     * format (the HMI simulator renders this identically). This is the front
+     * panel's only display; there is no character LCD on this hardware. Done
+     * after the comms GPIO is configured so it doesn't reorder their bring-up. */
     lcd_tft_init();
     lcd_text(LCD_PANEL_X0, 24, "Hello World!");
 
     for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
     dsp_push_init(&g_dsp);
 
-    uint32_t last_render = 0, last_dsp = 0, last_bms = 0, last_rtc = 0;
+    uint32_t last_dsp = 0, last_bms = 0, last_rtc = 0;
     for (;;) {
         if ((uint32_t)(g_ticks - last_rtc) >= 1000) {   /* 1 Hz wall-clock tick */
             last_rtc = g_ticks;
@@ -243,12 +246,11 @@ int main(void) {
                 g_rt.input_reg[IR_ACFIRST_STATUS] &= (uint16_t)~IR_ACFIRST_WIN_ACTIVE;
         }
 
+        /* Front-panel keys drive the recovered menu navigation. Rendering the
+         * menu on the graphic LCD (lcd_tft) is future work; until then hmi_render
+         * has no display backend (g_hmi_io), so we just advance the state. */
         int key = hmi_keypad_poll();
-        if (key >= 0) { hmi_key(&g_hmi, (hmi_key_t)key); hmi_render(&g_hmi); }
-        else if ((uint32_t)(g_ticks - last_render) >= 250) {  /* refresh live values */
-            last_render = g_ticks;
-            hmi_render(&g_hmi);
-        }
+        if (key >= 0) hmi_key(&g_hmi, (hmi_key_t)key);
 
         /* Push the next DSP config block (~one per 20 ms => full 8-block
          * snapshot ~6x/s). TODO: fill g_dsp_src timestamp from the RTC. */

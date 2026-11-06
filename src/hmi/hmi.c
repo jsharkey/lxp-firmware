@@ -119,6 +119,11 @@ void hmi_key(hmi_t *h, hmi_key_t key)
 
 void hmi_render(hmi_t *h)
 {
+    /* No display backend wired (e.g. only the keypad is connected): nothing to
+     * draw. The engine still navigates via hmi_key(); a renderer plugs in by
+     * supplying draw_row. */
+    if (!h->io->draw_row) return;
+
     const hmi_menu_t *m = cur(h);
     uint8_t rows = h->io->rows ? h->io->rows : 4;
     if (h->io->clear) h->io->clear();

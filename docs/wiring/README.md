@@ -119,10 +119,11 @@ Panel keys, relays, fans and indicators are driven directly on ARM GPIOs. The
 | 1-/2-wire bus | PB6 (out) + PB7 (in/out) | bit-banged; temp sensor / share line | ~ |
 | Status LED / heartbeat | PB1, PD10, PD14 | indicator / run line / LCD-backlight-or-strobe | ~ |
 
-> The firmware's own HMI stand-in (a 20×4 HD44780 over a bit-banged PCF8574 I²C
-> backpack on **PE0/PE1**) is a **reimplementation convenience, not factory
-> wiring** — the factory panel is the GPIOB bus in [`ARM-LCD.md`](ARM-LCD.md).
-> See that doc's "Reimplementation stand-in" section.
+> The reimplementation's front-panel display is the GPIOB graphic LCD in
+> [`ARM-LCD.md`](ARM-LCD.md) (`src/hmi/lcd_tft.c`). An earlier 20×4 HD44780 I²C
+> character-LCD stand-in on **PE0/PE1** (a reimplementation convenience, never
+> factory wiring) was removed once that panel was decoded — the hardware has no
+> character LCD and no display I²C.
 
 ## Cross-cutting corrections (read before trusting an old numbered doc)
 
@@ -141,8 +142,7 @@ table cell even where a correction note follows.
   The "standard Modbus / func-3+SN" reading described the *dongle* channel.
   See [`ARM-USART3.md`](ARM-USART3.md).
 - **The factory LCD is a bit-banged GPIOB bus, not SPI1.** SPI1 is the config
-  flash. `docs/27` still calls the panel "a SPI1 controller" — stale. See
-  [`ARM-LCD.md`](ARM-LCD.md).
+  flash. See [`ARM-LCD.md`](ARM-LCD.md) and [`docs/28`](../28-factory-hmi.md).
 - **DSP SCI-A is not the telemetry port to the ARM.** SCI-A carries an unrelated
   bulk dump; the ARM-facing DSP telemetry is SCI-B (= USART3). See
   [`DSP-SCI-A.md`](DSP-SCI-A.md).

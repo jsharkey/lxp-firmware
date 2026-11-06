@@ -89,10 +89,12 @@ const char *hmi_format_value(const hmi_item_t *it, uint16_t raw, char *buf, size
 /* The reimplementation's root menu (src/hmi/hmi_model.c). */
 extern const hmi_menu_t hmi_root_menu;
 
-/* ---- HMI port (src/hmi/hmi_port.c): LCD + keypad hardware ---- */
-void hmi_lcd_init(void);
-void hmi_lcd_clear(void);
-void hmi_lcd_draw_row(uint8_t row, const char *text, bool sel);
+/* ---- Front-panel keypad (src/hmi/keypad.c) ----
+ * The physical panel's display is the monochrome graphic LCD (src/hmi/lcd_tft.c,
+ * docs/28); the menu's on-screen rendering belongs there. The navigation engine
+ * above stays hardware-agnostic: it draws through the hmi_io_t callbacks, so a
+ * display backend plugs in without touching the engine (a NULL draw_row makes
+ * hmi_render a no-op — headless but valid, as when only the keypad is wired). */
 void hmi_keypad_init(void);
 int  hmi_keypad_poll(void);   /* returns an hmi_key_t, or -1 if no key */
 

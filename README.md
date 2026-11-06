@@ -59,7 +59,7 @@ Honest picture of where things stand:
 - [x] **Interrupt-driven UART** — RX/TX ring buffers serviced from the USART3 ISR, mirroring the factory's interrupt-driven UART mechanism (USART3 is its only vectored UART — the DSP link); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
 - [x] **Factory graphic HMI runs in the emulator** — reverse-engineered the factory LCD (a **240×160 monochrome MIPI-DCS LCD bit-banged 4-wire on GPIOB** (1bpp, 8 px/byte): PB12 SCLK / PB13 SDA / PB14 DC / PB15 /CS — *not* SPI1, which is the config flash; corrects the `docs/16` "status-LED" guess) and modelled it, so the factory image's **own display code** paints its real **overview** and **Common settings** screens under the harness, navigated by the real front-panel keys. On-screen app (`make factory-hmi`), ~18 s boot / ~6 s per key after a harness speed-up. The simulator is **firmware-agnostic** (`make hmi-sim [FIRMWARE=App.hex]`): with no image it runs the open-source build, and our firmware now drives the **same** panel in the same wire format (`src/hmi/lcd_tft.c`), posting a "Hello World!" as the first milestone toward a drop-in replacement. See [`docs/28-factory-hmi.md`](docs/28-factory-hmi.md)
-- [x] **HMI runs on screen** — the firmware's LCD + keypad **port implemented** (20×4 HD44780 over a bit-banged PCF8574 I²C backpack; keys on the factory pins PA8/PA11/PC8/PC9) and driven end-to-end in the emulator by an **interactive app** (`make hmi`): it renders what the running firmware draws and feeds the four front-panel keys as on-screen buttons via the real GPIOs. Host-tested key→LCD path (`tests/test_hmi_panel.py`). The factory SPI1 panel protocol is still undecoded (`docs/16`); this clean, observable panel stands in until then (see [`docs/27-hmi-emulator-app.md`](docs/27-hmi-emulator-app.md))
+- [x] **Front-panel keypad implemented** — debounced keys on the factory pins PA8/PA11/PC8/PC9 (`src/hmi/keypad.c`) driving the recovered menu navigation. An earlier 20×4 HD44780-over-PCF8574 I²C character-LCD stand-in (and its on-screen app) was **removed** once the real panel was decoded: the hardware has **no** character LCD — the display is the monochrome graphic LCD driven by `src/hmi/lcd_tft.c` (the item above). Rendering the menu on that panel is the remaining HMI work (`docs/06`)
 - [ ] Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
 - [x] Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
 - [~] Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — **dongle=UART5, DSP=USART3 (SCI-B), USART2=redundant/safety CPU, BMS=CAN1 confirmed**; meter/MPPT/console (USART1/UART4) still open. The external dongle's own firmware (ESP32-C3 RS-485 **master** datalogger) pins the dongle to **UART5** and rules out USART3 ([`docs/26`](docs/26-dongle-firmware.md)). **USART2's peer is the safety CPU** (the ARM reports E027 straight out of its frame; [`docs/30`](docs/30-safety-cpu-arm-handoff.md)); its telemetry bank format + dongle exposure are mapped in [`docs/33`](docs/33-usart2-telemetry-bank.md), and the FW-version registers (which chip each is) in [`docs/32`](docs/32-firmware-version-registers.md)
@@ -113,17 +113,15 @@ make VARIANT=18kpv   # EG4 18kPV   (App over ~50 KB bootloader, vectors @0x0800C
 make VARIANT=6000xp  # EG4 6000XP  (App over ~20 KB bootloader, vectors @0x08005000)
 make test            # host-side unit tests (no hardware)
 make test-sim        # GPIO/HMI behaviour tests on the Unicorn harness
-make hmi             # interactive on-screen HMI (LCD + keys) in a browser
 make hmi-sim         # graphic-HMI simulator (open build; FIRMWARE=App.hex for a vendor image)
 make factory-hmi     # the simulator on the factory image specifically (docs/28)
 ```
 
-`make hmi` boots the firmware in the emulator and serves its HMI — a 20×4
-character LCD plus the four front-panel keys — at `http://localhost:8080/`
-(`PORT=…` to change). Every keypress drives the real key GPIOs; the firmware
-renders the new screen over I²C to a modelled LCD. See
-[`docs/27-hmi-emulator-app.md`](docs/27-hmi-emulator-app.md). Needs
-`pip install unicorn`.
+`make hmi-sim` boots the firmware in the emulator and serves its graphic LCD plus
+the four front-panel keys at `http://localhost:8090/` (`HMI_PORT=…` to change).
+Every keypress drives the real key GPIOs; the firmware draws to the same panel the
+factory image drives (`src/hmi/lcd_tft.c`). See
+[`docs/28-factory-hmi.md`](docs/28-factory-hmi.md). Needs `pip install unicorn`.
 
 `VARIANT` selects the linker script (`ldscripts/stm32f103ve.ld` vs
 `ldscripts/stm32f103_18kpv_app.ld`) and defines the active variant; both model
@@ -149,7 +147,7 @@ src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleto
 src/modbus/  Modbus-RTU slave engine + USART3 port
 src/uart/    interrupt-driven USART3 driver (RX/TX rings)
 src/can/     CAN1 port (polled RX, as the factory) + BMS frame decoder
-src/hmi/     LCD/keypad menu engine + menu model + port (I²C 20×4 HD44780)
+src/hmi/     menu engine + menu model + keypad (keys) + graphic-LCD driver (lcd_tft)
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
 ldscripts/   stm32f103ve.ld (12000XP) + *_18kpv_app.ld + *_6kxp_app.ld (App builds)
 tests/       host unit tests (make test)

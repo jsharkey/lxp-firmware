@@ -27,10 +27,7 @@ deps with `pip install capstone pyelftools`.
 | `emu_acfirst.py` | AC-First window→DSP experiment: sweep the RTC, diff RAM to show the windows are evaluated ARM-side, not pushed (`docs/08`) |
 | `emu_regrange.py` | drive a Modbus register-group read, dump reg→frame-offset (`docs/08` regs 64-89) |
 | `emu_gpio_acfirst.py` | capture GPIO level-drive writes in vs out of the AC-First window → tests the "ARM toggles a relay directly" theory (`docs/14`) |
-| `panel.py` | **HMI LCD model**: decodes the firmware's bit-banged I²C → PCF8574 → HD44780 stream into a 20×4 text framebuffer, plus front-panel key injection (`docs/27`) |
-| `hmi_engine.py` | boots our firmware in `arm_sim`, attaches `panel`, seeds telemetry, and drives the real `hmi_*` functions (press keys / read screen) — the engine behind the app + `tests/test_hmi_panel.py` (`docs/27`) |
-| `hmi_app.py` | **interactive on-screen HMI**: runs the firmware in the emulator and serves the LCD + 4 keys in a browser (`make hmi`, `docs/27`) |
-| `tft.py` | **factory LCD model**: decodes the factory image's bit-banged 4-wire TFT stream (GPIOB PB12–15) unpacking 8 px/byte into the 240×160 monochrome panel image (`docs/28`) |
+| `tft.py` | **graphic LCD model**: decodes the bit-banged 4-wire TFT stream (GPIOB PB12–15) unpacking 8 px/byte into the 240×160 monochrome panel image — models the panel both the factory image and our `lcd_tft.c` drive (`docs/28`) |
 | `factory_hmi.py` | boot the **factory** image through its RTOS until the display task paints, read the screen, press the real keys to navigate its menus (`docs/28`) |
 | `factory_hmi_app.py` | **the factory graphic HMI on screen**, driven by the real image executing in the emulator (`make factory-hmi`, `docs/28`) |
 | `dongle_fw.py` | **dongle firmware analyzer** (ESP32-C3 / RISC-V): ESP-IDF image header, segments, app descriptor, RV32 disasm, baud + string xrefs (`docs/26`) |

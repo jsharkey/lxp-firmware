@@ -1,8 +1,11 @@
 # HMI (LCD + keypad menu system)
 
-Status: **architecture reverse-engineered; a faithful data-driven module built
-with host-tested navigation.** Full menu population + the LCD/keypad pin map are
-the remaining work (the latter needs the schematic).
+Status: **architecture reverse-engineered; a faithful data-driven navigation
+engine built with host-tested navigation; the front-panel keypad implemented.**
+Remaining work: full menu population, and rendering the menu on the real display
+— the monochrome graphic LCD (`src/hmi/lcd_tft.c`, `docs/28`). There is **no**
+character LCD on this hardware; an earlier 20×4 HD44780 stand-in was removed once
+the real panel was decoded.
 
 ## How the stock HMI works (RE)
 
@@ -35,13 +38,13 @@ Same shape, cleaned up and hardware-abstracted:
 
 | File | Role |
 |---|---|
-| `include/inv/hmi.h` | item/menu types, navigation API, LCD+keypad port interface |
+| `include/inv/hmi.h` | item/menu types, navigation API, the display/register `hmi_io_t` interface, keypad decls |
 | `src/hmi/hmi.c` | navigation engine: move / enter-submenu / edit-value / action / back; scroll; clamp; commit vs cancel |
 | `src/hmi/hmi_model.c` | the menu tree (data), bound to `HR_*`/`IR_*` registers with ranges from the protocol doc |
-| `src/hmi/hmi_port.c` | LCD + keypad port — 20×4 HD44780 over a PCF8574 I²C backpack (bit-banged), debounced keys on PA8/PA11/PC8/PC9 (`docs/27`) |
-| `include/inv/hmi_panel.h` | panel wiring shared by the firmware + the emulator model |
+| `src/hmi/keypad.c` | front-panel keypad — debounced keys on PA8/PA11/PC8/PC9 |
+| `include/inv/keypad.h` | keypad pin map |
+| `src/hmi/lcd_tft.c` | the front panel's display: monochrome graphic LCD, bit-banged 4-wire on GPIOB (`docs/28`) |
 | `tests/test_hmi.c` | host tests (`make test`, 14 checks) |
-| `tests/test_hmi_panel.py` | end-to-end on the emulator: keys → LCD text + register writes (`make test-sim-ours`) |
 
 Item kinds: `HMI_INFO` (read-only reg display), `HMI_U16` (ranged numeric edit),
 `HMI_ENUM` (choice list), `HMI_SUBMENU`, `HMI_ACTION`. Editable items read+write
@@ -58,12 +61,14 @@ enter/commit/cancel edit, min/max clamp, submenu push/pop, action callback).
       `modbus_map.h` (the model is currently a representative subset).
 - [ ] Item types/choices that need RE (enum option lists, per-item scale) —
       confirm against the stock menu-builder tables.
-- [x] `hmi_port.c`: LCD driver + debounced keypad scan — done for a **20×4
-      HD44780 over a PCF8574 I²C backpack** (bit-banged), keys on the factory
-      key pins PA8/PA11/PC8/PC9. Runs end-to-end in the emulator with an
-      on-screen app (`make hmi`, `docs/27`). The *factory* SPI1 panel protocol
-      is still undecoded (`docs/16`); byte-matching it is a non-goal, so this
-      clean, observable panel stands in until the schematic pins the real one.
+- [x] `keypad.c`: debounced keypad scan — keys on the factory key pins
+      PA8/PA11/PC8/PC9. (An earlier 20×4 HD44780-over-PCF8574 I²C character-LCD
+      stand-in was removed once the real panel was decoded: the physical front
+      panel has **no** character LCD, only the monochrome graphic LCD now driven
+      by `src/hmi/lcd_tft.c` — `docs/28`.)
+- [ ] Render the menu on the graphic LCD (`lcd_tft`): the navigation engine is
+      ready — it draws through the `hmi_io_t` callbacks — and needs a
+      `draw_row`/`clear` backend that paints onto the graphic panel.
 - [ ] Settings persistence (EEPROM/flash) on commit; range validation shared
       with the Modbus write path.
 - [ ] Multi-byte/string items (SN, FW, time) rendering.

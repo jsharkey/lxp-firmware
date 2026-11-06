@@ -8,9 +8,10 @@ LCD reconstructs the picture, and the four front-panel keys drive the firmware's
 own menu navigation. Both the **overview** and the **Common settings** screens
 render pixel-faithfully and are reachable by key.
 
-This is distinct from the open-firmware HMI (`docs/27`), which is our own 20×4
-character-LCD reimplementation. Here nothing is reimplemented: every pixel is the
-factory image's draw code executing.
+This is distinct from the open-firmware HMI (`docs/06`), our own reimplementation
+— whose display driver (`src/hmi/lcd_tft.c`) drives this **same** graphic panel in
+the same wire format (currently a "hello world" bring-up). Here nothing is
+reimplemented: every pixel is the factory image's draw code executing.
 
 ## The display hardware (reverse-engineered)
 
