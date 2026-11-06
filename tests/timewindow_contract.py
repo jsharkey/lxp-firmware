@@ -6,14 +6,17 @@ valuable but slow, and it gets slower as the harness grows. This module backs a
 *narrow* alternative: exercise ONLY the "is the clock inside an AC-First window
 now?" logic, two ways, against ONE set of vectors:
 
-  * OursBackend    -- calls our compiled pure function acfirst_window_active()
-                      (src/sched/acfirst.c) via ctypes. No emulator, no ARM
-                      toolchain: the same host `cc` that `make test` already uses.
+  * OursBackend    -- calls our firmware's acfirst_window_active() under Unicorn,
+                      resolved by SYMBOL from build/firmware.elf and invoked with
+                      the real ARM calling convention -- the SAME strategy as the
+                      factory backend. Needs unicorn + a built firmware (`make`).
   * FactoryBackend -- calls just the factory ARM evaluator in Unicorn, with only
                       the RTC + window registers seeded (no boot). This is the
                       same isolated-call recipe as tools/emu_acfirst.py, reduced
-                      to a function. Needs `pip install unicorn` and a factory
-                      image; skips cleanly without them.
+                      to a function. Needs unicorn and a factory image.
+
+Each backend skips cleanly when its prerequisites are absent. (Host-only,
+toolchain-free coverage of the pure function lives in tests/test_acfirst.c.)
 
 The test body (tests/test_timewindow.py) is identical for both backends -- it
 asserts each VECTOR against whichever backend, and (when both are available)
@@ -148,37 +151,62 @@ def flat_regs(windows):
     return out
 
 
-# --- backend: our firmware (ctypes into the real compiled acfirst.c) --------
+# --- backend: our firmware, run under Unicorn by SYMBOL ---------------------
+# The SAME strategy as the factory backend: load the built ARM image and call one
+# function in isolation. We call acfirst_window_active() through the real ARM
+# calling convention (r0 = regs pointer, r1 = n windows, r2 = now_min) and read
+# the boolean from r0 -- so our code is exercised exactly as the firmware runs it,
+# not as host x86. The function is resolved by SYMBOL from the ELF (not a
+# hard-coded address, which shifts between builds). Needs unicorn + a built
+# firmware (build/firmware.bin + .elf; run `make`).
 class OursBackend:
-    name = "ours (acfirst.c via ctypes)"
-
-    def __init__(self, build_dir=None):
-        import ctypes
-        self.ctypes = ctypes
-        build_dir = build_dir or os.path.join(ROOT, "build")
-        os.makedirs(build_dir, exist_ok=True)
-        so = os.path.join(build_dir, "libacfirst.so")
-        src = os.path.join(ROOT, "src", "sched", "acfirst.c")
-        # (re)build if missing or stale
-        if (not os.path.exists(so)) or os.path.getmtime(so) < os.path.getmtime(src):
-            cc = os.environ.get("HOSTCC", "cc")
-            subprocess.run(
-                [cc, "-std=c11", "-Wall", "-Wextra", "-fPIC", "-shared",
-                 "-I" + os.path.join(ROOT, "include"), src, "-o", so],
-                check=True)
-        self.lib = ctypes.CDLL(so)
-        self.fn = self.lib.acfirst_window_active
-        self.fn.argtypes = [ctypes.POINTER(ctypes.c_uint16),
-                            ctypes.c_int, ctypes.c_uint16]
-        self.fn.restype = ctypes.c_bool
+    def __init__(self, bin_path=None, elf_path=None):
+        self.bin = bin_path or os.path.join(ROOT, "build", "firmware.bin")
+        self.elf = elf_path or os.path.join(ROOT, "build", "firmware.elf")
+        self.name = "ours (%s: acfirst_window_active by symbol)" % os.path.basename(self.bin)
+        self._Emu = None
+        self._addr = None
 
     def available(self):
+        if not (os.path.exists(self.bin) and os.path.exists(self.elf)):
+            return False
+        try:
+            import unicorn  # noqa: F401
+        except Exception:
+            return False
         return True
 
+    def _emu(self):
+        if self._Emu is None:
+            import sys
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            from emu import Emu
+            self._Emu = Emu
+        return self._Emu
+
+    def _sym(self, name):
+        if self._addr is None:
+            import shutil
+            nm = shutil.which("arm-none-eabi-nm") or shutil.which("nm") or "nm"
+            for line in subprocess.check_output([nm, self.elf], text=True).splitlines():
+                p = line.split()
+                if len(p) >= 3 and p[2] == name:
+                    self._addr = int(p[0], 16)   # Emu.call sets the Thumb bit
+                    break
+            if self._addr is None:
+                raise Skip("symbol %s not found in %s" % (name, self.elf))
+        return self._addr
+
     def active(self, windows, hour, minute):
+        if not self.available():
+            raise Skip("needs unicorn + a built firmware (run `make`): %s" % self.bin)
+        emu = self._emu()(self.bin, None)         # fresh sandbox per call
         regs = flat_regs(windows)
-        arr = (self.ctypes.c_uint16 * len(regs))(*regs)
-        return bool(self.fn(arr, len(windows), self.ctypes.c_uint16(now_minutes(hour, minute))))
+        scratch = 0x20008000                       # RAM scratch, below the stack
+        emu.wbytes(scratch, b"".join(struct.pack("<H", r & 0xFFFF) for r in regs))
+        r0 = emu.call(self._sym("acfirst_window_active"),
+                      args=(scratch, len(windows), now_minutes(hour, minute)))
+        return bool(r0 & 1)
 
 
 # --- backends: the factory window evaluators, called in isolation under Unicorn -

@@ -174,14 +174,15 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	exit $$rc
 
 # Focused time-window micro-tests (docs/35): a cheap complement to test-sim that
-# drives ONLY the AC-First window-vs-RTC evaluator -- no boot, no Modbus. The SAME
-# vectors run against our compiled acfirst.c (via ctypes) and the factory ARM
-# evaluator called in isolation under Unicorn. The "ours" half needs only host
-# `cc`; the factory half runs when an image + unicorn are present, else skips.
-# Leaves `test` and `test-sim` unchanged -- this is an additional, narrow suite.
-test-window: $(if $(HAVE_FACTORY),$(FACTORY_BIN))
-	@mkdir -p $(BUILD)
-	python3 tests/test_timewindow.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
+# drives ONLY the window-vs-RTC evaluators -- no boot, no Modbus. The SAME vectors
+# run against our firmware and the factory image, BOTH under Unicorn: our
+# acfirst_window_active() is resolved by symbol from the ELF and called in
+# isolation, and the factory evaluators (AC-First / AC-charge) are called the same
+# way. Needs `pip install unicorn`; the factory half also needs an image, else it
+# skips. Leaves `test` and `test-sim` unchanged -- this is an additional suite.
+# (Host-only, toolchain-free coverage of the pure function is in test_acfirst.c.)
+test-window: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN))
+	python3 tests/test_timewindow.py --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
 
 # Flashing helpers (uncomment the one matching your tooling). FLASH_ADDR follows
 # the selected VARIANT: 0x08000000 for the 12000XP, 0x0800C800 for the 18kPV App

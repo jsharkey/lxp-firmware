@@ -24,27 +24,34 @@ from **one set of vectors**:
                          │
       ┌──────────────────┴───────────────────┐
   OursBackend                            FactoryBackend
-  ctypes → our compiled                  Unicorn → the factory ARM
+  Unicorn → our firmware's               Unicorn → the factory ARM
   acfirst_window_active()                evaluator, called in isolation
-  (src/sched/acfirst.c)                  (only RTC + window regs seeded)
+  by SYMBOL from the ELF                 (only RTC + window regs seeded)
       │                                        │
       └──────────────→ test_timewindow.py ←────┘
              same VECTORS assert both; and that they AGREE
 ```
 
-- **OursBackend** compiles `src/sched/acfirst.c` into a tiny shared library and
-  calls `acfirst_window_active()` through `ctypes`. No emulator, no ARM
-  toolchain — just the host `cc` that `make test` already needs. This is the
-  TDD loop for our firmware: red until the pure function is right, green after.
-- **FactoryBackend** loads the factory image into Unicorn and calls **just the
-  evaluator function**, with only the RAM it reads seeded (the RTC bytes and the
-  window-config registers) — no boot, no scheduler, no peripherals beyond what
-  `tools/emu.py` already stubs. This is the exact isolated-call recipe proven in
+**Both backends use the same strategy** — load an ARM image into Unicorn
+(`tools/emu.py`) and call **one function in isolation**, no boot:
+
+- **OursBackend** loads our built firmware (`build/firmware.bin`), resolves
+  `acfirst_window_active` **by symbol** from `build/firmware.elf` (not a
+  hard-coded address — it shifts between builds), writes the window registers to
+  scratch RAM, and calls it through the real ARM calling convention (`r0` = regs
+  pointer, `r1` = n windows, `r2` = now-minutes), reading the verdict from `r0`.
+  So our code is exercised exactly as the firmware runs it, not as host x86.
+- **FactoryBackend** loads the factory image and calls **just the evaluator
+  function**, with only the RAM it reads seeded (the RTC bytes + the window-config
+  registers, plus any enable gate) — the isolated-call recipe proven in
   `tools/emu_acfirst.py`, reduced to a reusable function.
 
-Because both backends answer the same `active(windows, hour, minute) → bool`
-question, the test body is identical, and a third test asserts the factory
-**oracle** and our firmware agree on every vector.
+Because both answer the same `active(windows, hour, minute) → bool` question
+through the same mechanism, the test body is identical, and a third test asserts
+the factory **oracle** and our firmware agree on every vector.
+
+> Needs `pip install unicorn` and a built firmware (`make`); the host-only,
+> toolchain-free coverage of the pure function stays in `tests/test_acfirst.c`.
 
 ## How our firmware surfaces a testable interface
 
@@ -65,15 +72,18 @@ the relevant registers + the clock) is what makes a feature micro-testable.
 ## Running it
 
 ```bash
-make test-window                          # ours always; factory if available
+make test-window                          # builds our firmware, then runs both halves
 python3 tests/test_timewindow.py IMG.bin  # point at a factory flat .bin
 ```
 
-- The **ours** half runs everywhere and must stay green.
-- The **factory** half **skips cleanly** when `unicorn` is not installed or no
-  factory image is present (the image is proprietary and never committed — see
-  the README hash table). When it runs, `test_factory_agrees_with_ours` is the
-  payoff: a direct factory-vs-ours equivalence check on the narrow logic.
+- The **ours** half needs `unicorn` + a built firmware (`make`); `make
+  test-window` builds it first. It must stay green.
+- The **factory** half additionally needs a factory image (proprietary, never
+  committed — see the README hash table). When it runs,
+  `test_acfirst_factory_agrees_with_ours` / `..._acchg_...` are the payoff: a
+  direct factory-vs-ours equivalence check on the narrow logic.
+- Each half **skips cleanly** when its prerequisites are absent (so CI without
+  unicorn, the toolchain, or the image stays green rather than failing).
 
 This suite is **separate from `test` and `test-sim`** — it adds coverage without
 touching the existing ones.
