@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
                               SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
-                              RTC_WALK)
+                              RTC_WALK, check_live_clock)
 from arm_sim_runner import Skip, run_tests
 
 # Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
@@ -149,6 +149,15 @@ def test_rtc_calendar_walks_forward():
         got = sim.get_rtc()
         assert got == exp, ("ours RTC walk %s: from %r +%ds = %r, expected %r"
                             % (label, start, secs, got, exp))
+
+
+def test_rtc_is_live_clock():
+    """Drive our RTC forward and confirm a dongle read reflects it: our Modbus
+    time registers are a LIVE read of g_rtc, not an echo of the last write (the
+    shared check_live_clock contract; src/rtc/rtc.c + mb_rd_hold)."""
+    sim = _ours()
+    sim.configure_rtc(sim.sym("g_rtc"), "rtc_tick", None, calls_per_sec=1)
+    check_live_clock(sim)
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------

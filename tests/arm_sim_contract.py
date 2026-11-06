@@ -108,3 +108,39 @@ RTC_WALK = [
     ("leap Feb 29 -> Mar",   (58, 59, 23, 29, 2, 24),4, (2, 0, 0, 1, 3, 24)),
     ("year roll",            (58, 59, 23, 31, 12, 24),4,(2, 0, 0, 1, 1, 25)),
 ]
+
+
+def check_live_clock(sim):
+    """Shared check that an image's Modbus time registers are a LIVE read of the
+    internal RTC, not an echo of the last write. `sim` must already be
+    configure_rtc()'d. Flow: boot the dongle, set a time over HR 12-14, drive the
+    RTC forward with sim.advance_rtc() (the firmware's own tick), and confirm a
+    dongle read-back reflects the ADVANCED time -- which an echo of the written
+    value could not. Used by both test_arm_sim_self_only.py and
+    test_arm_sim_factory_only.py so both firmwares meet one spec.
+    """
+    from arm_sim_modbus import ModbusDongle
+    yr, mon, day, hr, mn, sec = 24, 3, 15, 14, 30, 45      # 2024-03-15 14:30:45
+    mb = ModbusDongle(sim)
+    mb.write_single(12, yr | (mon << 8))
+    mb.write_single(13, day | (hr << 8))
+    mb.write_single(14, mn | (sec << 8))
+
+    def read():
+        for _ in range(6):                   # tolerate a transient missed reply
+            g = mb.read_holding(12, 3)
+            if g:
+                return (g[0] & 0xFF, g[0] >> 8, g[1] & 0xFF, g[1] >> 8,
+                        g[2] & 0xFF, g[2] >> 8)
+        return None
+
+    before = read()
+    assert before == (yr, mon, day, hr, mn, sec), \
+        "time set/read-back = %r, expected %r" % (before, (yr, mon, day, hr, mn, sec))
+
+    sim.advance_rtc(75)                       # 14:30:45 + 75 s -> 14:32:00
+    after = read()
+    assert after == (24, 3, 15, 14, 32, 0), \
+        "after advancing 75 s the clock read %r, expected 14:32:00 (2024-03-15)" % (after,)
+    assert after != before, \
+        "clock did not advance on read -- the time registers are a static echo, not live"

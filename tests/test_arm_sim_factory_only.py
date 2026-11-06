@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
                               SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
-                              RTC_WALK)
+                              RTC_WALK, check_live_clock)
 from arm_sim_runner import Skip, run_tests
 
 # Factory flat-.bin image under test. Set by the __main__ runner from argv.
@@ -224,6 +224,15 @@ def test_rtc_calendar_walks_forward():
         got = sim.get_rtc()
         assert got == exp, ("factory RTC walk %s: from %r +%ds = %r, expected %r"
                             % (label, start, secs, got, exp))
+
+
+def test_rtc_is_live_clock():
+    """Drive the factory RTC forward and confirm a dongle read reflects it: its
+    Modbus time registers reconstruct from the live calendar, not an echo of the
+    last write (the shared check_live_clock contract). 07-series-specific; SKIPs
+    on other images."""
+    sim = _factory_rtc()
+    check_live_clock(sim)
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------

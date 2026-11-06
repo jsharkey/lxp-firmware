@@ -514,13 +514,29 @@ class ArmSim:
 
     def advance_rtc(self, seconds):
         """Walk the clock forward `seconds` s by calling the image's own tick
-        function, so the firmware's real carry/days-in-month/leap logic runs."""
+        function, so the firmware's real carry/days-in-month/leap logic runs.
+
+        Safe to call on a *running* (booted) sim: calling a function resets SP to
+        STACK_TOP and runs on the main stack, which would clobber a suspended
+        driver loop's context. So the full register set and the top of the stack
+        are snapshotted and restored around the isolated tick calls -- a loop
+        (e.g. the Modbus dongle) then resumes undisturbed and reads the advanced
+        clock live."""
         c = self._rtc_cfg()
         if c["tick"] is None:
             raise RuntimeError("configure_rtc(tick=...) required to advance")
         fn = self.sym(c["tick"]) if isinstance(c["tick"], str) else c["tick"]
-        for _ in range(int(seconds) * c["cps"]):
-            self.call(fn)
+        uc = self.uc
+        STACK_WIN = 0x400                       # covers the tick's stack usage
+        saved_regs = {r: uc.reg_read(r) for r in _SYSTICK_SAVE}
+        saved_stack = bytes(uc.mem_read(STACK_TOP - STACK_WIN, STACK_WIN))
+        try:
+            for _ in range(int(seconds) * c["cps"]):
+                self.call(fn)
+        finally:
+            uc.mem_write(STACK_TOP - STACK_WIN, saved_stack)
+            for r, v in saved_regs.items():
+                uc.reg_write(r, v)
 
     def vector_base(self):
         """Locate the Cortex-M vector table (initial SP in RAM, reset PC in
