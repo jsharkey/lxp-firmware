@@ -111,6 +111,37 @@ read back what it produced — see each entry's *How found*.
   `bms_can_map.h` (0x356 current = 0.1 A) while sweeping the BMS block.
 - **Status:** suspected.
 
+## Q5 — `OptimalChg_DisChg` (HR 126-131) is defined but never evaluated
+
+- **Area:** dongle Modbus / scheduler (`docs/25`, `docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md`)
+- **Observed:** the 48-slot × 2-bit half-hour charge/discharge table is fully
+  writable and reads back (stored at RAM `0x2000D814`, next to the RTC), and the
+  spec gates it behind `stSysEnable.HalfHourACChrStartEn` (HR 120 bit 0). But the
+  ceaa-07xx image **never acts on it**: nothing compares the current half-hour
+  slot against the clock, nothing drives charge/discharge from a slot mark.
+- **Expected:** with the gate enabled, the current slot's mark (1 charge /
+  2 discharge) should influence behaviour — as the spec's "charge and discharge
+  mark" wording implies.
+- **Root cause (confirmed dormant):** the only code touching the `0x2000D814`
+  block is the config clear/init (`sub_080147ac`), the Modbus **getter**
+  (`sub_0801d48c`, `0x03` read path) and **setter** (`sub_0801f596`, `0x06`/`0x10`
+  write path). No evaluator reads it. A `UC_HOOK_MEM_READ` over the block sees
+  zero reads during a long run except when a dongle `0x03` of HR 126-131 runs the
+  getter. Writing the table moves no DSP config-push byte, and the DSP does not
+  evaluate time windows anyway ([`docs/modbus-dsp/clock.md`](modbus-dsp/clock.md)).
+  So the feature is present in the register map but inert in this firmware — the
+  same "defined but dormant" pattern as the per-pack range (IR 5000-5126).
+- **Our firmware:** keeps a tested pure evaluator (`optchg_slot_mode()`,
+  `tests/test_optchg.c`) but deliberately does **not** wire it into the loop, to
+  stay behaviour-compatible with the dormant factory. The only shared black-box
+  contract is the store/read-back round-trip
+  (`test_modbus_optchg_table_roundtrip`).
+- **How found:** writing HR 126-131 over the dongle (writable, reads back),
+  then a full-RAM and DSP-config differential across an in-slot vs out-of-slot
+  clock sweep (gate on) — nothing moved — plus static tracing of every
+  `0x2000D814` reference and a runtime read-hook.
+- **Status:** confirmed (for this image; a later image could wire it up).
+
 ---
 
 ## Not quirks (recorded so we don't re-flag them)

@@ -147,8 +147,15 @@ variants, auto-probed). AC-charge (`sub_08034590`) was added by:
    window semantics.
 
 The test body never changes; only the `EVALUATORS` entry + (shared) vectors do.
-Still open: the slot-5 evaluator above, and OptimalChg (HR 126-131, a different
-48-slot 2-bit structure rather than start/end pairs).
+Still open: the slot-5 evaluator above. **OptimalChg (HR 126-131) is resolved:
+it is a dormant table in ceaa-07xx** — stored and read-back but never evaluated
+against the clock or pushed to the DSP (only the config clear/getter/setter touch
+its RAM; a runtime read-hook and a full-RAM / DSP-config sweep find no evaluator).
+So it gets no `EVALUATORS` entry; its only black-box coverage is the dongle
+store/read-back round-trip (`test_modbus_optchg_table_roundtrip`) and the pure
+`optchg_slot_mode()` host test. See
+[`docs/31` Q5](31-factory-quirks.md) and
+[`docs/modbus-dongle/HR126_131`](modbus-dongle/HR126_131-OptimalChg_DisChg.md).
 
 See also: [`docs/25`](25-modbus-register-spaces.md) (the AC-First observable and
 the IR 126 funnel), [`docs/19`](19-gpio-test-harness.md) (the full-sim harness

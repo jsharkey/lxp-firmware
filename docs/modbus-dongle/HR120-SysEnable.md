@@ -4,7 +4,7 @@
 
 | bit | field | values |
 |---|---|---|
-| 0 | HalfHourACChrStartEn | 0/1 |
+| 0 | HalfHourACChrStartEn | 0/1 — gates the OptimalChg_DisChg half-hour table ([HR 126-131](HR126_131-OptimalChg_DisChg.md)); **dormant in ceaa-07xx** (docs/31 Q5) |
 | 1-3 | ACChargeType | 0 disable, 1 by time, 2 by voltage, 3 by SOC |
 | 4-5 | DischgCtrlType | 0 by voltage, 1 by SOC, 2 both |
 | 6 | OnGridEODType | 0 by voltage, 1 by SOC |

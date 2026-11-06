@@ -401,8 +401,10 @@ def test_bms_telemetry_block_tracks_updates():
     from arm_sim_can import CanBattery
 
     # (voltage_cv, current_ca, temp_dc, soc, soh, chg_v_dv, fault, warn, modules)
+    # charge-V limits stay BELOW the factory's ~57.4 V (574) clamp on IR 83
+    # (docs/31) so both images report them 1:1 and the two sets still differ.
     SET_A = dict(v=5325, i=250,  t=231,  soc=77, soh=96, chg=560, flt=0x0102, wrn=0x0408, mod=3)
-    SET_B = dict(v=5000, i=-100, t=-50,  soc=42, soh=88, chg=575, flt=0x0000, wrn=0x0010, mod=4)
+    SET_B = dict(v=5000, i=-100, t=-50,  soc=42, soh=88, chg=552, flt=0x0000, wrn=0x0010, mod=4)
 
     def expected(s):
         return {
@@ -447,6 +449,48 @@ def test_bms_telemetry_block_tracks_updates():
     # and the block actually moved (live mirror, not a stuck cache)
     moved = [reg for reg in expected(SET_A) if got_a[reg] != got_b[reg]]
     assert moved, "no BMS register changed between set A and set B -- image is not live"
+
+
+def test_modbus_optchg_table_roundtrip():
+    """HR 126-131 OptimalChg_DisChg store/read-back over the dongle (docs/25,
+    docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md).
+
+    The 48-slot x 2-bit half-hour table is the one OptimalChg behaviour that is
+    black-box observable on this image: writing the six table registers and
+    reading them back. (Investigation showed the ceaa-07xx factory stores,
+    clears and serves this table but never EVALUATES it against the clock, nor
+    pushes it to the DSP -- the feature is dormant here; see docs/31 Q5. So there
+    is no RTC-verdict observable to assert, only the storage round-trip.)
+
+    Pure wire-level black box, so it holds for both images: write a distinct
+    pattern into each of HR 126-131 (func 0x06), read all six back (one 0x03),
+    and confirm the full table survives independently. Enable HalfHourACChrStart
+    (HR 120 bit0) first, as a real configurator would, to prove the gate does not
+    gate storage."""
+    from arm_sim_modbus import ModbusDongle
+    HR_SYS_ENABLE = 120
+    TABLE = {126: 0x0001,   # Time0 = charge
+             127: 0x0002,   # Time8 = discharge
+             128: 0x5555,   # all eight slots = charge
+             129: 0xAAAA,   # all eight slots = discharge
+             130: 0x4001,   # Time0 and Time7 = charge
+             131: 0x1234}   # arbitrary mixed marks
+
+    mb = ModbusDongle(_sim())
+    mb.write_single(HR_SYS_ENABLE, 0x0001)           # HalfHourACChrStartEn on
+    for reg, val in TABLE.items():
+        assert mb.write_single(reg, val) == val, \
+            "OptimalChg write HR %d = 0x%04x not acknowledged" % (reg, val)
+
+    got = None
+    for _ in range(4):                               # tolerate a transient miss
+        got = mb.read_holding(126, 6)
+        if got:
+            break
+    assert got, "no reply reading the OptimalChg table (HR 126-131)"
+    want = [TABLE[r] for r in range(126, 132)]
+    assert got == want, \
+        "OptimalChg table read back %r, expected %r" % (got, want)
 
 
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------

@@ -13,10 +13,13 @@
  * (Layout per the EG4 18kPV-12LV Modbus protocol; see
  * docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md.)
  *
- * The ARM owns the clock and looks up the current slot's mark against it, like
- * the AC-First windows (inv/acfirst.h); unlike AC-First there is no documented
- * externally observable status bit. These are the pure, host-testable pieces of
- * that lookup.
+ * The ARM would look up the current slot's mark against the clock, like the
+ * AC-First windows (inv/acfirst.h). NOTE: the ceaa-07xx factory image does NOT
+ * evaluate this table at all -- it is stored and read back over Modbus but never
+ * consumed (dormant; see docs/31 Q5 and docs/modbus-dongle/HR126_131). To stay
+ * behaviour-compatible with the factory oracle, this evaluator is intentionally
+ * NOT wired into the main loop; it exists as a pure, host-testable helper (and a
+ * ready implementation should a later image activate the feature).
  */
 #include <stdint.h>
 
