@@ -143,9 +143,14 @@ COV_JSONL    := $(BUILD)/factory_cov.jsonl
 COV_MD       := docs/factory-coverage.md
 COV_SYMBOLS  := reference/symbols.csv
 COV_CLASSIFY := tests/factory_coverage_classify.csv
+COV_HMILIST  := reference/hmi_functions.csv
+# Refresh the static HMI-exclusive map from the factory image (deterministic, so
+# it only shows in a diff when the image or the method changes).
+COV_HMI = python3 tools/hmi_classify.py --image $(FACTORY_BIN) \
+  --symbols $(COV_SYMBOLS) --callgraph reference/callgraph.txt --out $(COV_HMILIST)
 COV_REGEN = python3 tools/coverage_report.py --cov $(COV_JSONL) \
-  --symbols $(COV_SYMBOLS) --classify $(COV_CLASSIFY) --out $(COV_MD) \
-  --image-name $$(basename $(FACTORY_BIN)) \
+  --symbols $(COV_SYMBOLS) --classify $(COV_CLASSIFY) --hmi-list $(COV_HMILIST) \
+  --out $(COV_MD) --image-name $$(basename $(FACTORY_BIN)) \
   --image-hash $$(sha256sum $(FACTORY_BIN) 2>/dev/null | cut -d' ' -f1)
 
 # Every block runs even if an earlier one fails; the target fails only at the end
@@ -186,7 +191,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_OURS_COMMON) || rc=1; \
 	$(SIM_OURS_SELF) || rc=1; \
 	$(SIM_OURS_HMI) || rc=1; \
-	$(if $(HAVE_FACTORY),rm -f $(COV_JSONL); export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; unset LXP_COVERAGE LXP_COVERAGE_IMAGE; $(COV_REGEN) || echo "# test-sim: coverage dashboard regen skipped (non-fatal)";,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
+	$(if $(HAVE_FACTORY),rm -f $(COV_JSONL); export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; unset LXP_COVERAGE LXP_COVERAGE_IMAGE; $(COV_HMI) || true; $(COV_REGEN) || echo "# test-sim: coverage dashboard regen skipped (non-fatal)";,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 
 # Standalone dashboard build: run only the factory-side sim tests with coverage
@@ -199,7 +204,7 @@ coverage: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(FACTORY_BIN)
 	@rc=0; export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); \
 	$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; \
 	unset LXP_COVERAGE LXP_COVERAGE_IMAGE; \
-	$(COV_REGEN); \
+	$(COV_HMI); $(COV_REGEN); \
 	exit $$rc
 
 # Focused time-window micro-tests (docs/35): a cheap complement to test-sim that

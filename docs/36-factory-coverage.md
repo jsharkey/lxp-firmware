@@ -59,12 +59,15 @@ image.
    ordinary runs pay nothing.
 
 2. **The denominator & ignore list** —
-   [`tests/factory_coverage_classify.csv`](../tests/factory_coverage_classify.csv).
-   Every recovered function is `in_scope`, `ignore`, `unreachable`, or (the
-   default) `unclassified`. Only `ignore` and `unreachable` are removed from the
-   denominator; **`unclassified` stays in it**, so the score can never be
-   flattered by simply *not* triaging a hard function. Each entry carries a
-   reason, held to the repo's claims-discipline bar ([`AGENTS.md`](../AGENTS.md)).
+   [`tests/factory_coverage_classify.csv`](../tests/factory_coverage_classify.csv)
+   (hand-curated) plus
+   [`reference/hmi_functions.csv`](../reference/hmi_functions.csv) (the
+   machine-found HMI set, below). Every recovered function is `in_scope`,
+   `ignore`, `unreachable`, or (the default) `unclassified`. Only `ignore` and
+   `unreachable` are removed from the denominator; **`unclassified` stays in
+   it**, so the score can never be flattered by simply *not* triaging a hard
+   function. Each hand entry carries a reason, held to the repo's
+   claims-discipline bar ([`AGENTS.md`](../AGENTS.md)).
 
 3. **The dashboard** — [`tools/coverage_report.py`](../tools/coverage_report.py)
    maps the captured PCs onto the function map, applies the classification, and
@@ -76,6 +79,39 @@ image.
 Everything except the *covered* set is derivable from committed, non-proprietary
 artifacts, so with no capture the dashboard still renders the full in-scope
 surface as a 0%-measured worklist — honest, and useful on day one.
+
+## Finding the HMI code to ignore
+
+[`tools/hmi_classify.py`](../tools/hmi_classify.py) locates the factory's
+menu/display code statically and writes
+[`reference/hmi_functions.csv`](../reference/hmi_functions.csv) (addresses +
+evidence — the proprietary image never enters the tree). The method:
+
+- **Roots** — functions whose literal pool references the on-screen string data
+  or one of the menu string-pointer **tables** (the 93-entry settings menu at
+  `0x08005fec`, docs/03), plus the menu handlers docs/03 named from their text.
+- **Closure** — everything those roots call (the formatters and the bit-banged
+  LCD panel driver, docs/28). The call graph
+  ([`reference/callgraph.txt`](../reference/callgraph.txt)) includes
+  literal-pool indirect calls, so it reaches past the obvious edges.
+- **Barrier** — the closure is intersected *out* of what the real entry points
+  (Reset + the ISR/exception vectors) can reach **without** passing through an
+  HMI root, so a helper shared with control code is never pulled in. Because the
+  recovered call graph is sparse (it reaches ~160 functions from the entry
+  points), this barrier only ever *protects* — it can shrink the HMI set, never
+  grow it, which is the safe direction.
+
+**Static closure over-approximates, so the dashboard prunes it dynamically.**
+When we first ran it, 37 of the ~100 statically-HMI functions turned out to be
+executed by the functional parity tests — settings handlers named after menu
+text (`fn_Lead_Acid_Floating_Voltage`) that also drive config, a 4109-insn
+worker, and so on. So the rule the dashboard applies is: **an HMI-list function
+is ignored only if the functional tests never execute it.** One a test *does*
+drive stays in scope and counts. This matches the repo's "dynamic outranks
+static" discipline, makes the ignore set shrink automatically as the suite
+grows, and means the score can't be gamed by ignoring code we actually test. The
+`hmi` row in the dashboard's module table is exactly those HMI-list functions
+the tests still reach.
 
 ## Running it
 
@@ -107,14 +143,13 @@ companion to the parity assertions — not a proof of faithfulness on its own.
 
 ## Next steps
 
-- **Bulk-classify the HMI subtree by call-graph reachability.** The current
-  ignore list is deliberately small — the named CPU vectors plus the handful of
-  HMI menu handlers [`docs/03`](03-function-map.md) named explicitly. The bigger
-  win is to mark everything reachable *only* from the HMI entry points (via
-  [`reference/callgraph.txt`](../reference/callgraph.txt)) as `ignore:hmi`,
-  which would move most of the display code out of the denominator in one
-  reviewed sweep. (The callgraph keys on non-unique recovered names, so this
-  needs address-disambiguation first — hence it's staged, not automatic.)
+- **Grow the HMI set as the call graph improves.** The static closure is a
+  conservative floor: the recovered call graph misses indirect calls through RAM
+  dispatch tables, so some display code is reached only by edges we can't see
+  yet and stays `unclassified` (counted against us — the safe direction). Better
+  edge recovery, or a dynamic HMI-navigation capture (drive the factory menu in
+  `tools/factory_hmi_app.py` and diff its executed set against the functional
+  tests'), would extend `reference/hmi_functions.csv`.
 - **Module tags.** As each subsystem is triaged, tag its functions
   (`modbus`, `can-bms`, `dsp-config`, `acfirst`, `safety`, `persistence`) so the
   per-module table shows *where* the gaps are, not just the aggregate.

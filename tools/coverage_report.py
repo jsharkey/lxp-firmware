@@ -137,6 +137,24 @@ def apply_rules(fn, rules):
     return best[1]["status"], best[1]["module"]
 
 
+def load_hmi_list(path):
+    """reference/hmi_functions.csv (from tools/hmi_classify.py): candidate
+    HMI-exclusive function start addresses. A SUPERSET — static call-graph
+    closure over-approximates (a menu handler may also carry control logic), so
+    the dashboard only actually ignores a listed function when the functional
+    tests never execute it (see render)."""
+    out = {}
+    if not path or not os.path.exists(path):
+        return out
+    with open(path) as f:
+        for r in csv.DictReader(f):
+            try:
+                out[int(r["addr"], 16)] = r.get("evidence") or "HMI (static closure)"
+            except (KeyError, ValueError):
+                pass
+    return out
+
+
 def load_coverage(path):
     """Executed PCs: a file of `0x........` lines (one per unique block entry;
     appended across the test processes make test-sim spawns). Missing/empty is a
@@ -187,12 +205,23 @@ def pctof(n, d):
     return (100.0 * n / d) if d else 0.0
 
 
-def render(funcs, rules, pcs, have_cov, image_name, image_hash, cov_path):
-    for fn in funcs:
-        fn["status"], fn["module"] = apply_rules(fn, rules)
+def render(funcs, rules, pcs, have_cov, image_name, image_hash, cov_path, hmi_list, note=""):
     covered = covered_functions(funcs, pcs)
     for fn in funcs:
         fn["covered"] = fn["addr"] in covered
+    for fn in funcs:
+        # Explicit classification wins absolutely (human decision). Otherwise an
+        # HMI-list function is ignored ONLY if the functional tests never run it:
+        # static closure over-approximates, so a listed function our tests DO
+        # exercise (a settings handler that also drives config, say) stays in
+        # scope and counts. This makes the ignore set shrink as the suite grows,
+        # and the score can never be gamed by ignoring code we actually test.
+        st, mod = apply_rules(fn, rules)
+        if fn["addr"] in hmi_list:
+            mod = mod or "hmi"
+            if st == UNCLASSIFIED and not fn["covered"]:
+                st = IGNORE
+        fn["status"], fn["module"] = st, mod
 
     denom = [f for f in funcs if f["status"] in IN_DENOMINATOR]
     ignored = [f for f in funcs if f["status"] == IGNORE]
@@ -243,13 +272,21 @@ def render(funcs, rules, pcs, have_cov, image_name, image_hash, cov_path):
       "**%d are still unclassified** (not yet triaged — they count *against* the "
       "score until reviewed)." % (len(funcs), len(ignored), len(unreach),
                                    len(denom), len(unclass)))
+    n_hmi_ign = sum(1 for f in ignored if f["module"] == "hmi")
+    if n_hmi_ign:
+        w("")
+        w("Of the ignored, **%d are HMI-exclusive** (`reference/hmi_functions.csv`, "
+          "from `tools/hmi_classify.py`) that the functional tests never execute. "
+          "HMI-list functions the tests *do* execute stay in scope and count — so "
+          "the ignore set shrinks as the suite grows." % n_hmi_ign)
     w("")
 
     # per-module ---------------------------------------------------------
     w("## By module")
     w("")
-    w("In-scope functions grouped by the `module` tag in "
-      "`tests/factory_coverage_classify.csv`. Untagged functions fall in "
+    w("In-scope functions grouped by `module` (from "
+      "`tests/factory_coverage_classify.csv`, plus `hmi` for functions on the "
+      "HMI list the tests still exercise). Untagged functions fall in "
       "_(untagged)_ — tag them to sharpen this table.")
     w("")
     w("| module | covered | funcs | % | insns % |")
@@ -326,6 +363,9 @@ def render(funcs, rules, pcs, have_cov, image_name, image_hash, cov_path):
     if not have_cov:
         prov += " · **no capture**"
     w("_%s_" % prov)
+    if note:
+        w("")
+        w("_%s_" % note)
     w("")
     return "\n".join(L)
 
@@ -335,9 +375,11 @@ def main(argv):
     ap.add_argument("--cov", default="build/factory_cov.jsonl")
     ap.add_argument("--symbols", default="reference/symbols.csv")
     ap.add_argument("--classify", default="tests/factory_coverage_classify.csv")
+    ap.add_argument("--hmi-list", default="reference/hmi_functions.csv")
     ap.add_argument("--out", default="docs/factory-coverage.md")
     ap.add_argument("--image-name", default="")
     ap.add_argument("--image-hash", default="")
+    ap.add_argument("--note", default="")
     a = ap.parse_args(argv[1:])
 
     if not os.path.exists(a.symbols):
@@ -345,8 +387,10 @@ def main(argv):
         return 2
     funcs = load_functions(a.symbols)
     rules = load_classification(a.classify)
+    hmi_list = load_hmi_list(a.hmi_list)
     pcs, have_cov = load_coverage(a.cov)
-    md = render(funcs, rules, pcs, have_cov, a.image_name, a.image_hash, a.cov)
+    md = render(funcs, rules, pcs, have_cov, a.image_name, a.image_hash, a.cov,
+                hmi_list, a.note)
     with open(a.out, "w") as f:
         f.write(md)
     covered = sum(1 for f in funcs
