@@ -15,5 +15,5 @@
 **Generator-charging thresholds** (valid per HR 120 bit7 GenChargeType: by voltage
 vs by SOC). Persisted to config flash and pushed to the DSP in the config snapshot
 over USART3 ([`docs/08`](../08-arm-dsp-config-protocol.md)). Relate to
-[`input-077-ACInputType`](input-077-ACInputType.md) and
-[`holding-146-LineMode`](holding-146-LineMode.md) (GEN mode).
+[`IR077-ACInputType`](IR077-ACInputType.md) and
+[`HR146-LineMode`](HR146-LineMode.md) (GEN mode).

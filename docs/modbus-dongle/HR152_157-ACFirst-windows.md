@@ -21,4 +21,4 @@ pushed to the DSP** — the derived verdict stays ARM-side. Full trace, includin
 black-box test: [`docs/25`](../25-modbus-register-spaces.md) §3.
 
 This controls *when* AC-first applies; the *priority mode itself* is
-[`holding-145-OutputPrioConfig`](holding-145-OutputPrioConfig.md) (value 2).
+[`HR145-OutputPrioConfig`](HR145-OutputPrioConfig.md) (value 2).

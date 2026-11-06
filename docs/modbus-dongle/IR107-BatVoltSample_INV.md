@@ -11,4 +11,4 @@
 **The USART2 bank** (`BANK+0x0a`) — the inverter-side battery-voltage sample,
 relayed over USART2 ([`docs/33`](../33-usart2-telemetry-bank.md)). This is the
 inverter's *own* measurement of pack voltage, distinct from the BMS-reported pack
-voltage and from IR 4 Vbat ([`input-004-Vbat`](input-004-Vbat.md)).
+voltage and from IR 4 Vbat ([`IR004-Vbat`](IR004-Vbat.md)).

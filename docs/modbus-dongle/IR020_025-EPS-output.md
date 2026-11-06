@@ -16,4 +16,4 @@
 **Voltages (IR 20/21): the USART2 bank**, relayed over USART2 at the offsets above
 ([`docs/33`](../33-usart2-telemetry-bank.md)). **Powers (IR 24/25) and frequency
 (IR 23): ARM-computed/derived.** Split-phase L1N/L2N detail of the same EPS output
-is at [`input-127_138-EPS-split-phase`](input-127_138-EPS-split-phase.md).
+is at [`IR127_138-EPS-split-phase`](IR127_138-EPS-split-phase.md).

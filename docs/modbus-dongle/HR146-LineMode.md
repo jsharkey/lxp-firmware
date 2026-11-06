@@ -12,4 +12,4 @@
 and pushed to the DSP in the config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)). Governs the AC-input acceptance
 window and transfer timing (and relates to generator handling, cf.
-[`input-077-ACInputType`](input-077-ACInputType.md)).
+[`IR077-ACInputType`](IR077-ACInputType.md)).

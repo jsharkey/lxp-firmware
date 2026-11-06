@@ -10,7 +10,7 @@
 
 **Not yet pinned to a specific source.** Two candidates, both internal to the
 ARM: the inverter-side battery sample on the USART2 bank (cf.
-[`input-107-BatVoltSample_INV`](input-107-BatVoltSample_INV.md), `BANK+0x0a`), and
+[`IR107-BatVoltSample_INV`](IR107-BatVoltSample_INV.md), `BANK+0x0a`), and
 the BMS pack voltage over CAN1 ([`docs/20`](../20-battery-bms-firmware.md)). The
 register-getter sweep in [`docs/33`](../33-usart2-telemetry-bank.md) did **not**
 map IR 4 to a bank offset, so it is likely assembled/selected in ARM logic.

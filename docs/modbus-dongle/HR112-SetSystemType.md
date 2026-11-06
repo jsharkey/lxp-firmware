@@ -10,7 +10,7 @@
 
 **Parallel-system role.** Persisted to config flash; coordinates the
 parallel-operation behaviour (reported back on the input side at
-[`input-113-ParallelInfo`](input-113-ParallelInfo.md)). Parallel coordination
+[`IR113-ParallelInfo`](IR113-ParallelInfo.md)). Parallel coordination
 between inverters uses a CAN bus; a mismatch raises E008/E009/E010
-([`input-060_063-FaultCode_WarningCode`](input-060_063-FaultCode_WarningCode.md)).
+([`IR060_063-FaultCode_WarningCode`](IR060_063-FaultCode_WarningCode.md)).
 **Note space split:** HR 112/113 (settings) vs IR 113 (status).

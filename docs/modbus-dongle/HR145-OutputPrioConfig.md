@@ -20,4 +20,4 @@ forwarded to the DSP, which enacts the priority.
 The value `2` here = **AC-first output priority**. Unrelated to `State == 2`
 (Programming) — an earlier relay-gating draft confused the two; corrected in
 [`docs/18`](../18-power-path-relays.md). The AC-First *time windows* (when AC-first
-applies) are separate — [`holding-152_157-ACFirst-windows`](holding-152_157-ACFirst-windows.md).
+applies) are separate — [`HR152_157-ACFirst-windows`](HR152_157-ACFirst-windows.md).

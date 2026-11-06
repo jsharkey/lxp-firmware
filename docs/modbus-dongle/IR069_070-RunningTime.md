@@ -11,5 +11,5 @@
 
 **ARM-local** — a cumulative run-time counter the ARM maintains. Clearable via
 `HR 11` ResetSetting.EnergyRecordClr ("power and running time reset",
-[`holding-011-ResetSetting`](holding-011-ResetSetting.md)). 32-bit value uses the
+[`HR011-ResetSetting`](HR011-ResetSetting.md)). 32-bit value uses the
 dongle's word+byte-swapped encoding.

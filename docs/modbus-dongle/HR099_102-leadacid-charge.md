@@ -17,4 +17,4 @@ battery is configured. Persisted to config flash and pushed to the DSP (which ru
 the charge controller) in the config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)). For BMS (lithium) packs the
 equivalent limits are *read from the pack* over CAN1 instead
-([`input-081_106-BMS`](input-081_106-BMS.md)).
+([`IR081_106-BMS`](IR081_106-BMS.md)).

@@ -90,98 +90,98 @@ RE-traced; `rsvd` = reserved/unused.
 
 | IR | name | unit | note | doc |
 |---|---|---|---|---|
-| 0 | State | — | operating-mode bitmask (table in file) | [→](input-000-State.md) |
-| 1-3 | Vpv1/2/3 | 0.1 V | PV string voltages (3 = 18kPV only) | [→](input-001_003-Vpv1_Vpv3.md) |
-| 4 | Vbat | 0.1 V | battery voltage | [→](input-004-Vbat.md) |
-| 5 | SOC / SOH | % / % | low=SOC, high=SOH | [→](input-005-SOC_SOH.md) |
-| 6 | InternalFault | — | internal DTC | [→](input-006-InternalFault.md) |
-| 7-9 | Ppv1/2/3 | 1 W | PV power | [→](input-007_009-Ppv1_Ppv3.md) |
-| 10-11 | Pcharge / Pdischarge | 1 W | battery charge / discharge power | [→](input-010_011-Pcharge_Pdischarge.md) |
-| 12-14 | VacR/S/T | 0.1 V | grid voltage R/S/T | [→](input-012_014-VacR_VacS_VacT.md) |
-| 15 | Fac | 0.01 Hz | grid frequency | [→](input-015-Fac.md) |
-| 16-17 | Pinv / Prec | 1 W | inverter output / AC-charge rectified power | [→](input-016_017-Pinv_Prec.md) |
-| 18 | IinvRMS | 0.01 A | inverter current RMS | [→](input-018-IinvRMS.md) |
-| 19 | PF | 0.001 | power factor (encoded range, see file) | [→](input-019-PF.md) |
-| 20-25 | VepsR/S/T, Feps, Peps, Seps | 0.1V/0.01Hz/W/VA | off-grid (EPS) output | [→](input-020_025-EPS-output.md) |
-| 26-27 | Ptogrid / Ptouser | 1 W | export / import power | [→](input-026_027-Ptogrid_Ptouser.md) |
-| 28-37 | E*_day | 0.1 kWh | daily energy counters | [→](input-028_059-energy-counters.md) |
-| 38-39 | Vbus1 / Vbus2 | 0.1 V | bus voltages | [→](input-038_039-Vbus1_Vbus2.md) |
-| 40-59 | E*_all L/H | 0.1 kWh | cumulative energy (32-bit pairs) | [→](input-028_059-energy-counters.md) |
-| 60-63 | FaultCode / WarningCode L/H | — | 32-bit fault & warn bitfields | [→](input-060_063-FaultCode_WarningCode.md) |
-| 64-67 | Tinner, Tradiator1/2, Tbat | 1 °C (s16) | temperatures | [→](input-064_067-temperatures.md) |
+| 0 | State | — | operating-mode bitmask (table in file) | [→](IR000-State.md) |
+| 1-3 | Vpv1/2/3 | 0.1 V | PV string voltages (3 = 18kPV only) | [→](IR001_003-Vpv1_Vpv3.md) |
+| 4 | Vbat | 0.1 V | battery voltage | [→](IR004-Vbat.md) |
+| 5 | SOC / SOH | % / % | low=SOC, high=SOH | [→](IR005-SOC_SOH.md) |
+| 6 | InternalFault | — | internal DTC | [→](IR006-InternalFault.md) |
+| 7-9 | Ppv1/2/3 | 1 W | PV power | [→](IR007_009-Ppv1_Ppv3.md) |
+| 10-11 | Pcharge / Pdischarge | 1 W | battery charge / discharge power | [→](IR010_011-Pcharge_Pdischarge.md) |
+| 12-14 | VacR/S/T | 0.1 V | grid voltage R/S/T | [→](IR012_014-VacR_VacS_VacT.md) |
+| 15 | Fac | 0.01 Hz | grid frequency | [→](IR015-Fac.md) |
+| 16-17 | Pinv / Prec | 1 W | inverter output / AC-charge rectified power | [→](IR016_017-Pinv_Prec.md) |
+| 18 | IinvRMS | 0.01 A | inverter current RMS | [→](IR018-IinvRMS.md) |
+| 19 | PF | 0.001 | power factor (encoded range, see file) | [→](IR019-PF.md) |
+| 20-25 | VepsR/S/T, Feps, Peps, Seps | 0.1V/0.01Hz/W/VA | off-grid (EPS) output | [→](IR020_025-EPS-output.md) |
+| 26-27 | Ptogrid / Ptouser | 1 W | export / import power | [→](IR026_027-Ptogrid_Ptouser.md) |
+| 28-37 | E*_day | 0.1 kWh | daily energy counters | [→](IR028_059-energy-counters.md) |
+| 38-39 | Vbus1 / Vbus2 | 0.1 V | bus voltages | [→](IR038_039-Vbus1_Vbus2.md) |
+| 40-59 | E*_all L/H | 0.1 kWh | cumulative energy (32-bit pairs) | [→](IR028_059-energy-counters.md) |
+| 60-63 | FaultCode / WarningCode L/H | — | 32-bit fault & warn bitfields | [→](IR060_063-FaultCode_WarningCode.md) |
+| 64-67 | Tinner, Tradiator1/2, Tbat | 1 °C (s16) | temperatures | [→](IR064_067-temperatures.md) |
 | 68 | — | | rsvd | — |
-| 69-70 | RunningTime L/H | 1 s | runtime (32-bit) | [→](input-069_070-RunningTime.md) |
-| 71-75 | AutoTest (status/limit/trip) | — | grid-protection self-test | [→](input-071_075-AutoTest.md) |
+| 69-70 | RunningTime L/H | 1 s | runtime (32-bit) | [→](IR069_070-RunningTime.md) |
+| 71-75 | AutoTest (status/limit/trip) | — | grid-protection self-test | [→](IR071_075-AutoTest.md) |
 | 76 | — | | rsvd | — |
-| 77 | ACInputType | — | 0 grid / 1 generator | [→](input-077-ACInputType.md) |
+| 77 | ACInputType | — | 0 grid / 1 generator | [→](IR077-ACInputType.md) |
 | 78-80 | — | | rsvd | — |
-| 81-106 | BMS block | various | battery data over CAN1 | [→](input-081_106-BMS.md) |
-| 107 | BatVoltSample_INV | 0.1 V | inverter-side battery sample | [→](input-107-BatVoltSample_INV.md) |
+| 81-106 | BMS block | various | battery data over CAN1 | [→](IR081_106-BMS.md) |
+| 107 | BatVoltSample_INV | 0.1 V | inverter-side battery sample | [→](IR107-BatVoltSample_INV.md) |
 | 108 | T1 | 0.1 °C | 12K BT temperature | idx |
 | 109-112 | T2-T5 | 0.1 °C | reserved | idx |
-| 113 | ParallelInfo | — | master/slave, phase, parallel count | [→](input-113-ParallelInfo.md) |
+| 113 | ParallelInfo | — | master/slave, phase, parallel count | [→](IR113-ParallelInfo.md) |
 | 114-119 | — | | rsvd | — |
-| 120 | VBusP | 0.1 V | half-bus voltage | [→](input-120-VBusP.md) |
-| 121-126 | Gen volt/freq/power, Egen day/all | — | generator | [→](input-121_126-generator.md) |
-| 127-138 | EPS split-phase V/P/S/E (L1N/L2N) | — | split-phase EPS detail | [→](input-127_138-EPS-split-phase.md) |
+| 120 | VBusP | 0.1 V | half-bus voltage | [→](IR120-VBusP.md) |
+| 121-126 | Gen volt/freq/power, Egen day/all | — | generator | [→](IR121_126-generator.md) |
+| 127-138 | EPS split-phase V/P/S/E (L1N/L2N) | — | split-phase EPS detail | [→](IR127_138-EPS-split-phase.md) |
 | 139 | — | | rsvd | — |
 | 140-143 | AFCI_CurrCH1-4 | mA | arc-fault current | idx |
 | 144 | AFCIFlag | bits | arc alarm / self-test | idx |
 | 145-148 | AFCI_ArcCH1-4 | — | real-time arc | idx |
 | 149-152 | AFCI_MaxArcCH1-4 | — | max arc | idx |
-| **5000-5126** | **per-pack battery bank** | — | **undocumented**; CAN-`0x4xx`-fed, **dormant across the EG4 battery line (3 models checked)** | [→](input-5000_5126-perpack.md) |
+| **5000-5126** | **per-pack battery bank** | — | **undocumented**; CAN-`0x4xx`-fed, **dormant across the EG4 battery line (3 models checked)** | [→](IR5000_5126-perpack.md) |
 
 ## Index — holding registers (func `0x03/0x06`, `0x10` SN+time only)
 
 | HR | name | unit / range | note | doc |
 |---|---|---|---|---|
-| 2-6 | SN[0..9] | ASCII | device serial number | [→](holding-002_006-SN.md) |
+| 2-6 | SN[0..9] | ASCII | device serial number | [→](HR002_006-SN.md) |
 | 7-8 | — | | rsvd | — |
-| 9 | Slave Ver / Com Ver | 0-255 | redundant-CPU / comm-CPU FW ver | [→](holding-009_010-FW-versions.md) |
-| 10 | Cntl Ver / FWVer | 0-255 | control-CPU (DSP) FW ver / code | [→](holding-009_010-FW-versions.md) |
-| 11 | ResetSetting | bits | clear records / defaults / reboot / BMS switch | [→](holding-011-ResetSetting.md) |
-| 12-14 | Time year…second | — | real-time clock | [→](holding-012_014-Time.md) |
-| 15 | Com Addr | 0-150 | Modbus slave address | [→](holding-015-ComAddr.md) |
-| 16 | Language | 0-1 | 0 English / 1 German | [→](holding-016-Language.md) |
+| 9 | Slave Ver / Com Ver | 0-255 | redundant-CPU / comm-CPU FW ver | [→](HR009_010-FW-versions.md) |
+| 10 | Cntl Ver / FWVer | 0-255 | control-CPU (DSP) FW ver / code | [→](HR009_010-FW-versions.md) |
+| 11 | ResetSetting | bits | clear records / defaults / reboot / BMS switch | [→](HR011-ResetSetting.md) |
+| 12-14 | Time year…second | — | real-time clock | [→](HR012_014-Time.md) |
+| 15 | Com Addr | 0-150 | Modbus slave address | [→](HR015-ComAddr.md) |
+| 16 | Language | 0-1 | 0 English / 1 German | [→](HR016-Language.md) |
 | 17-19 | — | | rsvd | — |
-| 20 | PVInputModel | 0-7 | PV routing / parallel | [→](holding-020-PVInputModel.md) |
-| 21 | FuncEn | bits | EPS/DRMS/LVRT/AntiIsland/ACCharge/… | [→](holding-021-FuncEn.md) |
-| 22 | StartPVVolt | 0.1 V (900-5000) | PV start voltage | [→](holding-022-StartPVVolt.md) |
-| 23-24 | ConnectTime / ReconnectTime | s | grid connect / reconnect wait | [→](holding-023_024-ConnectTime_ReconnectTime.md) |
-| 25-62 | grid-code protection + reactive (V/F levels, Q(V), PF) | per grid code | protection curves | [→](holding-025_062-grid-protection.md) |
+| 20 | PVInputModel | 0-7 | PV routing / parallel | [→](HR020-PVInputModel.md) |
+| 21 | FuncEn | bits | EPS/DRMS/LVRT/AntiIsland/ACCharge/… | [→](HR021-FuncEn.md) |
+| 22 | StartPVVolt | 0.1 V (900-5000) | PV start voltage | [→](HR022-StartPVVolt.md) |
+| 23-24 | ConnectTime / ReconnectTime | s | grid connect / reconnect wait | [→](HR023_024-ConnectTime_ReconnectTime.md) |
+| 25-62 | grid-code protection + reactive (V/F levels, Q(V), PF) | per grid code | protection curves | [→](HR025_062-grid-protection.md) |
 | 63 | PowerSoftStartSlope | ‰/min | loading rate | idx |
-| 64-89 | AC-charge / charge-priority / forced-discharge schedule | % / hour\|min | 3 features × (power, SOC, 3 windows) | [→](holding-064_089-charge-discharge-schedule.md) |
-| 90-91 | EPSVoltageSet / EPSFreqSet | 1V / 1Hz | off-grid output V/F | [→](holding-090_091-EPS-output.md) |
+| 64-89 | AC-charge / charge-priority / forced-discharge schedule | % / hour\|min | 3 features × (power, SOC, 3 windows) | [→](HR064_089-charge-discharge-schedule.md) |
+| 90-91 | EPSVoltageSet / EPSFreqSet | 1V / 1Hz | off-grid output V/F | [→](HR090_091-EPS-output.md) |
 | 92-97 | PF/Q(V) lock-in/out, delay | — | reactive-curve params | idx |
-| 98 | AutoTestStart | 0-1 | start grid self-test (see IR 71-75) | [→](input-071_075-AutoTest.md) |
-| 99-102 | ChargeVoltRef/CutVolt/ChargeCurr/DischgCurr | 0.1V / A | lead-acid charge/discharge | [→](holding-099_102-leadacid-charge.md) |
-| 103 | MaxBackFlow | % | feed-in grid power limit | [→](holding-103-MaxBackFlow.md) |
+| 98 | AutoTestStart | 0-1 | start grid self-test (see IR 71-75) | [→](IR071_075-AutoTest.md) |
+| 99-102 | ChargeVoltRef/CutVolt/ChargeCurr/DischgCurr | 0.1V / A | lead-acid charge/discharge | [→](HR099_102-leadacid-charge.md) |
+| 103 | MaxBackFlow | % | feed-in grid power limit | [→](HR103-MaxBackFlow.md) |
 | 104 | DischgChgSWCMD | 0-2 | discharge↔charge command | idx |
-| 105 | EOD | % (10-90) | end-of-discharge SOC | [→](holding-105-EOD.md) |
+| 105 | EOD | % (10-90) | end-of-discharge SOC | [→](HR105-EOD.md) |
 | 106-109 | Tempr limits (lead-acid) | 0.1 °C | charge/discharge temp limits | idx |
-| 110 | FunctionEn1 | bits | PVGridOff/FastZeroExport/MicroGrid/BatShared/CT ratios | [→](holding-110-FunctionEn1.md) |
+| 110 | FunctionEn1 | bits | PVGridOff/FastZeroExport/MicroGrid/BatShared/CT ratios | [→](HR110-FunctionEn1.md) |
 | 111 | — | | rsvd | — |
-| 112 | SetSystemType | 0-3 | parallel system type | [→](holding-112-SetSystemType.md) |
-| 113 | SetComposedPhase | 1-3 | phase in parallel system | [→](holding-113-SetComposedPhase.md) |
+| 112 | SetSystemType | 0-3 | parallel system type | [→](HR112-SetSystemType.md) |
+| 113 | SetComposedPhase | 1-3 | phase in parallel system | [→](HR113-SetComposedPhase.md) |
 | 114 | ClearFunction | 1 | clear parallel fault code | idx |
 | 115-116, 118-119 | OVFDerate/PtoUser/VbatDerate/CTOffset | — | misc settings | idx |
-| 120 | stSysEnable | bits | ACChargeType/DischgCtrlType/OnGridEODType/GenChargeType | [→](holding-120-SysEnable.md) |
+| 120 | stSysEnable | bits | ACChargeType/DischgCtrlType/OnGridEODType/GenChargeType | [→](HR120-SysEnable.md) |
 | 121, 124-125 | Q2_QV / OVFDerateEnd / SOCLowLimitForEPS | — | misc | idx |
-| 126-131 | OptimalChg_DisChg | bits | 48-slot × 2-bit charge/discharge time table | [→](holding-126_131-OptimalChg_DisChg.md) |
+| 126-131 | OptimalChg_DisChg | bits | 48-slot × 2-bit charge/discharge time table | [→](HR126_131-OptimalChg_DisChg.md) |
 | 132-137 | BatCell limits, derate, SpecLoadCompensate | — | misc | idx |
 | 138-143 | *PowerPercentCMD (0.1%) | 0.1 % | high-res variants of 60/64-66/74/82 | idx |
-| 144 | FloatChargeVolt | 0.1 V | lead-acid float voltage | [→](holding-099_102-leadacid-charge.md) |
-| 145 | OutputPrioConfig | 0-3 | 0 bat-first / 1 PV-first / 2 AC-first | [→](holding-145-OutputPrioConfig.md) |
-| 146 | LineMode | 0-2 | APL / UPS / GEN | [→](holding-146-LineMode.md) |
-| 147-148 | Battery capacity / nominal voltage | Ah / 0.1 V | unmatched batteries | [→](holding-147_148-battery-capacity.md) |
+| 144 | FloatChargeVolt | 0.1 V | lead-acid float voltage | [→](HR099_102-leadacid-charge.md) |
+| 145 | OutputPrioConfig | 0-3 | 0 bat-first / 1 PV-first / 2 AC-first | [→](HR145-OutputPrioConfig.md) |
+| 146 | LineMode | 0-2 | APL / UPS / GEN | [→](HR146-LineMode.md) |
+| 147-148 | Battery capacity / nominal voltage | Ah / 0.1 V | unmatched batteries | [→](HR147_148-battery-capacity.md) |
 | 149-151 | Equalization volt/interval/time | — | lead-acid equalization | idx |
-| 152-157 | AC-First load time windows | hour\|min | 3 AC-First windows | [→](holding-152_157-ACFirst-windows.md) |
+| 152-157 | AC-First load time windows | hour\|min | 3 AC-First windows | [→](HR152_157-ACFirst-windows.md) |
 | 158-169 | ACChg by V/SOC, bat-low protection, OngridEOD | — | battery/AC-charge thresholds | idx |
 | 170-193 | SOCCurve, grid/gen power caps, FunctionEn2, VoltWatt/QV/QP | — | advanced curves | idx |
-| 194-198 | GenChg start/end V/SOC, MaxGenChgCurr | 0.1V / % / A | generator charge | [→](holding-194_198-generator-charge.md) |
+| 194-198 | GenChg start/end V/SOC, MaxGenChgCurr | 0.1V / % / A | generator charge | [→](HR194_198-generator-charge.md) |
 
 ## Annex tables (in the per-register files)
 
-- **Operating modes** (State, IR 0): [`input-000-State.md`](input-000-State.md).
+- **Operating modes** (State, IR 0): [`IR000-State.md`](IR000-State.md).
 - **Fault codes E000-E031 / Warning codes W000-W031**:
-  [`input-060_063-FaultCode_WarningCode.md`](input-060_063-FaultCode_WarningCode.md).
+  [`IR060_063-FaultCode_WarningCode.md`](IR060_063-FaultCode_WarningCode.md).

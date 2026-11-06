@@ -24,4 +24,4 @@ FW version byte. Traced in the factory image via the holding getter `fn_ceaa`
   with that build folding redundancy differently from the 18kPV.
 
 A FW-version mismatch here is what surfaces as warning **W008** (ARM-computed; see
-[`input-060_063-FaultCode_WarningCode`](input-060_063-FaultCode_WarningCode.md)).
+[`IR060_063-FaultCode_WarningCode`](IR060_063-FaultCode_WarningCode.md)).

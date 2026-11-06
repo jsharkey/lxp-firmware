@@ -13,7 +13,7 @@
 ## Where the data comes from
 
 Parallel-system role/topology the ARM reports. Mirrors the parallel settings
-written on the holding side ([`holding-112-SetSystemType`](holding-112-SetSystemType.md),
-[`holding-113-SetComposedPhase`](holding-113-SetComposedPhase.md)). **Note the
+written on the holding side ([`HR112-SetSystemType`](HR112-SetSystemType.md),
+[`HR113-SetComposedPhase`](HR113-SetComposedPhase.md)). **Note the
 space split:** IR 113 (this status) ≠ HR 113 (SetComposedPhase). **Open:** getter
 source not individually traced.

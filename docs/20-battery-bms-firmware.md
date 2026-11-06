@@ -1,6 +1,6 @@
 # The battery BMS image (`BATT`) — a fifth processor, and the far end of CAN1
 
-> **Dongle registers:** for the dongle-facing view of the BMS registers (IR 81-106) see [`docs/modbus-dongle/input-081_106-BMS.md`](modbus-dongle/input-081_106-BMS.md). This doc remains the BMS image analysis + CAN frame contract.
+> **Dongle registers:** for the dongle-facing view of the BMS registers (IR 81-106) see [`docs/modbus-dongle/IR081_106-BMS.md`](modbus-dongle/IR081_106-BMS.md). This doc remains the BMS image analysis + CAN frame contract.
 
 > **Authoritative wiring:** the ARM-side CAN1↔BMS link is distilled in [`docs/wiring/ARM-CAN1.md`](wiring/ARM-CAN1.md). This doc remains the BMS image analysis and frame contract.
 
@@ -153,7 +153,7 @@ where each lands. Across all three EG4 packs (which emit the same families —
 
 | battery frames | inverter handler | lands in | on the dongle? |
 |---|---|---|---|
-| **aggregate** `0x351/355/356/359/35a/35b/35c/35e/35f` | `sub_08021694` + `sub_08021a1c` | the input-register image | **✔ served** — [IR 81–106](modbus-dongle/input-081_106-BMS.md), IR 5 |
+| **aggregate** `0x351/355/356/359/35a/35b/35c/35e/35f` | `sub_08021694` + `sub_08021a1c` | the input-register image | **✔ served** — [IR 81–106](modbus-dongle/IR081_106-BMS.md), IR 5 |
 | **extended** `0x311–0x321` | `sub_08021b68` | fixed scalar RAM (`0x2000a87e…0x2000a8a2`, `0x2000a9b2…0x2000a9c2`) | ✗ — consumed only by internal CAN re-forwarders (`sub_0802138e`/`sub_08021850`), **not** read by the Modbus getters |
 | **cell / stack detail** `0x370–0x381` (min/max cell V & T, module counts, capacity, SW/HW version, serial) | **none** | — | ✗ — **not parsed at all**; the ARM has no `0x370–0x381` dispatch (verified: zero CAN-id compares in that range). Received on the bus and dropped. |
 | **per-pack bank** (CAN `0x400|sub<<5|pack`) | `sub_080205d4` → IR 5000–5126 | per-pack array `0x2000691c` | ✗ — real path, but **no EG4 pack emits `0x4xx`** (docs/34 §2b), so dormant |
