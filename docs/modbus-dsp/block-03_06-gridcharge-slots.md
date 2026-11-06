@@ -12,7 +12,7 @@ few direct scalars are interleaved. These correspond to the ARM-side schedule
 **time-windows** (dongle holding regs 64–89 / the parallel AC-First windows).
 
 > **ARM-source provenance (`0x17…0x21` of blocks 4 and 5):** traced end-to-end from
-> the builder in `com_flat.bin` — see [`field-provenance`](field-provenance.md). The
+> the builder in `ceaa-07xx_vE_260214.bin` — see [`field-provenance`](field-provenance.md). The
 > ARM writes **six sequential u16 window values** here (three `start/end` pairs), via
 > the slot-committer family → slot records → the block filler. **Block 4 `0x17…0x21`
 > = AC-charge windows HR 68–73**; **block 5 `0x17…0x21` = AC-First windows HR 152–157**

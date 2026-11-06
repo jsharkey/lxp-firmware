@@ -24,7 +24,7 @@ AC-First window). Higher-resolution `0.1%` power variants live at HR 138-143.
 
 ## Where these reach the Control DSP (ARM→USART3 config push)
 
-Traced register-exact through the ARM config builder in `com_flat.bin` — full chain
+Traced register-exact through the ARM config builder in `ceaa-07xx_vE_260214.bin` — full chain
 in [`docs/modbus-dsp/field-provenance.md`](../modbus-dsp/field-provenance.md):
 
 | field | pushed to DSP? | path |
