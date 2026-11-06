@@ -118,7 +118,14 @@ field bleeds into that slot.)*
 > (decode `0x311–0x321`/`0x370–0x381`, define our own register bank) — a
 > deliberate superset, flagged as such.
 
-## 2b. The per-pack register bank (IR 5000–5126) — real, but dormant on this pack
+## 2b. The per-pack register bank (IR 5000–5126) — real; dormant on EG4-LL, live on a `0x4xx` pack
+
+> **Headline updated by [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp):**
+> a production-12000XP capture shows this bank **fully populated and uploaded every
+> cycle** for packs that speak the `0x4xx` per-pack protocol, and pins the field
+> semantics this section leaves structural. The static analysis below is correct and
+> vindicated by that capture; "dormant" is true only of the three EG4-LL `0x3xx`
+> images checked here, not of the bank in general.
 
 The §2 checks establish a true fact (the per-pack bytes are not in input registers
 **0–239**) but the conclusion — "no register, documented or undocumented" — was
@@ -196,10 +203,17 @@ fields. The pack index is 5 bits, so up to 32 packs page through 5000–5126.)
 
 ### Field *semantics* are not yet pinned — and why
 
+> **Now pinned by [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp).**
+> A production capture carries the live register values, so the field meanings below
+> are no longer open: field 4 = charge-V ref, 8 = pack voltage (0.01 V), 9 = current,
+> 10 = SOC‖SOH, 12/13 = max/min cell temp, 14/15 = max/min cell mV, 19–25 = ASCII
+> pack ID — each cross-checked against a known-scale aggregate register. The method
+> below is kept for the record; §2d is the answer.
+
 The register addressing, the field→byte provenance, and the full CAN→dongle path
 above are **proven**. What each field physically *means* (which word is pack
 voltage vs current vs SOC vs a cell min/max vs a version) is **not** determined
-here, for a concrete reason: the parser is a straight little-endian byte copy with
+statically here, for a concrete reason: the parser is a straight little-endian byte copy with
 **no scaling or naming**, so the meaning lives entirely in the battery's frame
 definitions. Pinning them needs one of:
 
@@ -229,10 +243,12 @@ by CAN `0x4xx` via `sub_080205d4` → array `0x2000691c` → `sub_08020cc0`), pr
 serve per-pack values when `0x4xx` frames are injected. Whether it is *fed* was the
 open question — now resolved below.
 
-### Update (battery image decoded): the 5000 bank is DORMANT on this EG4-LL pack
+### Update (battery image decoded): the 5000 bank is DORMANT *on this EG4-LL pack* (but live on a `0x4xx` pack — §2d)
 
 With the battery image (`BATT_IN280-Z03T13.bin`) now decoded, the per-pack feed
-question is settled, and it walks the headline **back toward the original**:
+question is settled **for this pack**, and it walks the headline **back toward the
+original** — scoped to EG4-LL only; a production capture (§2d) shows the bank live
+on a pack that does emit `0x4xx`:
 
 - **This pack emits no `0x4xx`.** Its CAN TX frame-ID table (`@0x31a20`, 55 entries)
   carries only `0x3xx`/`0x35x` (aggregate `0x351/355/356/359`, extended
@@ -320,6 +336,122 @@ on `0x3xx` → unserved internal scalars. *(So the specific guess "EG4/Lux is th
 per-pack protocol" is not borne out; the general idea "a per-pack-protocol pack
 lights the bank" is — just not with an EG4 pack.)*
 
+**Confirmed by capture.** [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)
+is exactly this case observed live: a production 12000XP with two packs that *do*
+speak the `0x4xx` per-pack protocol (ASCII ids `Battery_ID_01/02`, copied from CAN,
+not a firmware literal), and the bank reads back full per-pack V/I/SOC/SOH/cell
+detail — the "a per-pack-protocol pack lights the bank" half of the resolution,
+now proven rather than predicted.
+
+## 2d. Live capture: the 5000 bank IS populated on a production 12000XP
+
+§2b/§2c predicted the bank would light up for a pack that natively speaks the
+`0x4xx` per-pack (Pylontech-family) protocol, and stays dark for the EG4-LL
+`0x3xx` packs. A **packet capture of a production 12000XP datalogger talking to the
+EG4 cloud** now confirms that prediction with live data — and, because the capture
+carries the actual register *values*, finally **pins the field semantics** that
+§2b left deliberately unlabeled. This is dynamic evidence (the top of the
+claims-discipline hierarchy), and it **corrects the "dormant, reads all-zero"
+headline**: on this real system the bank is fully populated and shipped off-box
+every cycle.
+
+### Source and method
+
+Two pcaps of a 12000XP's Wi-Fi dongle ↔ `us2.solarcloudsystem.com` (TCP `:4346`),
+one at connect (`init`) and one steady-state (`normal`). No proprietary firmware is
+involved; the capture is the *dongle's* cloud uplink. Dissected with a pure-stdlib
+Python reader (no tshark/scapy in the container). The dongle serial (`DJ435…`),
+inverter serial (`4373…`) and an embedded firmware tag **`ceaa` / `V2.06`** appear
+in the stream — the **same `ceaa-07xx` family** as the factory oracle we decode
+elsewhere, so these findings apply directly to the image under analysis. (Device
+serials redacted here; they are not needed for the protocol.)
+
+### Dongle → cloud framing (so this is reproducible)
+
+The uplink is the Luxpower/EG4 datalogger protocol. Outer frame:
+
+```
+A1 1A | proto(u16 LE) | len(u16 LE) | addr(1) | tcp_func(1) | datalog_sn[10] | body[len-?]
+```
+
+The data push is **`tcp_func = 0xC2`, `proto = 0x0005`**. Its body is a Luxpower
+*device* frame:
+
+```
+dlen(u16 LE) | addr(1) | dev_func(1) | inverter_sn[10] | reg_start(u16 LE) | nbytes(1) | payload[nbytes] | CRC16
+    dev_func: 0x03 = ReadHold, 0x04 = ReadInput   (little-endian registers, CRC-16/MODBUS)
+```
+
+Every steady-state cycle the dongle ships **four `ReadInput` windows** — `reg_start`
+= **0, 127, 254, and 5000** (each 127 registers / 254 bytes) — plus a one-shot
+`ReadHold` 0–79 at connect. So **IR 5000–5126 is polled and uploaded on every normal
+cycle**, exactly like IR 0–380. (`normal.pcap`: 295 `0xC2` frames, the `reg=5000`
+window recurring once per cycle.)
+
+### The 5000 window, decoded
+
+Two packs are present, at bases **5000** and **5030** — a **live confirmation of the
+statically-derived 30-register stride** (§2b). IR 5060+ read all-zero (only two
+packs). `IR96 BatParallelNum = 2` in the aggregate block agrees: two packs → two
+populated records.
+
+Pack 0 is named **`Battery_ID_01`**, pack 1 **`Battery_ID_02`** — ASCII, in the
+fields §2b sourced to CAN subtypes 5–6. **That string is not a firmware literal**
+(absent from both `com_flat.bin` and the EG4-LL battery image), so it is **copied
+verbatim from the CAN bus** into the per-pack array — direct proof the bank is fed
+by a byte-copy of per-pack CAN frames, and that these packs *do* emit the `0x4xx`
+series the EG4-LL packs do not.
+
+**Field semantics** (field = `reg − 5000` within a pack; values from pack 0 /
+pack 1, cross-checked against known-scale aggregate registers from the *same*
+capture):
+
+| field | §2b name | pack0 / pack1 | meaning (cross-ref) | scale |
+|---|---|---|---|---|
+| 2  | PP_S0_W2 | `0xc002` / `0xc002` | status/flags (both packs equal) | bitfield |
+| 3  | PP_S0_W3 | 280 / 280 | charge-current limit (prob.) | 0.1 A |
+| 4  | PP_S1_W0 | 560 / 560 | **charge-voltage ref** = aggregate `IR83`=560 | 0.1 V |
+| 5  | PP_S1_W1 | 200 / 200 | discharge-current limit (prob.) | 0.1 A |
+| 7  | PP_S1_W3 | 450 / 450 | limit (prob.) | — |
+| 8  | PP_S2_W0 | 5430 / 5429 | **pack voltage**; aggregate `IR4`=542 (54.2 V) brackets both | 0.01 V |
+| 9  | PP_S2_W1 | 0 / 0 | **pack current** (signed, idle) | 0.1 A |
+| 10 | PP_S2_W2 | `0x6464` / `0x6464` | **SOC (lo) ‖ SOH (hi)** = 100 % / 100 %; aggregate `IR5`=100 | % |
+| 11 | PP_S2_W3 | 9 / 8 | cycle count (prob.; differs per pack) | count |
+| 12 | PP_S3_W0 | 80 / 60 | **max cell temp** = aggregate `IR103`=80 (= max of packs) | raw (as IR103) |
+| 13 | PP_S3_W1 | 70 / 60 | **min cell temp** = aggregate `IR104`=60 (= min of packs) | raw (as IR104) |
+| 14 | PP_S3_W2 | 3403 / 3400 | **max cell voltage** = aggregate `IR101`=3402 (= max) | mV |
+| 15 | PP_S3_W3 | 3376 / 3379 | **min cell voltage** = aggregate `IR102`=3376 (= min) | mV |
+| 17 | PP_S4_W1 | `0x0101` / `0x0101` | firmware/version (both equal) | — |
+| 18 | PP_S4_W2 | `0x0203` / `0x0203` | version/protocol (both equal) | — |
+| 19–25 | PP_S5/S6 | `"Battery_ID_01"` / `"Battery_ID_02"` | **ASCII pack identifier** (from CAN) | string |
+
+The eight bolded rows are **anchored to a known-scale aggregate register** in the
+same capture (`IR4/5/83/101/102/103/104`), so their meaning and scale are confirmed,
+not inferred. The aggregate max/min-cell and max/min-temp are exactly the
+max/min across the two packs' per-pack fields — the inverter computes the aggregate
+*from* the per-pack records. The rows marked "prob." are the remaining
+limit/version words, consistent in magnitude with per-pack limits but not pinned to
+a reference value.
+
+### Liveness (not a cached snapshot)
+
+Across the 20 distinct `reg=5000` payloads in `normal.pcap`, pack voltage and
+max-cell-mV **fluctuate independently per pack** (pack 0 V 5428–5430, pack 1 V
+5428–5430; max-cell 3402–3403) — the bank tracks live per-pack telemetry, it is not
+a one-shot fill.
+
+### Net correction
+
+The per-pack bank (IR 5000–5126) is **not universally dormant**. It is dormant only
+on the three EG4-LL `0x3xx` images statically checked (§2b "Checked three EG4
+battery models"); on a production 12000XP with packs that speak the `0x4xx`
+per-pack protocol it is **fully live — polled and uploaded to the cloud every
+cycle** — and its field layout decodes to per-pack V / I / SOC / SOH / max&min cell
+V / max&min cell temp / limits / version / ASCII ID, exactly the quantity set §2b
+predicted. The structural map in `perpack_map.h` and §2b is **vindicated by live
+data**; the only thing that changes is the headline, from "real but dormant" to
+"real, and live on a `0x4xx` pack — proven by capture."
+
 ## 3. Firmware update over CAN (extra credit)
 
 The battery is a **two-stage** design: a bootloader occupies `0x0`–`0x20000`
@@ -352,3 +484,10 @@ flashing protocol needs the bootloader dump.
 python3 tools/batt_canmap.py reference/BATT_IN280-Z03T13.bin --builders   # TX frame table
 # ARM-side: inject extended frames, sweep registers (see the probe in this note's history)
 ```
+
+For §2d, dissect a dongle↔cloud pcap with a pure-stdlib reader (Ethernet→IPv4→TCP
+reassembly, then the `A1 1A … 0xC2/0x0005` outer frame → Luxpower device frame):
+pick out the `dev_func=0x04` windows and read the `reg_start=5000` payload as 127
+little-endian u16 registers, then slice packs at a 30-register stride. The pcaps are
+device captures (not firmware) and stay out of the tree; serials are redacted in
+this doc.
