@@ -91,6 +91,8 @@ test:
 	@./$(BUILD)/test_optchg
 	$(HOSTCC) $(HOSTFLAGS) src/rtc/rtc.c tests/test_rtc.c -o $(BUILD)/test_rtc
 	@./$(BUILD)/test_rtc
+	$(HOSTCC) $(HOSTFLAGS) src/energy/energy.c tests/test_energy.c -o $(BUILD)/test_energy
+	@./$(BUILD)/test_energy
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
@@ -143,13 +145,15 @@ SIM_CROSS       = python3 tests/test_persist_crossimage.py $(BUILD)/$(TARGET).bi
 # captures which config-frame byte moves. Same spec for ours + factory (the
 # factory half self-skips when no image is present).
 SIM_PUSH        = python3 tests/test_dsp_push.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
+# Accumulated energy counters (IR 28-37 / 40-59): factory accumulator vs ours.
+SIM_ENERGY      = python3 tests/test_energy.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
 
 # Every block runs even if an earlier one fails; the target fails only at the end
 # if any did -- so a red test (e.g. the expected-red dongle/CAN scaffolding)
 # never hides the blocks after it. Each file @-prints its own banner header,
 # which stays the sole block delimiter (the recipes are @-silent).
 test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; exit $$rc
+	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; $(SIM_ENERGY) || rc=1; exit $$rc
 
 test-sim-factory: $(FACTORY_BIN)
 	@rc=0; $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; exit $$rc
@@ -175,6 +179,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_OURS_COMMON) || rc=1; \
 	$(SIM_OURS_SELF) || rc=1; \
 	$(SIM_PUSH) || rc=1; \
+	$(SIM_ENERGY) || rc=1; \
 	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 

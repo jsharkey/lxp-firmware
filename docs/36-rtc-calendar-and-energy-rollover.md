@@ -91,6 +91,16 @@ RTC forward" exercises the rollover, not the accumulation rate.
 
 ## 3. Hand-off — the daily rollover is not yet located (07-series)
 
+> **Largely RESOLVED in [`docs/37`](37-energy-accumulation.md).** The energy
+> struct is located (`0x20009954`, with the per-register offsets), the FC04 getter
+> **is** `sub_0803289c`, and the accumulator (`0x0801fbc4` / `0x0801f960`) is found
+> and validated — Epv1_all counts up from the STATUS-struct power telemetry, gated
+> on a running state. The **daily-rollover trigger** is characterised as a
+> scheduler task keyed on the RTC day, but it is **not observable in `arm_sim`**
+> (the task doesn't run cold, same as the config push), so our firmware implements
+> and tests it while the factory side stays unasserted. The notes below stand as
+> the trail that led there.
+
 The daily-rollover test is **blocked** on RE that is not done. Evidence and
 dead-ends from this pass (so the next agent doesn't repeat them):
 

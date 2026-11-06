@@ -23,6 +23,7 @@
 #include "inv/config_flash.h"
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
+#include "inv/energy.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map).
  * The wire value is scaled to the on-flash units the factory uses so a record
@@ -215,11 +216,24 @@ int main(void) {
         if ((uint32_t)(g_ticks - last_rtc) >= 1000) {   /* 1 Hz wall-clock tick */
             last_rtc = g_ticks;
             rtc_tick();
+            /* Accumulate the energy counters (IR 28-37 / 40-59): integrate the
+             * instantaneous power telemetry, gated on a running operating state;
+             * then reset the daily counters if the RTC rolled to a new day. The
+             * cumulative counters persist across midnight (docs/37). */
+            static const uint8_t ch_pwr[ENERGY_NCH] = {
+                IR_PPV1, IR_PPV2, IR_PPV3, IR_PINV, IR_PREC,
+                IR_PCHARGE, IR_PDISCHARGE, IR_PEPS, IR_PTOGRID, IR_PTOUSER,
+            };
+            for (uint8_t ch = 0; ch < ENERGY_NCH; ch++)
+                energy_set_power(ch, g_rt.input_reg[ch_pwr[ch]]);
+            energy_tick((uint8_t)g_rt.input_reg[IR_STATE]);
+            energy_rollover(g_rtc.day);
         }
         /* Publish the safety CPU's decoded USART2 telemetry (grid/PV/bus V,
          * frequency, temps, inverter current) into the register image before
          * serving Modbus, so the dongle sees the latest values (docs/30/33). */
         safety_cpu_publish(g_rt.input_reg, 160);
+        energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
         mb_port_poll(g_ticks);
 
