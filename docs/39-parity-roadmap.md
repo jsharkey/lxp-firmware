@@ -6,6 +6,8 @@ with the factory `ceaa-07xx` image**. It is written for several agents working
 commits). Tasks are **ordered by impact**: the ones near the top either close the
 biggest gaps or unblock the most later tasks.
 
+Companion: [`docs/38-oss-feature-ideas.md`](38-oss-feature-ideas.md) covers OSS features *beyond* the factory; this doc is about reaching parity first.
+
 It is a plan, not a finding. Every claim below about what exists today cites the
 file or doc it comes from (as of `ccccc95`). Where a task says what the factory
 *does*, that is only as strong as the doc it cites. **Re-prove it with an oracle
@@ -57,12 +59,12 @@ House rules that apply to every task (all from [`AGENTS.md`](../AGENTS.md)):
   it a known-red-for-ours spec in the test and in the commit. `make test` and
   the builds must **stay green**.
 - Record every register you test in its
-  [`docs/modbus-dongle/`](modbus-dongle/README.md) `## Test coverage` section.
+  [`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) `## Test coverage` section.
 - Anything the factory does that looks wrong goes in
   [`docs/31`](31-factory-quirks.md), with a verdict. **Don't silently copy or
   "fix" it.**
 - New wire/register facts belong in the authoritative subdirs
-  (`docs/wiring/`, `docs/modbus-dongle/`, `docs/modbus-dsp/`), not only in a
+  (`docs/wiring/`, `docs/wiring/ARM-UART5-dongle/`, `docs/wiring/ARM-USART3-DSP/`), not only in a
   numbered doc.
 - If you can't run the factory half (no image), say so in the commit. Never
   claim a pass you didn't see.
@@ -71,7 +73,7 @@ House rules that apply to every task (all from [`AGENTS.md`](../AGENTS.md)):
 
 To claim a task, edit its **Status** line to
 `[~] <agent/handle> <YYYY-MM-DD>`, commit it on its own
-(`docs/38: claim T07`), and push **before** you start the real work. If the
+(`docs/39: claim T07`), and push **before** you start the real work. If the
 rebase shows someone else claimed it first, pick another task.
 
 When you finish, set the line to `[x]`, link the commits/docs/tests, and tick
@@ -90,13 +92,13 @@ call/wiring line or two to `main.c`. Rebase often.
 
 | area | factory | ours today | gap |
 |---|---|---|---|
-| Dongle Modbus port | UART5 + RS-485 DE ([`wiring/ARM-UART5`](wiring/ARM-UART5.md)) | engine bound to **USART3** (`src/modbus/modbus_port.c`), the same port as the DSP push (`src/dsp/dsp_link_port.c`) | **blocks real hardware**; harness `ModbusDongle` also drives USART3 |
+| Dongle Modbus port | UART5 + RS-485 DE ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md)) | engine bound to **USART3** (`src/modbus/modbus_port.c`), the same port as the DSP push (`src/dsp/dsp_link_port.c`) | **blocks real hardware**; harness `ModbusDongle` also drives USART3 |
 | Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **2** persisted (HR 101/102, `settings_persist_hr` in `src/main.c`) | 54 registers |
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
 | State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | `IR_STATE` hard-seeded to Standby in `main.c` | whole classifier |
-| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`modbus-dongle`](modbus-dongle/README.md)) | energy integrator only (`src/energy/`) | IR 7-11, 16-17, 24-27, 69-70, … |
-| DSP link RX | `0x49` telemetry parsed by `FUN_08025ab8` ([`modbus-dsp/telemetry-0x49`](modbus-dsp/telemetry-0x49.md)) | **TX only** | parser + link-loss supervision |
+| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | energy integrator only (`src/energy/`) | IR 7-11, 16-17, 24-27, 69-70, … |
+| DSP link RX | `0x49` telemetry parsed by `FUN_08025ab8` ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **TX only** | parser + link-loss supervision |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
 | Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | HR 15 seeded once; `check_sn=false`; HR 11 inert | command semantics |
@@ -105,7 +107,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
 | Harness depth | — | factory RTOS tasks **don't run** in the sim, so peer data is injected at the bank, not on the wire ([`docs/19`](19-gpio-test-harness.md), `tests/arm_sim_safety.py`) | wire-level e2e for USART2/USART3/relay task |
 
-Register-level coverage: **26 of 54** `docs/modbus-dongle/` register files list **no
+Register-level coverage: **26 of 54** `docs/wiring/ARM-UART5-dongle/` register files list **no
 test** at all. These include IR 6, 10-11, 16-17, 19, 26-27, 60-63, 69-70, 77,
 107 and HR 9-11, 16, 20, 22-62, 103, 110, 112-113, 146-148, 194-198. The tasks
 below are what close them.
@@ -119,7 +121,7 @@ below are what close them.
 
 Today our Modbus engine and the DSP config push **share USART3**, so on real
 hardware the dongle can never reach us. The factory serves the dongle on
-**UART5 + RS-485 DE on PA15** ([`wiring/ARM-UART5`](wiring/ARM-UART5.md),
+**UART5 + RS-485 DE on PA15** ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md),
 [`docs/26`](26-dongle-firmware.md)).
 - **Oracle:** teach `tests/arm_sim_modbus.py` (`ModbusDongle`) to drive
   **UART5** (`0x40005000`). Prove that the factory answers a read on UART5 and
@@ -198,7 +200,7 @@ clamp, or store verbatim.
 We have the bank → IR half (`src/safety/safety_cpu.c`), but **nothing fills the
 bank from the wire**. The frame (SOF `0x49`, type-1, big-endian, tag
 sub-records, CRC-16) is laid out in [`docs/33`](33-usart2-telemetry-bank.md) §1
-and [`wiring/ARM-USART2`](wiring/ARM-USART2.md).
+and [`wiring/ARM-USART2-safety`](wiring/ARM-USART2-safety.md).
 - **Ours first is OK here.** A host-tested parser (`src/safety/safety_rx.c`)
   with frames built from the docs/33 layout: good CRC, bad CRC, truncated,
   unknown tag, resync after garbage. Add a USART2 driver (RS-485, check docs/16
@@ -215,12 +217,12 @@ and [`wiring/ARM-USART2`](wiring/ARM-USART2.md).
 **classifier, not a power FSM**:
 `received_mode_byte + fault flags → IR_STATE`, plus a merge of the relayed
 fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
-[`IR060_063`](modbus-dongle/IR060_063-FaultCode_WarningCode.md)).
+[`IR060_063`](wiring/ARM-UART5-dongle/IR060_063-FaultCode_WarningCode.md)).
 - **Oracle:** a micro-test calls `sub_0801b480` in isolation and sweeps **every
   mode byte 0x00-0xFF** × {no fault, each ARM-local fault bit, relayed fault}.
   It records the IR 0 / 6 / 60-63 outputs as the vector table. Specifically
   check the manual's extra codes `0x11` Bypass and `0x19` PV-charge+bypass
-  ([`IR000-State`](modbus-dongle/IR000-State.md)), and what an
+  ([`IR000-State`](wiring/ARM-UART5-dongle/IR000-State.md)), and what an
   unknown/non-canonical byte becomes.
 - **Ours:** `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags)
   → {state, fault32, warn32, internal_fault}` as a pure function. Publish it
@@ -267,7 +269,7 @@ state change and relay drop. **Prove it:**
 **Status:** `[ ]` · **Layer:** host + sim · **Independent** (factory RX path `FUN_0801bb0e`/`FUN_08025ab8`)
 
 Our link is TX-only. The factory parses DSP `0x49` frames on USART3
-([`modbus-dsp/telemetry-0x49`](modbus-dsp/telemetry-0x49.md)). The authoritative
+([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)). The authoritative
 state and faults come from USART2 (docs/22), so first **find out what the ARM
 actually consumes from `0x49`**: link-alive, DSP version, the block
 acknowledge/completeness mask?
@@ -275,18 +277,18 @@ acknowledge/completeness mask?
   RAM/IR changes (`tools/ramxref.py`, `tools/emu_regrange.py`).
 - **Ours:** an RX ring on USART3 (the ISR already exists in `src/uart/uart3.c`)
   and a block parser that mirrors `dsp_build_config_frame`.
-- Record the findings in `docs/modbus-dsp/telemetry-0x49.md`.
+- Record the findings in `docs/wiring/ARM-USART3-DSP/telemetry-0x49.md`.
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
 **Status:** `[ ]` · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
 
-Block meanings are recovered ([`modbus-dsp/`](modbus-dsp/README.md):
+Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
 `dsp_config.c` sends them **empty**. `tests/test_dsp_push.py` already captures
 the factory's frames off USART3, so extend it:
 - **Oracle:** for each block, capture the factory frame under ≥3 different
   settings snapshots and assert each field's byte position/width/endianness
-  tracks the source HR or struct field ([`modbus-dsp/field-provenance`](modbus-dsp/field-provenance.md)).
+  tracks the source HR or struct field ([`wiring/ARM-USART3-DSP/field-provenance`](wiring/ARM-USART3-DSP/field-provenance.md)).
 - **Ours:** fill the field tables. Block 1 depends on the BMS-limit struct
   (T11), and the cal-gain blocks need a source for the gains (factory config
   slot? record it).
@@ -311,7 +313,7 @@ the factory's frames off USART3, so extend it:
   (`0x355` SOC → max-cell-V, `0x359` "PN" → capacity, `0x35A` dropped, IR 98
   10× unit). Each verdict is either a factory-green test we copy or an explicit
   "fixed in ours" test, plus a docs/31 entry.
-- Covers the IR 81-106 gaps in the docs/modbus-dongle coverage list.
+- Covers the IR 81-106 gaps in the docs/wiring/ARM-UART5-dongle coverage list.
 
 ---
 
@@ -320,7 +322,7 @@ the factory's frames off USART3, so extend it:
 ### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
 **Status:** `[ ]` · **Layer:** sim · **Depends:** T03 (persistence of addr / SN)
 
-- **HR 11 ResetSetting** ([`HR011`](modbus-dongle/HR011-ResetSetting.md),
+- **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
   [`docs/23`](23-arm-config-writer.md) §Reset-to-default): find out what each
   bit does in the factory sim (clear energy records? defaults → which slots get
   rewritten, to what? reboot → when? BMS switch?). Assert the post-state.
@@ -330,7 +332,7 @@ the factory's frames off USART3, so extend it:
   the request SN **checked** (our `check_sn=false`)? What does the factory reply
   to a wrong SN: silence or an exception?
 - **HR 9-10 versions + W008:** we report our own version, and W008 comes from
-  the version compare ([`HR009_010`](modbus-dongle/HR009_010-FW-versions.md)).
+  the version compare ([`HR009_010`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md)).
   Decide in docs/31 what ours does on a version mismatch.
 
 ### T13 — HMI status dashboard (overview screen; no editors)
@@ -391,12 +393,12 @@ window evaluator has a factory-vs-ours micro-test already
 ### T16 — Generator: charge start/stop, quick start, warm-up/cool-down (HR 194-198 + 07-series)
 **Status:** `[ ]` · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
 
-[`HR194_198`](modbus-dongle/HR194_198-generator-charge.md) start/end V/SOC and
+[`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions
 ([`docs/11`](11-12000xp-revisions.md) #1 gen charge time scheduling, #2 quick
 start 20-min cycle, #3 warm-up/cool-down, #15 no gen charge while Smart Load is
 active). First locate the backing registers/settings for the 07-only features
-(they may be outside the published spec). Write them up in docs/modbus-dongle,
+(they may be outside the published spec). Write them up in `docs/wiring/ARM-UART5-dongle/`,
 then oracle the start/stop thresholds and timers at their boundaries.
 
 ### T17 — Remaining 07-series features: Smart Load, Resume SOC, Quick Charge, buzzer
@@ -415,7 +417,7 @@ register/setting located, a factory oracle, then ours.
 
 ### T18 — Firmware-update pass-through (`0x21/0x22/0x23`, State = Programming)
 **Status:** `[ ]` · Layer: sim. The ARM relays DSP firmware updates
-([`modbus-dsp/bootloader-21_23`](modbus-dsp/bootloader-21_23.md)) and reports
+([`wiring/ARM-USART3-DSP/bootloader-21_23`](wiring/ARM-USART3-DSP/bootloader-21_23.md)) and reports
 IR 0 = `0x02`. Needed eventually so that field updates of the DSP keep working
 under our firmware. Our own ARM update path (the bootloader layout in docs/11)
 is a separate, later question.
