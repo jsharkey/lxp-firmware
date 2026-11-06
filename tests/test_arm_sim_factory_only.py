@@ -28,8 +28,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
-                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B)
+                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
+                              assert_requests_bootloader, BOOTLOADER_BASE,
+                              FACTORY_APP_VECTOR_BASE)
 from arm_sim_runner import Skip, run_tests
+from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR
 
 # Factory flat-.bin image under test. Set by the __main__ runner from argv.
 _IMAGE = [None]
@@ -45,6 +48,40 @@ def _factory():
         raise ValueError("%s is an Intel .hex; pass a flat .bin -- convert it "
                          "first (`make factory` or tools/hex2bin.py)" % path)
     return ArmSim(path)
+
+
+# Factory 07-series inlined NVIC_SystemReset: DSB; AIRCR = VECTKEY|(PRIGROUP)|
+# SYSRESETREQ; DSB; spin. Confirmed to write 0x05FA0004 to 0xE000ED0C when run.
+_FACTORY_NVIC_SYSTEM_RESET = 0x0802f378
+
+
+def test_invreboot_enters_bootloader():
+    """The ARM half of the dongle-driven firmware update (docs/38): the factory,
+    on the "restart inverter" command, issues NVIC_SystemReset, which on the
+    07-series bootloader+App part hands the core to the bootloader at 0x08000000
+    -- below the App's own vector table at 0x08005000. That is "enter flashing
+    mode."
+
+    The command path (ResetSetting reg 11 bit 7 over the dongle link) is RTOS/
+    dongle-gated in a cold sim (docs/19/26), so -- exactly as the relay parity
+    tests do -- we drive the factory's real NVIC_SystemReset site directly and
+    hold it to the shared enter-bootloader contract (tests/arm_sim_contract.py).
+    The reset request is confirmed from the image itself; its wiring to the
+    InvReboot command rests on the EG4 spec + static RE (docs/38)."""
+    sim = _factory()
+    rec = sim.watch_system_reset()          # observe/halt on the reset request
+    sim.uc.reg_write(UC_ARM_REG_SP, 0x2000F000)
+    sim.uc.reg_write(UC_ARM_REG_LR, 0x56000001)   # STOP sentinel
+    try:
+        sim.uc.emu_start(_FACTORY_NVIC_SYSTEM_RESET | 1, 0, count=40)
+    except Exception:
+        pass                                 # watch_system_reset halts us at AIRCR
+    assert_requests_bootloader(rec, "factory")
+    # On this part the reset vector (0x08000000) sits BELOW the App's own vector
+    # table -- i.e. it is the separate bootloader, not a re-entry of the App.
+    assert BOOTLOADER_BASE < FACTORY_APP_VECTOR_BASE, (
+        "bootloader base 0x%08x must sit below the App vectors 0x%08x"
+        % (BOOTLOADER_BASE, FACTORY_APP_VECTOR_BASE))
 
 
 # --- factory relay drive: re-pin needed before these can run (docs/18) ------

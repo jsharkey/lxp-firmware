@@ -163,10 +163,27 @@ typedef struct {
 #define SysTick_CTRL_CLKSOURCE (1UL << 2)
 
 typedef struct {
-    __IO uint32_t CPUID; __IO uint32_t ICSR; __IO uint32_t VTOR;
-    /* ... (truncated; only VTOR needed here) */
+    __IO uint32_t CPUID; __IO uint32_t ICSR; __IO uint32_t VTOR; __IO uint32_t AIRCR;
+    /* ... (truncated; only VTOR/AIRCR needed here) */
 } SCB_TypeDef;
 #define SCB ((SCB_TypeDef *)0xE000ED00UL)
+/* AIRCR: VECTKEY in [31:16] is mandatory on write; SYSRESETREQ asks the core to
+ * reset. On the bootloader+App parts (18kPV/6000XP, 07-series 12000XP) the reset
+ * hands control to the bootloader at 0x08000000 -- i.e. enters flashing mode. */
+#define SCB_AIRCR_VECTKEY      (0x05FAUL << 16)
+#define SCB_AIRCR_SYSRESETREQ  (1UL << 2)
+#define SCB_AIRCR_PRIGROUP_Msk (7UL << 8)
+
+/* NVIC_SystemReset(): request a core reset (-> bootloader). Preserves PRIGROUP,
+ * mirrors CMSIS. Does not return. */
+static inline void inv_system_reset(void)
+{
+    __asm volatile ("dsb 0xF":::"memory");
+    SCB->AIRCR = SCB_AIRCR_VECTKEY | (SCB->AIRCR & SCB_AIRCR_PRIGROUP_Msk)
+               | SCB_AIRCR_SYSRESETREQ;
+    __asm volatile ("dsb 0xF":::"memory");
+    for (;;) { __asm volatile ("nop"); }
+}
 
 #define NVIC_ISER ((__IO uint32_t *)0xE000E100UL)
 static inline void nvic_enable_irq(int irqn) { NVIC_ISER[irqn >> 5] = (1UL << (irqn & 0x1F)); }

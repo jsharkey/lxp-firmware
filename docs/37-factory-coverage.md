@@ -1,4 +1,4 @@
-# 36 — Factory-coverage dashboard
+# 37 — Factory-coverage dashboard
 
 **How much of the factory firmware have our parity tests actually exercised?**
 This is the long-term "are we there yet?" metric for the reimplementation: a

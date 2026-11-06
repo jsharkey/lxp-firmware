@@ -200,6 +200,17 @@ enum mb_hold_reg {
                                           USART2, not a direct DSP link (docs/30/31)
                                   high = FW version code: const (ARM-side build code) */
     HR_RESET_SETTING    = 11,  /* bitfield: clear records / restore defaults /…  */
+    /* ResetSetting bits (EG4 18kPV-12LV Modbus spec, reg 11). Each is an action
+     * trigger, not stored state. Bit 7 (InvReboot) restarts the inverter -- which
+     * on a bootloader+App part enters the bootloader (see inv_system_reset()). */
+#define INV_RESETSETTING_ENERGY_RECORD_CLR (1u << 0)
+#define INV_RESETSETTING_ALL_TO_DEFAULT    (1u << 1)
+#define INV_RESETSETTING_ADJ_RATIO_CLR     (1u << 2)
+#define INV_RESETSETTING_FAULT_RECORD_CLR  (1u << 3)
+#define INV_RESETSETTING_MONITOR_DATA      (1u << 4)
+#define INV_RESETSETTING_BMS_CHG_SW_ON     (1u << 5)
+#define INV_RESETSETTING_BMS_DISCHG_SW_ON  (1u << 6)
+#define INV_RESETSETTING_INV_REBOOT        (1u << 7)  /* "restart inverter" */
     HR_TIME_YEAR_MONTH  = 12,  /* low: year(17-255), high: month(1-12)           */
     HR_TIME_DATE_HOUR   = 13,
     HR_TIME_MIN_SEC     = 14,

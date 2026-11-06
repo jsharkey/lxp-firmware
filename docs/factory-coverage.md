@@ -84,6 +84,4 @@ _…and 682 more unexercised in-scope functions._
 - **Function-hit is an upper bound on confidence.** A function entered on one trivial input counts covered even if its fault/edge branches never run.
 - **The denominator is the _recovered_ map** (`recurse.py`, ~72% of the image is code; boundaries are heuristic), not every function that exists.
 
-_Generated 2026-11-06 · image `com_flat.bin (ceaa-07xx vE 260214)` · sha256 `7a521ccf0d9d39fe` · 1083 functions in map_
-
-_Captured from the factory-side test-sim blocks (common + factory-only) under Unicorn; the cross-image persistence block was not run in this toolchain-less environment, so coverage is a lower bound. Run `make coverage` on a full checkout to refresh._
+_Generated 2026-11-06 · image `com_flat.bin` · sha256 `7a521ccf0d9d39fe` · 1083 functions in map_

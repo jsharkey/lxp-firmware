@@ -1,4 +1,4 @@
-# Factory-function classification for the coverage dashboard (docs/36).
+# Factory-function classification for the coverage dashboard (docs/37).
 #
 # Consumed by tools/coverage_report.py to decide which recovered factory
 # functions (reference/symbols.csv) count toward docs/factory-coverage.md.
@@ -23,7 +23,7 @@
 # the handful of HMI menu handlers docs/03 named explicitly. Everything else is
 # left UNCLASSIFIED on purpose: it counts against the score until a human triages
 # it (e.g. the planned callgraph-reachability sweep that will bulk-classify the
-# HMI subtree — docs/36 "Next steps"). Names here must match symbols.csv exactly;
+# HMI subtree — docs/37 "Next steps"). Names here must match symbols.csv exactly;
 # e.g. 0x08005938 is fn_Lead_Acid_Floating_Voltage in this map, not the menu
 # renderer docs/03 called sub_08005938, so it is NOT ignored.
 match,status,module,reason
@@ -41,7 +41,7 @@ name:SVCall_Handler,ignore,runtime,RTOS supervisor-call vector (docs/03)
 #     the HMI our own way (docs/06, docs/27, docs/28), so factory HMI handlers
 #     are out of scope. NOTE: fn_Meter is in symbols_named.csv but NOT in
 #     symbols.csv, so it is omitted here; richer HMI ignores await the
-#     callgraph-reachability sweep (docs/36). ---------------------------------
+#     callgraph-reachability sweep (docs/37). ---------------------------------
 name:fn_Hybrid_Setting,ignore,hmi,HMI menu handler named from its text (docs/03)
 name:fn_Parallel_Setting,ignore,hmi,HMI menu handler named from its text (docs/03)
 name:fn_Smart_Load,ignore,hmi,HMI menu handler named from its text (docs/03)

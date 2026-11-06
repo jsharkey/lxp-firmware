@@ -103,6 +103,12 @@ static mb_exception_t mb_wr_hold(void *c, uint16_t a, uint16_t v) {
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
     g_rt.holding_reg[a] = v;    /* TODO: validate ranges */
     settings_persist_hr(a, v);  /* journal persisted settings to the config flash */
+    /* ResetSetting.InvReboot (reg 11, bit 7): the dongle's "restart inverter"
+     * command. Reboot into the bootloader so the chip can be reflashed -- the
+     * ARM half of the cooperative firmware-update path (docs/38). Must run after
+     * the value is journalled; it does not return. */
+    if (a == HR_RESET_SETTING && (v & INV_RESETSETTING_INV_REBOOT))
+        inv_system_reset();
     return MB_OK;
 }
 

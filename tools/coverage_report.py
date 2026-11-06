@@ -3,7 +3,7 @@
 coverage_report — turn an execution-coverage capture of the FACTORY image into
 the checked-in dashboard docs/factory-coverage.md.
 
-The idea (see docs/36-factory-coverage.md): `make test-sim` already runs the
+The idea (see docs/37-factory-coverage.md): `make test-sim` already runs the
 proprietary factory image under the Unicorn harness (tools/arm_sim.py) so the
 *same* black-box tests assert our reimplementation matches it. With
 $LXP_COVERAGE set, the harness records the entry PC of every basic block the
