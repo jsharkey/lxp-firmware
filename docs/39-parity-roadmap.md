@@ -96,7 +96,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **62** persisted via `include/inv/settings_map.h` (T03): docs/23's 56 + 6 AC-First windows, cross-image green | gated schedules (74, 76-89), Q(V)/PF block — need a precondition |
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
-| State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | `IR_STATE` hard-seeded to Standby in `main.c` | whole classifier |
+| State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | **`inv_classify()`** publishes IR 0 + IR 60-63 (`src/state/classify.c`, T06a) | factory oracle (T06b) blocked on 07 re-pin; mode byte source is USART2 (T05) |
 | ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (needs T09 DSP RX); IR 19 PF, 77, 64/67 |
 | DSP link RX | `0x49` telemetry parsed by `FUN_08025ab8` ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **TX only** | parser + link-loss supervision |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
@@ -290,7 +290,30 @@ and [`wiring/ARM-USART2-safety`](wiring/ARM-USART2-safety.md).
 - Record `rx-timeout → fault` behaviour for T08.
 
 ### T06 — Operating-state classifier + fault/warning composer (`sub_0801b480`)
-**Status:** `[~] claude 2026-11-06` · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
+**Status:** split → **T06a `[x]`** (ours + host), **T06b `[ ]`** (factory oracle, blocked) · claude 2026-11-06 · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
+
+- **T06a `[x]` — our classifier + host oracle (done).** Pure
+  `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
+  {state, fault32, warn32}` (`include/inv/classify.h`, `src/state/classify.c`):
+  canonicalised pass-through of the mode byte (Table 9 + LCD Bypass 0x11/0x19),
+  fault/not-running override, and the FaultCode/WarningCode composition (relayed
+  word + ARM-local E000/E017/W008, E027 passes through) per IR000 / IR060_063.
+  Host-tested (`tests/test_classify.c`, `make test`, 63 checks). Wired into
+  `main.c`: IR 0 + IR 60-63 are now published **through the classifier** instead
+  of a hard-seeded Standby (`state_publish()`), so the real mode/fault/warn flow
+  out to Modbus as soon as the USART2 ingest feeds them.
+- **T06b `[ ]` — factory oracle (blocked on the 07 re-pin).** The micro-test
+  sweep against the factory classifier can't be built yet: docs/22's addresses
+  are **05-series** and don't hold on the 07 oracle — the classifier isn't at
+  `sub_0801b480`, the telemetry bank base `0x20009e54` / `IR_STATE 0x2000a168`
+  are referenced nowhere in the 07 image, and the getter's reg-0 reads land in
+  Modbus frame buffers; dynamically the classifier only reclassifies on a USART2
+  frame ingest (needs **T02**). This is the same "retracted phantom" re-pin the
+  relay tests (docs/18) and the (currently red) safety-telemetry test wait on.
+  Precise hand-off — what to find and the test scaffolding to add — is in
+  [`docs/22`](22-arm-dsp-core-split.md) "07-series re-pin". The two unverified
+  points in `inv_classify` (state override target; non-canonical default) are
+  flagged in-code for when the oracle lands.
 
 [`docs/22`](22-arm-dsp-core-split.md) says the ARM's mode module is a
 **classifier, not a power FSM**:

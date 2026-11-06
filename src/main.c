@@ -22,6 +22,7 @@
 #include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
 #include "inv/settings_map.h"
+#include "inv/classify.h"
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
 #include "inv/energy.h"
@@ -57,6 +58,34 @@ static void settings_seed_hr(uint16_t *hold)
                                           : config_get_u16(f->slot, f->off);
         hold[f->reg] = (uint16_t)(stored / f->scale);
     }
+}
+
+/* Operating-state inputs the classifier turns into IR 0 / 60-63 (docs/22, T06).
+ * The received DSP mode byte and the safety-CPU-relayed fault/warn words arrive
+ * over USART2; that receive path is still being built (T05), so these default to
+ * a clean Standby and the classifier publishes accordingly. Wiring the register
+ * image THROUGH inv_classify (rather than hard-seeding Standby) means that once
+ * the USART2 ingest lands, the real mode/fault/warn flow straight out to Modbus. */
+typedef struct {
+    uint8_t  mode_byte;      /* received operating-mode byte (DSP, via USART2)  */
+    uint32_t relayed_fault;  /* safety-CPU FaultCode word (USART2)              */
+    uint32_t relayed_warn;   /* safety-CPU WarningCode word (USART2)            */
+    uint32_t local_flags;    /* INV_LOCAL_* overlay the ARM sets itself         */
+} state_inputs_t;
+
+static state_inputs_t g_state_in;   /* zero = Standby, no faults (clean boot)   */
+
+/* Classify the current inputs and publish IR 0 (State) + IR 60-63 (Fault/Warn
+ * 32-bit, low word then high word). Pure classifier is inv_classify(). */
+static void state_publish(uint16_t *ir)
+{
+    inv_class_t c = inv_classify(g_state_in.mode_byte, g_state_in.relayed_fault,
+                                 g_state_in.relayed_warn, g_state_in.local_flags);
+    ir[IR_STATE]       = c.state;
+    ir[IR_FAULTCODE_L] = (uint16_t)(c.fault & 0xFFFF);
+    ir[IR_FAULTCODE_H] = (uint16_t)(c.fault >> 16);
+    ir[IR_WARNCODE_L]  = (uint16_t)(c.warn & 0xFFFF);
+    ir[IR_WARNCODE_H]  = (uint16_t)(c.warn >> 16);
 }
 
 /* Shared system snapshot the subsystems read/write. */
@@ -198,7 +227,7 @@ int main(void) {
     const inv_variant_t *v = inv_variant();  /* the model this build targets */
 
     /* seed a plausible snapshot so a Modbus poll returns real-looking data */
-    g_rt.input_reg[IR_STATE] = (uint16_t)STATE_STANDBY;
+    state_publish(g_rt.input_reg);           /* IR 0 / 60-63 via the classifier */
     g_rt.input_reg[IR_VBAT]  = 520;          /* 52.0 V (0.1 V units) */
     g_rt.input_reg[IR_VPV1]  = 3200;         /* 320.0 V */
     g_rt.input_reg[IR_VPV2]  = 3180;         /* 318.0 V */
@@ -261,6 +290,7 @@ int main(void) {
          * serving Modbus, so the dongle sees the latest values (docs/30/33). */
         safety_cpu_publish(g_rt.input_reg, 160);
         inv_telemetry_publish(g_rt.input_reg, &g_telemetry);  /* ARM-computed powers / Seps / runtime (T07) */
+        state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
         mb_port_poll(g_ticks);

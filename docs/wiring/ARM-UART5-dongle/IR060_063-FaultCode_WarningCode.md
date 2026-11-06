@@ -101,4 +101,5 @@ Surfaces on the **Notice menu** (Fault Status / Alarm Status tabs) and the DATA 
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises the inverter 32-bit fault/warn words yet._ (The **BMS** fault/warn at IR 99/100 are a different source and *are* covered — see [`IR081_106-BMS.md`](IR081_106-BMS.md).)
+- **FaultCode / WarningCode composition:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` building these words — the relayed safety-CPU word merged with ARM-local E000 (bit 0) / E017 (bit 17) and the ARM-computed W008 (bit 8), E027 (bit 27) passing through (docs/22, T06a). `main.c` publishes them via `state_publish()`. Factory-oracle parity is T06b (blocked on the 07 re-pin, docs/22).
+- (The **BMS** fault/warn at IR 99/100 are a different source and *are* covered — see [`IR081_106-BMS.md`](IR081_106-BMS.md).)

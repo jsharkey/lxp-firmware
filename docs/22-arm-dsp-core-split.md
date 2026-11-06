@@ -194,3 +194,55 @@ honour its telemetry/command contract.
 - Writers/readers were enumerated with `tools/ramxref.py`; address materialisation
   was checked for both pc-relative `ldr` and `movw`/`movt` pairs (that is how
   `0x2000d0e4` and `0x2000ce5c` were shown to be phantom — formed nowhere).
+
+## 07-series re-pin: the classifier addresses above are 05-series (docs/39 T06)
+
+The function/RAM addresses in this note were recovered from a **05-series**
+image. Against the canonical **07-series** oracle (`ceaa-07xx_vE_260214`), they do
+**not** hold, which blocks the T06 factory oracle. Verified while implementing
+T06 (classifier entry + its telemetry/STATUS base):
+
+- **`sub_0801b480` is not the classifier here.** At that address the 07 image has
+  a periodic housekeeping task (counter `0x2000dac6`, RTC tick `sub_08018bc0`),
+  not a mode classifier.
+- **The telemetry bank base `0x20009e54` is stale for 07.** It is referenced
+  nowhere in the 07 image (neither as a u32 literal nor via `movw`/`movt`); the
+  only nearby base that *is* referenced is `0x20009e50`, and the three functions
+  that load it (`sub_08011e06`, `sub_08011f8a`, `sub_08012010`, `sub_080120ac`)
+  are the **USART2 DMA/RX buffer plumbing** (DMA dst `0x20009e50`, src peripheral
+  `0x40000840`; they fill it with `'i'`/`'-'` placeholder bytes), not a getter or
+  classifier. Consistent with this, the committed
+  `test_safety_cpu_telemetry_reaches_modbus` (which seeds `0x20009e54`) is **red**
+  against the 07 image.
+- **`0x2000a0d8`+`0x90` (the 05 IR_STATE) is referenced nowhere in 07** either.
+- **The getter is reached, but its reads during a Modbus `IR 0` poll land in
+  Modbus/response frame buffers** (`0x2000a304` is an ~800-byte RX/command buffer
+  indexed at `+0x44e`, parsed by `sub_0801b6be` matching command bytes
+  0x21/0x31/…), not a STATUS struct — so dynamic read-hooking does not isolate
+  IR_STATE either.
+- **Dynamically, the classifier only reclassifies on a received USART2 frame**
+  (the DMA/RX ingest), which the harness does not run (that is **T02**). Poking a
+  bank byte + settling does not drive it (and destabilises the dongle).
+
+**So the 07 classifier entry and its telemetry/STATUS RAM base are not yet
+pinned** — the same "retracted phantom address" problem the relay deciders hit
+(docs/18; the factory relay tests are skipped for it). Re-pinning that map is a
+prerequisite shared by T06b (the classifier oracle), the relay tests, and the
+safety-telemetry test, and is adjacent to T02 (running the USART2-ingest/
+classifier task in the sim). Until then, our `inv_classify()`
+(`src/state/classify.c`) is grounded in the **documented** behaviour (this doc +
+the IR000 / IR060_063 register docs) and host-tested (`tests/test_classify.c`),
+with the two unverified points flagged in-code: the fault/not-running **state
+override target** and the **non-canonical-byte default**.
+
+### What a re-pinner needs to find (for T06b)
+1. The 07 **telemetry bank base** (where the getter sources IR 1/2/12-14 etc.) —
+   start from `sub_0803373c`'s func-4 path and follow the getter's reg→RAM reads
+   for a *measurement* register (not reg 0, which hits the frame buffer).
+2. The 07 **IR_STATE byte** (getter reg-0 source).
+3. The **classifier** = the one function that writes that byte from a received
+   mode byte; expect it near the 05 site (the `0x0801b4xx–0x0801b9xx` cluster).
+4. Then add a `ClassifyBackend` to a `tests/classify_contract.py` (seed the mode
+   byte + fault flags, call the classifier in isolation, read IR_STATE/60-63) and
+   an `OursBackend` (call `inv_classify` by symbol, like `timewindow_contract.py`),
+   and sweep mode bytes 0x00–0xFF × fault conditions as the shared vectors.

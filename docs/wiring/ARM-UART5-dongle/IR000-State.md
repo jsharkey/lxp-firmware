@@ -55,4 +55,5 @@ DATA MENU **Other tab**: `Status` = current status, `NextStatus` = next status. 
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
+- **State classifier:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` — canonical mode pass-through (Table 9 + LCD Bypass 0x11/0x19), non-canonical → Standby, and the fault/not-running override (docs/22, T06a). `main.c` publishes IR 0 via `state_publish()`. Factory-oracle parity is T06b (docs/22 "07-series re-pin").
 - **IR 0 (State):** engine read path — [`test_modbus.c`](../../../tests/test_modbus.c) reads `IR_STATE`. Also the run-enable relay contract: [`arm_sim_contract.py`](../../../tests/arm_sim_contract.py) `RUN_STATES`/`NONRUN_STATES` drive PC6 from the State value, held by `test_relay_follows_working_mode` in [`test_arm_sim_self_only.py`](../../../tests/test_arm_sim_self_only.py) / [`test_arm_sim_factory_only.py`](../../../tests/test_arm_sim_factory_only.py).

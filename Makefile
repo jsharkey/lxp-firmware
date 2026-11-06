@@ -91,6 +91,8 @@ test:
 	@./$(BUILD)/test_optchg
 	$(HOSTCC) $(HOSTFLAGS) src/rtc/rtc.c tests/test_rtc.c -o $(BUILD)/test_rtc
 	@./$(BUILD)/test_rtc
+	$(HOSTCC) $(HOSTFLAGS) src/state/classify.c tests/test_classify.c -o $(BUILD)/test_classify
+	@./$(BUILD)/test_classify
 	$(HOSTCC) $(HOSTFLAGS) src/energy/energy.c tests/test_energy.c -o $(BUILD)/test_energy
 	@./$(BUILD)/test_energy
 	$(HOSTCC) $(HOSTFLAGS) src/settings/settings_validate.c tests/test_settings_validate.c -o $(BUILD)/test_settings_validate
