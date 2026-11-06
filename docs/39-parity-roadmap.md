@@ -174,7 +174,7 @@ widths and `×10` scalings, all dynamically. We persist 2.
   oracle before trusting the table**, and correct docs/23 if needed.
 
 ### T04 — Holding-register write semantics: ranges, clamps, rejects, read-only
-**Status:** `[ ]` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
+**Status:** `[~] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
 
 `mb_wr_hold` accepts anything (`/* TODO: validate ranges */`). The factory's
 behaviour on an out-of-range write is **unknown**: reject with exception 3,
