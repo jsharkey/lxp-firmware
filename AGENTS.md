@@ -117,6 +117,38 @@ the `[x]`/`[~]`/`[ ]` markers, phrases like "proven", "both ends proven",
   doc to the new finding — don't silently diverge. The next agent will trust
   what's written.
 
+## Authoritative references — and keep them current
+
+Some knowledge has outgrown a single numbered doc and now lives in a **curated
+`docs/` subdirectory** that is the **source of truth** for its domain. The
+numbered `docs/NN-*.md` are the *research trail* (how we figured something out,
+in discovery order); these subdirs are the *distilled, reconciled result*. When
+a numbered doc and a subdir file disagree, **the subdir file wins.**
+
+| domain | authoritative source | holds |
+|---|---|---|
+| **Inter-processor & external protocols; hardware IO** | [`docs/wiring/`](docs/wiring/README.md) | one file per physical link (`ARM-USART3`, `DSP-SCI-C`, …): ports, **pins**, electrical type, baud, framing, direction; the overview carries the system block diagram + the full ARM pin map |
+| **The external dongle Modbus registers** | [`docs/modbus-dongle/`](docs/modbus-dongle/README.md) | one file per register/group (`input-001-Vpv1`, `holding-022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
+
+**When your work touches one of these domains, update the relevant file there —
+don't just drop the finding in a numbered doc or a commit message.** If you pin a
+new pin, decode a frame field, trace where an input register's value originates,
+or find a holding register's side-effect, the matching `docs/wiring/` or
+`docs/modbus-dongle/` file is where it belongs (add a numbered doc too if the
+*derivation* is worth recording, and link the two). A finding that never reaches
+the authoritative file is invisible to the next agent.
+
+- These files are **named, not numbered**, so they sidestep the `docs/NN`
+  collision problem — edit the right existing file rather than creating a new
+  numbered one.
+- Scope discipline matters in `docs/modbus-dongle/`: it is **only** the dongle
+  Modbus surface. The internal links (ARM↔DSP, safety-CPU, MPPT) are different
+  wires with different framing — document those in `docs/wiring/`, and keep the
+  distinction (see that README's "four EG4-Modbus-family links" note).
+- Leave a breadcrumb: when you move a fact into one of these subdirs, point the
+  old numbered doc at it (the existing "Authoritative wiring:" / "Dongle
+  registers:" banners are the pattern).
+
 ## Record factory quirks (they may be bugs to fix)
 
 When you notice the factory firmware doing something **unexpected** — behaviour
@@ -141,8 +173,10 @@ explicit.
 ## Orientation
 
 - `README.md` — scope, strategy, status checklist, build matrix. Start here.
-- `docs/` — the recovered specification; `docs/01` and `docs/02` are the
-  baseline.
+- `docs/` — the recovered specification (research trail); `docs/01` and `docs/02`
+  are the baseline.
+- **`docs/wiring/`** — authoritative: protocols, links, hardware IO/pins.
+- **`docs/modbus-dongle/`** — authoritative: the external dongle Modbus registers.
 - `include/inv/` — the recovered data model (states, faults, settings,
   modbus_map, hmi_menu, variant). Source of truth for the reimplementation.
 - `src/` — the GCC skeleton firmware (modbus / uart / can / hmi / dsp).
