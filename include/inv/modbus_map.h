@@ -262,6 +262,18 @@ enum mb_hold_reg {
     HR_SET_COMPOSED_PH  = 113, /* 1 R, 2 S, 3 T (phase in parallel system)       */
     HR_SYS_ENABLE       = 120, /* bits: HalfHourACChrStart/ACChargeType/
                                   DischgCtrlType/OnGridEODType/GenChargeType      */
+    /* OptimalChg_DisChg: a 48-slot x 2-bit half-hour schedule packed across six
+       registers, 8 slots/register, LSB-first; each 2-bit mark is 0 no action,
+       1 charging, 2 discharging. HR 126 = Time0-7 (00:00-04:00) .. HR 131 =
+       Time40-47 (20:00-00:00). Evaluated against the ARM RTC like the other time
+       windows (inv/optchg.h); not pushed to the DSP as a per-slot verdict.
+       docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md. */
+    HR_OPTCHG_TABLE_0   = 126, /* Time0-7   00:00-04:00 */
+    HR_OPTCHG_TABLE_1   = 127, /* Time8-15  04:00-08:00 */
+    HR_OPTCHG_TABLE_2   = 128, /* Time16-23 08:00-12:00 */
+    HR_OPTCHG_TABLE_3   = 129, /* Time24-31 12:00-16:00 */
+    HR_OPTCHG_TABLE_4   = 130, /* Time32-39 16:00-20:00 */
+    HR_OPTCHG_TABLE_5   = 131, /* Time40-47 20:00-00:00 */
     HR_FLOAT_CHARGE_VOLT= 144, /* 0.1 V (500-560) lead-acid float voltage        */
     HR_OUTPUT_PRIO_CFG  = 145, /* 0 bat-first, 1 PV-first, 2 AC-first            */
     HR_LINE_MODE        = 146, /* 0 APL, 1 UPS, 2 GEN                            */
