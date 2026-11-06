@@ -151,34 +151,42 @@ hardware the dongle can never reach us. The factory serves the dongle on
 - **Done when:** `make test-sim` is green for both images with the dongle on
   UART5, and the README "Port note" plus docs/04 are updated.
 
-### T02 — Run the factory's RTOS tasks in the simulator
+### T02 — Run the factory's RTOS tasks in the simulator  (split into T02a / T02b)
 **Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
 
-> **Progress (2026-11-06, docs/19 §"T02 in progress").** Scheduler + relay task
-> run under `enable_rtos()` + `attach_config_flash()` (already proven). The
-> USART2 peer-ingest path is mapped: **RXNE-interrupt-driven (not DMA)**, fed via
-> the `ModbusDongle` pattern on vector `16+38`; bytes queue at `0x2000df7c` and a
-> `0x0801b6xx` consumer drains them. **Still open:** the consumer's frame-
-> completion condition — a fed type-1 frame does not yet reliably assemble to
-> staging `0x20008084` / fire `sub_080259d8` / update `BANK 0x20009e54`, so
-> neither "USART2 bytes → IR" (a) nor "state → PC6" (b, gated on the same
-> classifier) is green yet. Full recipe + the one remaining unknown are in
-> docs/19; that is the continuation point.
+Turned out bigger than one card, so **split** (keep the ID for references):
+- **Scheduler + the relay/control task run** under `enable_rtos()` +
+  `attach_config_flash()` — already proven ([`docs/19`](19-gpio-test-harness.md)
+  §"The factory runs a preemptive RTOS").
+- The remaining black-box wire-level e2e is **T02a** (USART2 bytes → IR) and
+  **T02b** (state → PC6), below. Full RE recipe + the one open unknown:
+  [`docs/19`](19-gpio-test-harness.md) §"T02 in progress".
 
-The factory's mode/relay loop (`sub_0801b3dc`) and the USART2 frame task
-(`sub_080259d8`) are **PendSV-switched RTOS tasks** that never get the CPU in
-the harness ([`docs/19`](19-gpio-test-harness.md) §"The factory runs a
-preemptive RTOS"). So today we inject peer data **at the bank** and call the
-relay drive code directly. Make the first SysTick→PendSV launch work: find what
-the task-create path waits on (config-flash contents? DSP-link handshake?), seed
-it, and confirm a task runs.
-- **Done when:** a factory sim test can (a) feed **raw USART2 bytes** and see IR
-  values change, and (b) change the operating state and see PC6 move, **without
-  calling an internal function**. Document the recipe in docs/19. A boot
-  snapshot cache that keeps this fast is part of the job (see the boot-cache
-  pattern in [`docs/28`](28-factory-hmi.md)).
-- Note: this is pure harness work. It changes no firmware, so it can run fully
-  in parallel with T03/T04.
+#### T02a — Feed the USART2 safety link on the wire → bank/IR
+**Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
+- **Landed:** the RX is **RXNE-interrupt-driven, not DMA** (`CR1`=0x20AC,
+  `CR3` no DMAR). A reusable wire feeder `tests/arm_sim_usart2.py`
+  (`Usart2SafetyWire`) delivers bytes through the factory's *real* RX ISR
+  (SR/DR + pended NVIC line, vector 16+38); `test_usart2_rx_receives_wire_bytes`
+  proves every fed byte is received. This is the byte-reception half + the T05
+  harness foundation.
+- **Open (continuation):** the consumer in `0x0801b6xx` drains the bytes
+  (queue `0x2000df7c`) but a fed EG4 type-1 frame does not yet reliably assemble
+  to staging `0x20008084` / fire `sub_080259d8` / update `BANK 0x20009e54`.
+  **Done when:** a fed frame changes the served IRs (replacing the bank-seed in
+  `test_safety_cpu_telemetry_reaches_modbus`). The single remaining unknown — the
+  consumer's frame-completion condition (`0x8019fb0` "frame ready?") — is in
+  docs/19; single-step the consumer from a `0x2000df7c` read.
+
+#### T02b — Change operating state → PC6 moves (via the running relay task)
+**Status:** `[ ]` · **Layer:** sim (factory) · **Depends:** T02a (natural state via the USART2 mode byte)
+- The relay/control task runs, but PC6 is **multi-input and time-varying**
+  (state + DSP/fault + debounce + config) and the mode classifier `sub_0801b480`
+  never runs without USART2 telemetry, so `IR_STATE` is never set. **Done when:**
+  feeding a *running* mode byte on USART2 (T02a) flows classifier→IR_STATE→relay
+  →**PC6** with no internal-function call; add a boot-snapshot cache (docs/28
+  pattern) to keep it fast.
+- Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)
 **Status:** `[~] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**

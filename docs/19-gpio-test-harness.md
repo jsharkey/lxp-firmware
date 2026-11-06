@@ -239,7 +239,9 @@ against `reference/com_flat.bin` (ceaa-07xx) under `attach_config_flash()` +
   the next byte on the `DR` read, and `pend_irq(16+38)` (USART2 vector 54) while
   bytes remain. (This **corrects** the "factory uses DMA" note on the T05/T02
   roadmap cards — our RXNE driver will *match* the factory, not merely substitute
-  for DMA.)
+  for DMA.) **Landed** as the reusable feeder `tests/arm_sim_usart2.py`
+  (`Usart2SafetyWire`) + `test_usart2_rx_receives_wire_bytes`, which proves every
+  fed byte reaches the factory's real RX ISR (the byte-reception half of T02a).
 - **The byte path.** The USART2 RX ISR (DR read at `0x080369fa`, via
   `FUN_0801bb0e`) pushes 12-byte `{byte, periph=0x40004400, flags}` items onto a
   FreeRTOS queue at `0x2000df7c` and yields (ready bitmask `0x2000da16`, selector

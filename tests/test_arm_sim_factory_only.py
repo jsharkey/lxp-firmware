@@ -124,6 +124,29 @@ def test_safety_cpu_telemetry_reaches_modbus():
                                 "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
+# --- USART2 safety-CPU wire reception (docs/39 T02a foundation, docs/19) -------
+# The safety CPU streams its telemetry frame on USART2; the factory receives it
+# interrupt-driven on RXNE (NOT DMA -- CR1 RXNEIE set, CR3 DMAR clear, T02 RE in
+# docs/19). The wire feeder (tests/arm_sim_usart2.py) only serves SR/DR and pends
+# the NVIC line, so every byte travels through the firmware's own RX ISR. This is
+# the wire-feed half of T02/T05; frame ASSEMBLY into the bank 0x20009e54 is still
+# open (docs/19 §"T02 in progress"), so test_safety_cpu_telemetry_reaches_modbus
+# above still seeds the bank directly. Factory-only (our USART2 driver is T05).
+def test_usart2_rx_receives_wire_bytes():
+    """Feeding the safety-CPU USART2 stream on the wire reaches the factory's real
+    RX ISR: the RX is RXNE-interrupt-driven (not DMA), and every byte fed through
+    SR/DR + the pended IRQ is read by the firmware. Proves the byte-reception half
+    of the USART2 ingest end to end (docs/39 T02a / T05)."""
+    from arm_sim_usart2 import Usart2SafetyWire
+    wire = Usart2SafetyWire(_factory())
+    assert wire.rx_is_interrupt_driven(), \
+        "factory USART2 RX is not RXNE-interrupt-driven (CR1 RXNEIE / CR3 DMAR)"
+    data = bytes(range(0x40, 0x40 + 32))
+    got = wire.feed(data)
+    assert got == len(data), \
+        "firmware received %d of %d USART2 bytes over the RX-ISR wire path" % (got, len(data))
+
+
 # --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------
 # The firmware has a per-pack register bank: the parser sub_080205d4 stores CAN
 # frames (id = 0x400 | (subtype<<5) | pack) into a per-pack array (0x2000691c,
