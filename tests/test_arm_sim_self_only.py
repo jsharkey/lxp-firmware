@@ -155,9 +155,10 @@ def test_rtc_is_live_clock():
     """Drive our RTC forward and confirm a dongle read reflects it: our Modbus
     time registers are a LIVE read of g_rtc, not an echo of the last write (the
     shared check_live_clock contract; src/rtc/rtc.c + mb_rd_hold)."""
+    from arm_sim_modbus import ModbusDongle
     sim = _ours()
     sim.configure_rtc(sim.sym("g_rtc"), "rtc_tick", None, calls_per_sec=1)
-    check_live_clock(sim)
+    check_live_clock(sim, ModbusDongle)      # ours serves the dongle on UART5
 
 
 # --- RS-485 driver-enable around the dongle TX (T01, UART5 on PA15) ---------

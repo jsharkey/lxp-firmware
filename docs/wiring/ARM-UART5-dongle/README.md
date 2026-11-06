@@ -91,12 +91,16 @@ Dynamic re-proof on the `ceaa-07xx` image (`tests/arm_sim_modbus.py`): feeding a
 EG4-Modbus read on **UART5** draws **no reply** from the factory in the harness —
 its UART5 receive path (`sub_0802afe2`) is a scheduler task that never gets the
 CPU without the RTOS running (**T02**). The factory **does** answer on **USART3**
-(its NVIC-vectored DSP-facing slave ISR), serving the same register model. So the
-`ModbusDongle` **auto-detects** the port: our firmware answers on UART5; the
-factory falls back to USART3 (a valid register oracle until T02 lets its UART5
-task run). Probing UART5 on the factory is avoided entirely — its UART5 ISR
-consumes a request and disturbs the config-flash/persistence, so detection tries
-USART3 first.
+(its NVIC-vectored DSP-facing slave ISR), serving the same register model.
+
+So the harness has **two explicit masters, no auto-detection** (one UART each):
+`ModbusDongle` drives **UART5** (our firmware's port), and `ModbusDsp` drives
+**USART3** (the factory's reachable register-slave in the harness — the DSP
+polling the ARM as a Modbus master; a valid register oracle until T02 lets the
+factory's real UART5 task run). Each test picks the master for the image's port:
+ours → `ModbusDongle`, factory → `ModbusDsp`. Never point `ModbusDsp`/a probe at
+the factory's UART5 — its UART5 ISR consumes the request and disturbs the config
+flash/persistence.
 
 ### Test coverage
 

@@ -110,18 +110,18 @@ RTC_WALK = [
 ]
 
 
-def check_live_clock(sim):
+def check_live_clock(sim, master):
     """Shared check that an image's Modbus time registers are a LIVE read of the
     internal RTC, not an echo of the last write. `sim` must already be
-    configure_rtc()'d. Flow: boot the dongle, set a time over HR 12-14, drive the
-    RTC forward with sim.advance_rtc() (the firmware's own tick), and confirm a
-    dongle read-back reflects the ADVANCED time -- which an echo of the written
-    value could not. Used by both test_arm_sim_self_only.py and
-    test_arm_sim_factory_only.py so both firmwares meet one spec.
+    configure_rtc()'d; `master` is the Modbus master class for the image's port
+    (ModbusDongle on UART5 for ours; ModbusDsp on USART3 for the factory). Flow:
+    boot the master, set a time over HR 12-14, drive the RTC forward with
+    sim.advance_rtc() (the firmware's own tick), and confirm a read-back reflects
+    the ADVANCED time -- which an echo of the written value could not. Used by
+    both test_arm_sim_self_only.py and test_arm_sim_factory_only.py, one spec.
     """
-    from arm_sim_modbus import ModbusDongle
     yr, mon, day, hr, mn, sec = 24, 3, 15, 14, 30, 45      # 2024-03-15 14:30:45
-    mb = ModbusDongle(sim)
+    mb = master(sim)
     mb.write_single(12, yr | (mon << 8))
     mb.write_single(13, day | (hr << 8))
     mb.write_single(14, mn | (sec << 8))

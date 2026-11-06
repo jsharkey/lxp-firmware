@@ -14,7 +14,8 @@ sim's `uc` handle. While a frame is queued it reports one message pending in RF0
 and presents that frame in the FIFO mailbox (identifier / length / data); when
 the firmware releases the FIFO (RFOM0) it pops to the next.
 
-Polled vs interrupt-driven, as one black box (mirrors ModbusDongle on USART3):
+Polled vs interrupt-driven, as one black box (mirrors the Modbus masters in
+tests/arm_sim_modbus.py):
   * Our firmware polls CAN1 in its loop (`can_port_poll`, no FMPIE0), so the FIFO
     hooks above are all it needs.
   * The factory never polls: it enables the FIFO-0-message-pending interrupt

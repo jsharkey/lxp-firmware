@@ -79,6 +79,7 @@ def _payload_delta(frames_a, frames_b):
 
 
 class _Backend:
+    _USE_DSP = False   # ModbusDongle (UART5); FactoryBackend flips to ModbusDsp (USART3)
     """Common driver: boot an image ONCE, then run every probe on the same sim
     (no snapshot/restore -- the boot ends at the STOP sentinel, and probing
     different registers in sequence does not interfere: later writes overwrite or
@@ -102,17 +103,17 @@ class _Backend:
 
     def _boot(self):
         if self._warm is None:
-            from arm_sim_modbus import ModbusDongle
+            from arm_sim_modbus import ModbusDongle, ModbusDsp
             sim = self._new_sim()
-            mb = ModbusDongle(sim, boot_insn=self.boot_insn)
+            mb = (ModbusDsp if self._USE_DSP else ModbusDongle)(sim, boot_insn=self.boot_insn)
             self._warm = (sim, mb)
         return self._warm
 
     def _boot_w(self):
         if self._warm_w is None:
-            from arm_sim_modbus import ModbusDongle
+            from arm_sim_modbus import ModbusDongle, ModbusDsp
             sim = self._new_sim()
-            mb = ModbusDongle(sim, boot_insn=self.boot_insn)
+            mb = (ModbusDsp if self._USE_DSP else ModbusDongle)(sim, boot_insn=self.boot_insn)
             self._warm_w = (sim, mb)
         return self._warm_w
 
@@ -153,6 +154,7 @@ class _Backend:
 
 
 class FactoryBackend(_Backend):
+    _USE_DSP = True
     """Factory image: dongle write + the real per-block filler sub_08024dfc."""
     name = "factory"
     boot_insn = 1_000_000

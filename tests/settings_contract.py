@@ -33,7 +33,6 @@ WRITE_VECTORS = [
     ("HR9 FW-version read-only",     9, 0x1234, "reject:4"),
 ]
 
-
 def _crc16(buf):
     crc = 0xFFFF
     for b in buf:
@@ -75,29 +74,31 @@ class _Backend:
             return False
 
     def write_verdict(self, reg, val):
+        from unicorn import UC_HOOK_MEM_WRITE
         sim, mb = self._make()
+        tx = bytearray()
+        sim.uc.hook_add(UC_HOOK_MEM_WRITE, lambda u, a, ad, s, v, x: tx.append(v & 0xFF),
+                        begin=mb.dr, end=mb.dr + 4)
+        # build the write-single request and drive it, stopping as soon as a reply
+        # frame (echo OR exception) appears -- fast for both accept and reject.
         from arm_sim_modbus import _frame, FC_WRITE_SINGLE
-        # Latch whichever UART this image answers the dongle on (factory: USART3;
-        # ours: UART5 -- the dongle auto-detects, T01). The dongle captures the TX
-        # of each port into mb._tx[name]; we drive the write and scan that buffer
-        # for an echo or exception frame, stopping as soon as one appears.
-        mb._ensure_port()
-        name, base, _vec = mb._port
         req = _frame(mb.addr, FC_WRITE_SINGLE, struct.pack("<HH", reg, val), mb.sn)
-        mb._tx[name] = bytearray()
         mb._rx = list(req)
-        mb._cur = name
+        mb._tx = bytearray()
         mb._rlen = 0
-        mb._match = lambda w: False      # don't let the dongle stop us; we scan the TX
+        mb._match = lambda w: False      # never match via mb; we scan `tx` ourselves
         mb._resp = None
+        from arm_sim_modbus import CR1_RXNEIE, CR1_TXEIE, _TXN_CHUNK
         remaining = 6_000_000
         while remaining > 0:
-            mb._pend(name)               # deliver the port IRQ if the firmware armed it
-            sim.run(40_000)
-            remaining -= 40_000
-            if _verdict_from_tx(mb._tx.get(name, b""), mb.addr, self.FUNC_WRITE_SINGLE) != "silent":
+            cr1 = sim.r32(mb.cr1)
+            if (cr1 & CR1_RXNEIE and mb._rx) or (cr1 & CR1_TXEIE):
+                sim.pend_irq(mb.vec)
+            sim.run(_TXN_CHUNK)
+            remaining -= _TXN_CHUNK
+            if _verdict_from_tx(tx, mb.addr, self.FUNC_WRITE_SINGLE) != "silent":
                 break
-        return _verdict_from_tx(mb._tx.get(name, b""), mb.addr, self.FUNC_WRITE_SINGLE)
+        return _verdict_from_tx(tx, mb.addr, self.FUNC_WRITE_SINGLE)
 
 
 class FactoryBackend(_Backend):
@@ -110,11 +111,11 @@ class FactoryBackend(_Backend):
 
     def _make(self):
         from arm_sim import ArmSim, load_symbols_csv
-        from arm_sim_modbus import ModbusDongle
+        from arm_sim_modbus import ModbusDsp
         if not os.path.exists(self.image):
             raise FileNotFoundError(self.image)
         sim = ArmSim(self.image, load_symbols_csv(self.symbols))
-        mb = ModbusDongle(sim, boot_insn=1_000_000)
+        mb = ModbusDsp(sim, boot_insn=1_000_000)   # factory answers on USART3 here
         return sim, mb
 
 

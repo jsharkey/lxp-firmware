@@ -7,7 +7,7 @@ ARM over **USART2** (`0x40004400`, docs/33, docs/wiring/ARM-USART2-safety.md). T
 ARM receives it **interrupt-driven on RXNE** -- NOT by DMA: at the post-boot idle
 `USART2->CR1` = 0x20AC (UE|TE|RE|**RXNEIE**|TXEIE) and `USART2->CR3` = 0 (no DMAR)
 (T02 harness RE, docs/19). So a harness feeds it exactly the way
-tests/arm_sim_modbus.py feeds the dongle on USART3: make SR show RXNE while a byte
+tests/arm_sim_modbus.py feeds a Modbus UART: make SR show RXNE while a byte
 waits, hand the next byte on the DR read, and pend the USART2 IRQ (NVIC IRQn=38 ->
 exception vector 16+38=54) so the firmware's own RX ISR runs. The firmware pulls
 every byte through its real interrupt path; the harness never pokes a buffer.

@@ -143,7 +143,7 @@ factory: $(FACTORY_BIN)
 # convenience targets, so the command lines live in one place).
 SIM_OURS_COMMON = python3 tests/test_arm_sim.py $(BUILD)/$(TARGET).bin
 SIM_OURS_SELF   = python3 tests/test_arm_sim_self_only.py $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-SIM_FAC_COMMON  = python3 tests/test_arm_sim.py $(FACTORY_BIN)
+SIM_FAC_COMMON  = LXP_MODBUS_PORT=dsp python3 tests/test_arm_sim.py $(FACTORY_BIN)
 SIM_FAC_ONLY    = python3 tests/test_arm_sim_factory_only.py $(FACTORY_BIN)
 # Cross-image: settings persisted by one firmware are read by the other (needs both).
 SIM_CROSS       = python3 tests/test_persist_crossimage.py $(BUILD)/$(TARGET).bin $(FACTORY_BIN)

@@ -94,13 +94,17 @@ def _boot_budget(path):
 
 
 def _mb(image, dev, payloads=None):
-    from arm_sim_modbus import ModbusDongle
+    from arm_sim_modbus import ModbusDongle, ModbusDsp
     sim = ArmSim(image)
     if dev is None:
         dev = sim.attach_config_flash(payloads=payloads)
     else:
         dev = sim.attach_spi_flash(flash=dev)
-    return sim, dev, ModbusDongle(sim, systick=SYSTICK, boot_insn=_boot_budget(image))
+    # Port by image (same split as _boot_budget): our small build serves the
+    # dongle on UART5; the big factory flat image answers on USART3 (its UART5
+    # dongle RX is a scheduler task that needs the RTOS running, T02).
+    master = ModbusDsp if os.path.getsize(image) > 0x40000 else ModbusDongle
+    return sim, dev, master(sim, systick=SYSTICK, boot_insn=_boot_budget(image))
 
 
 def _flush(sim, dev, lo=0, hi=CONFIG_END):

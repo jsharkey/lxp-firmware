@@ -78,6 +78,18 @@ def _sim():
     return sim
 
 
+def _mb(sim, **kw):
+    """The Modbus master for the port this image serves. ModbusDongle (UART5 --
+    our firmware's dongle port) by default; ModbusDsp (USART3) when the env
+    LXP_MODBUS_PORT=dsp, which the Makefile sets for the factory invocation: the
+    factory's UART5 dongle RX is a scheduler task needing the RTOS (T02), so in
+    the harness it answers register reads/writes on its DSP-facing USART3 slave
+    (same register model). Explicit per image; no runtime auto-detection."""
+    from arm_sim_modbus import ModbusDongle, ModbusDsp
+    cls = ModbusDsp if os.environ.get("LXP_MODBUS_PORT") == "dsp" else ModbusDongle
+    return cls(sim, **kw)
+
+
 def _observe_pb7():
     """Black box: boot the firmware, hold PB7 at each level, let *its own* event
     loop notice the input and drive the output. Returns {level: PB7 driven high?}.
@@ -127,10 +139,10 @@ def test_pb7_input_drives_output():
 
 def test_boots_and_configures_usart3_gpio():
     """The firmware boots in the harness and configures GPIOB for USART3 (the
-    RS485/dongle Modbus link): PB10 = AF push-pull (0xB), PB11 = floating input
-    (0x4). Both firmwares bring USART3 up the same way, so this is a common
-    boot/IO smoke test -- proof the harness runs each image through its init, not
-    just isolated functions."""
+    ARM↔DSP link): PB10 = AF push-pull (0xB), PB11 = floating input (0x4). Both
+    firmwares bring USART3 up the same way, so this is a common boot/IO smoke
+    test -- proof the harness runs each image through its init, not just isolated
+    functions. (The external dongle Modbus is a different port -- UART5; T01.)"""
     sim = _sim()
     sim.run_reset(max_insn=300_000)
     crh = sim.r32(0x40010C04)                 # GPIOB->CRH
@@ -141,20 +153,18 @@ def test_boots_and_configures_usart3_gpio():
 
 
 def test_modbus_charge_current_write_read():
-    """Dongle Modbus over USART3 (docs/04): set HR 101 (ChargeCurr) to 42 with a
-    0x06 write-single, read it back with a 0x03 read-holding, then overwrite it
-    with 43 and confirm the edit reads back. Pure wire-level black box -- frame a
+    """Dongle Modbus (docs/04): set HR 101 (ChargeCurr) to 42 with a 0x06
+    write-single, read it back with a 0x03 read-holding, then overwrite it with
+    43 and confirm the edit reads back. Pure wire-level black box -- frame a
     request on the UART, let the firmware's own loop answer, parse the reply --
     so the same test holds for any image that speaks the EG4 dongle protocol.
 
-    Works against both images: our firmware polls USART3, while the factory is
-    interrupt-driven (RX and TX). ModbusDongle drives both the same way -- it
-    delivers the USART3 IRQ via the RTOS engine when the firmware has armed it
-    (see arm_sim_modbus.py)."""
-    from arm_sim_modbus import ModbusDongle
+    Runs against both images on the port each serves (see _mb): ours on UART5,
+    the factory on its USART3 DSP-facing slave. The master delivers that UART's
+    IRQ via the RTOS engine when the firmware has armed it (arm_sim_modbus.py)."""
     HR_CHARGE_CURR = 101
 
-    mb = ModbusDongle(_sim())
+    mb = _mb(_sim())
 
     assert mb.write_single(HR_CHARGE_CURR, 42) == 42, \
         "0x06 write of ChargeCurr=42 was not acknowledged"
@@ -184,9 +194,9 @@ def test_can_battery_telemetry_reaches_modbus():
         0x359 modules  -> IR 96  (BatParallelNum, module count)
 
     Black box over two buses: CanBattery drives CAN1 (polled for our firmware,
-    interrupt-driven for the factory) and ModbusDongle drives USART3, neither
-    naming a symbol -- so the one test holds for both images."""
-    from arm_sim_modbus import ModbusDongle
+    interrupt-driven for the factory) and the Modbus master drives each image's
+    port (ours UART5 / factory USART3, via _mb), neither naming a symbol -- so
+    the one test holds for both images."""
     from arm_sim_can import CanBattery
     SOC, SOH = 77, 96                   # -> IR 5 = (SOH<<8)|SOC
     V_CV, I_CA, T_DC = 5325, 150, 231   # 0x356: 53.25 V, 1.50 A, 23.1 degC
@@ -196,7 +206,7 @@ def test_can_battery_telemetry_reaches_modbus():
 
     sim = _sim()
     battery = CanBattery(sim)     # install CAN1 hooks before the image runs
-    mb = ModbusDongle(sim)        # boots the image + installs the UART hooks
+    mb = _mb(sim)        # boots the image + installs the UART hooks
 
     battery.send_soc_soh(SOC, SOH)
     battery.send_measurements(V_CV, I_CA, T_DC)
@@ -241,7 +251,6 @@ def test_modbus_acfirst_window_tracks_rtc():
     Runs green on both images: the factory oracle and our firmware, whose
     AC-First evaluator is src/sched/acfirst.c (pure logic host-tested in
     tests/test_acfirst.c), wired to IR 126 bit 8 in main.c."""
-    from arm_sim_modbus import ModbusDongle
     HR_ACFIRST_START_0, HR_ACFIRST_END_0 = 152, 153
     HR_TIME_DATE_HOUR, HR_TIME_MIN_SEC   = 13, 14
     IR_ACFIRST_WIN_STATUS                = 126
@@ -250,7 +259,7 @@ def test_modbus_acfirst_window_tracks_rtc():
     def enc(hour, minute):                        # window register packing
         return ((minute & 0xFF) << 8) | (hour & 0xFF)
 
-    mb = ModbusDongle(_sim())
+    mb = _mb(_sim())
     mb.write_single(HR_ACFIRST_START_0, enc(6, 0))   # window 0 start 06:00
     mb.write_single(HR_ACFIRST_END_0,   enc(8, 0))   # window 0 end   08:00
 
@@ -300,7 +309,6 @@ def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
 
     SysTick is run fast (2000 insn/tick) so the firmware's debounced flush
     completes in a few million instructions instead of tens of millions."""
-    from arm_sim_modbus import ModbusDongle
     path = _resolve_image()
     if not path:
         raise Skip("no image (pass one on the command line or set $LXP_SIM_IMAGE)")
@@ -314,7 +322,7 @@ def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
     # --- cold boot #1: factory-provisioned config flash; write, let it flush ---
     sim1 = ArmSim(path)
     dev = sim1.attach_config_flash()          # a valid record per slot, as a programmed unit ships
-    mb1 = ModbusDongle(sim1, systick=systick, boot_insn=boot)
+    mb1 = _mb(sim1, systick=systick, boot_insn=boot)
     baseline = bytes(dev.mem[:CONFIG_END])
     echo = mb1.write_single(reg, value)
     used = 0
@@ -326,7 +334,7 @@ def _persist_roundtrip(reg, value, settle=15_000_000, systick=2000):
     # --- cold boot #2: fresh CPU + RAM, SAME flash device (the only NV state) ---
     sim2 = ArmSim(path)
     sim2.attach_spi_flash(flash=dev)
-    mb2 = ModbusDongle(sim2, systick=systick, boot_insn=boot)
+    mb2 = _mb(sim2, systick=systick, boot_insn=boot)
     return echo, flushed, mb2.read_holding(reg)
 
 
@@ -363,11 +371,10 @@ def test_modbus_time_set_reads_back():
     from its calendar 0x2000d850 (proven live -- a read follows the clock, not the
     last write), and ours serves them from g_rtc (src/rtc/rtc.c); so this confirms
     the write reached the internal RTC, not just a register echo."""
-    from arm_sim_modbus import ModbusDongle
     HR_TIME_YEAR_MONTH, HR_TIME_DATE_HOUR, HR_TIME_MIN_SEC = 12, 13, 14
     yr, mon, day, hr, mn, sec = 24, 3, 15, 14, 30, 45     # 2024-03-15 14:30:45
 
-    mb = ModbusDongle(_sim())
+    mb = _mb(_sim())
     assert mb.write_single(HR_TIME_YEAR_MONTH, yr | (mon << 8)) == (yr | (mon << 8)), \
         "time write HR12 (year/month) not acknowledged"
     assert mb.write_single(HR_TIME_DATE_HOUR, day | (hr << 8)) == (day | (hr << 8)), \
@@ -405,7 +412,6 @@ def test_bms_telemetry_block_tracks_updates():
 
     Black box over two buses (CAN1 + the dongle UART), no symbols, so the same
     spec holds for both images."""
-    from arm_sim_modbus import ModbusDongle
     from arm_sim_can import CanBattery
 
     # (voltage_cv, current_ca, temp_dc, soc, soh, chg_v_dv, fault, warn, modules)
@@ -428,7 +434,7 @@ def test_bms_telemetry_block_tracks_updates():
 
     sim = _sim()
     battery = CanBattery(sim)
-    mb = ModbusDongle(sim)
+    mb = _mb(sim)
 
     def push_and_read(s):
         battery.send_soc_soh(s["soc"], s["soh"])
@@ -475,7 +481,6 @@ def test_modbus_optchg_table_roundtrip():
     and confirm the full table survives independently. Enable HalfHourACChrStart
     (HR 120 bit0) first, as a real configurator would, to prove the gate does not
     gate storage."""
-    from arm_sim_modbus import ModbusDongle
     HR_SYS_ENABLE = 120
     TABLE = {126: 0x0001,   # Time0 = charge
              127: 0x0002,   # Time8 = discharge
@@ -484,7 +489,7 @@ def test_modbus_optchg_table_roundtrip():
              130: 0x4001,   # Time0 and Time7 = charge
              131: 0x1234}   # arbitrary mixed marks
 
-    mb = ModbusDongle(_sim())
+    mb = _mb(_sim())
     mb.write_single(HR_SYS_ENABLE, 0x0001)           # HalfHourACChrStartEn on
     for reg, val in TABLE.items():
         assert mb.write_single(reg, val) == val, \

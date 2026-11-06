@@ -100,10 +100,10 @@ FAC_SAFETY_BANK = 0x20009e54
 
 
 def _safety_factory():
-    from arm_sim_modbus import ModbusDongle
+    from arm_sim_modbus import ModbusDsp
     from arm_sim_safety import FakeSafetyCpu
     sim = _factory()
-    return FakeSafetyCpu(sim, FAC_SAFETY_BANK, ModbusDongle(sim))
+    return FakeSafetyCpu(sim, FAC_SAFETY_BANK, ModbusDsp(sim))
 
 
 def test_safety_cpu_telemetry_reaches_modbus():
@@ -171,13 +171,13 @@ def test_per_pack_telemetry_reaches_modbus():
     cached). Factory-only. NB this proves the serving PATH, not that the attached
     EG4-LL pack feeds it -- that pack emits 0x3xx, leaving this bank dormant (docs/34)."""
     import struct as _s
-    from arm_sim_modbus import ModbusDongle
+    from arm_sim_modbus import ModbusDsp
     from arm_sim_can import CanBattery
 
     def snapshot(p0s0_a, p0s0_b, p0s1, p1s0):
         sim = _factory()
         bat = CanBattery(sim)
-        mb = ModbusDongle(sim)
+        mb = ModbusDsp(sim)
         bat.send_soc_soh(77, 96)                       # keep the aggregate block alive
         _inject_pack(bat, 0, 0, _s.pack("<HH", p0s0_a, p0s0_b) + b"\x00\x00\x00\x00")
         _inject_pack(bat, 0, 1, _s.pack("<H", p0s1) + b"\x00" * 6)
@@ -254,8 +254,9 @@ def test_rtc_is_live_clock():
     Modbus time registers reconstruct from the live calendar, not an echo of the
     last write (the shared check_live_clock contract). 07-series-specific; SKIPs
     on other images."""
+    from arm_sim_modbus import ModbusDsp
     sim = _factory_rtc()
-    check_live_clock(sim)
+    check_live_clock(sim, ModbusDsp)         # factory answers on USART3 in the harness
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
