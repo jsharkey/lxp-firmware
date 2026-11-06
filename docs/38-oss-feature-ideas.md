@@ -59,7 +59,7 @@ plus [`docs/11`](11-12000xp-revisions.md) for what the 07-series added.
 **Proposal (to be verified on hardware before freezing):** reserve **IR 1000–1399
 and HR 1000–1399** as the OSS extension window. The window is cut into 40-register
 blocks aligned to the dongle-spec query groups (1000 = 25 × 40), so every block
-fits one legal query ([`docs/modbus-dongle/README.md`](wiring/ARM-UART5-dongle/README.md)
+fits one legal query ([`ARM-UART5-dongle/README.md`](wiring/ARM-UART5-dongle/README.md)
 "Min polling period / 40-register groups").
 
 - It clears every known factory range: IR 0–152, IR 5000–5126 (per-pack,
@@ -170,7 +170,7 @@ becomes W000.
 ### 3.7 Safety-CPU vs DSP cross-check view — *medium*
 The ARM receives **two independent measurement streams**. One is the safety
 CPU's own grid/PV samples on USART2, which feed the factory registers ✔. The other
-is the DSP's `0x49` telemetry on USART3 ✔ ([`modbus-dsp/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)).
+is the DSP's `0x49` telemetry on USART3 ✔ ([`ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)).
 Publishing both, plus the delta, gives a live "do the two measuring processors
 agree?" diagnostic, which is the quantity behind E027. Also expose the DSP's raw
 working-state byte next to the classified IR 0. The manual's engineering fields
@@ -261,7 +261,7 @@ uses, provided that contact is not wired to the generator.
 HA tariff/solar-forecast automations want to say "charge at ≤ 40 A from grid
 until 06:00" or "cap discharge to 3 kW now". The ARM pushes the configured
 battery limit set in **block 1** ✔ (field roles medium/low,
-[`modbus-dsp/block-01`](wiring/ARM-USART3-DSP/block-01.md)), and the DSP takes min(configured,
+[`ARM-USART3-DSP/block-01`](wiring/ARM-USART3-DSP/block-01.md)), and the DSP takes min(configured,
 live BMS). That makes the push a natural **clamp-only** knob: an OSS override can
 lower limits but never raise them above the persisted setting or the BMS value.
 The same pattern covers AC-charge power/SOC targets (HR 64-89 family) and Max Grid
@@ -274,7 +274,7 @@ overrides (§1.5).
   HA writes tomorrow's 48-slot charge/discharge plan from day-ahead prices once a
   day, and that one write is a whole tariff integration. It needs a precedence
   rule against the AC-charge / AC-First windows (HR 68-73, 152-157), which are
-  evaluated ARM-side ✔ ([`modbus-dsp/clock`](wiring/ARM-USART3-DSP/clock.md)).
+  evaluated ARM-side ✔ ([`ARM-USART3-DSP/clock`](wiring/ARM-USART3-DSP/clock.md)).
 - More than 3 windows, weekday/weekend sets, and seasonal profiles, all ARM-side
   because window evaluation already lives on the ARM.
 - **Profiles**: named settings bundles ("summer", "winter", "away", "storm")
@@ -385,7 +385,7 @@ hardware and doubles as a user diagnostic.
 
 ### 6.4 Calibration gains — read-only
 Blocks 2/7/8 push measurement **calibration gains** (Q10, unity `0x400`, ~
-[`modbus-dsp/block-02`](wiring/ARM-USART3-DSP/block-02.md)). Exposing them **read-only** is
+[`ARM-USART3-DSP/block-02`](wiring/ARM-USART3-DSP/block-02.md)). Exposing them **read-only** is
 useful (spotting a mis-calibrated unit). Writing them is a factory-service
 operation and should stay out of reach of normal remote control.
 
