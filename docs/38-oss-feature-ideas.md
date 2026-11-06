@@ -305,8 +305,52 @@ among the unread inputs PE8/10/12/15). If it is found, publish RPM.
 - **LCD**: an "HA page" whose few text lines HA writes over Modbus (price,
   forecast, message). Backlight schedule (PD14/PD15 candidates ~). Our own
   renderer already draws on the real panel ✔ ([`docs/28`](28-factory-hmi.md)).
-- **Status LED** patterns for OSS states (lease active, OSS firmware running).
+- **Status LED** patterns for OSS states (lease active, OSS firmware running) —
+  but the real expressive surface is the **front-panel RGB ring** (§4.8).
 - A front-panel **"remote control allowed"** toggle (§5.4).
+
+### 4.8 Front-panel RGB LED ring — the expressive display — *easy; fully ARM-local, driver ✔*
+
+The circular front "halo" is **25 individually-addressable full-24-bit-RGB LEDs**
+on PD15 (TIM4-CH4 PWM + DMA), decoded in [`docs/40`](40-led-ring.md). The factory
+uses it only for a green/amber/red spinning comet off `IR_STATE`; the hardware is a
+general 25-pixel RGB ring we can drive however we like, and frame updates are cheap
+(PWM-DMA, no CPU bit-bang). It even already contains an unused **rainbow** cycler
+(mode 1). All inputs these ideas need (SOC on [IR 5](wiring/ARM-UART5-dongle/IR005-SOC_SOH.md),
+PV power on the `PPV*` input regs, state/faults) are already in the register image,
+so this is pure ARM-local output — one of the easiest high-delight features.
+
+Building blocks (details and a reimpl sketch in `docs/40`):
+- **Per-state palette** beyond green/amber/red: blue = AC-charging, cyan = PV-only,
+  white = standby, purple = grid-export — a one-line change in the state→colour map.
+- **Gauge / arc**: light `K = round(25·x)` LEDs as a filled arc — an **SOC dial**,
+  load/power meter, or charge-progress bar. The single most useful upgrade.
+- **Rainbow** (already implemented), **static rainbow ring** (`hue = 360°·led/25`),
+  **breathe/pulse** idle glow, **blink/strobe** faults, **multi-comet**, and
+  **spin-speed/direction by load** (faster under higher power, reverse on discharge).
+- **Severity colour-fade**: continuous green→amber→red as a function of warning
+  severity instead of three discrete modes.
+
+**Signature design — "solar rain into a filling battery."** Split the ring into a
+**top arc** (the sky) and a **bottom arc** (the battery):
+- **Top — solar rain.** Spawn **yellow "sun-shower" drops** at the top that fall
+  down the two sides of the ring (a lit pixel stepping LED-by-LED down each flank,
+  fading as a short tail). The **spawn frequency tracks total PV generation** — a
+  drizzle at a few hundred watts, a downpour near rated power — so the panel
+  *visibly rains harder the more the sun is producing*. (PV watts from the `PPV1/2
+  (+PPV3)` input regs, summed.)
+- **Bottom — battery fill.** The bottom arc is an **SOC gauge**: fill LEDs from the
+  lowest point up to `round(SOC% · bottom_count)`, coloured by a **red→amber→green
+  gradient keyed to SOC** (red near empty, green near full; SOC from IR 5 low byte).
+  As the rain falls into it, the battery arc rises and greens — an at-a-glance
+  "PV charging the battery" story on the front panel.
+- Nice touches: a drop that reaches the fill line gives a brief brighten/ripple;
+  on discharge, reverse the motion (battery arc drains, a downward "draw" glow); on
+  a fault, override to the red comet (don't hide alarms behind the pretty mode).
+  This is a cosmetic OSS "mode" selectable via the HMI "LED Mode", never masking the
+  fault/warning states (which must still win — §1 ground rules). Feasible today; the
+  only open hardware point is confirming the blue channel / wire byte-order on a
+  real unit (`docs/40`).
 
 ---
 
@@ -419,7 +463,7 @@ bugs" (default to be decided) and in `docs/31` with the verdict.
 
 | tier | features | why |
 |---|---|---|
-| **Quick wins** (no new RE) | identity block (3.1), relay/actuator state (3.2), derived values (3.4), windowed stats (3.5), link health (3.6), Q3 alarms, raw debug window of unpublished USART2 fields (3.7), standard-Modbus framing (5.3), write authorization (5.4) | facts are ✔ and the data is already in RAM |
+| **Quick wins** (no new RE) | identity block (3.1), relay/actuator state (3.2), derived values (3.4), windowed stats (3.5), link health (3.6), Q3 alarms, raw debug window of unpublished USART2 fields (3.7), standard-Modbus framing (5.3), write authorization (5.4), **RGB LED-ring modes incl. SOC gauge + solar-rain (4.8)** | facts are ✔ and the data is already in RAM |
 | **Next** (small RE or bench step) | Smart Port control (4.1, one harness run settles the switching path), generator/dry contact (4.2), clamp-only setpoint overrides (4.3), dormant-table scheduler (4.4), fan curve (4.6), LCD/buzzer niceties (4.7) | high HA value; each gated on one named experiment |
 | **Research-gated** | per-pack/cell battery detail (3.3, CAN byte layouts), cross-check/engineering fields (3.7), second slave port (5.2, UART4/USART1 peer + PA15), local logging scale (6.2), OSS self-update (6.5) | depends on open items in `docs/34`, `docs/33`, `wiring/` |
 
