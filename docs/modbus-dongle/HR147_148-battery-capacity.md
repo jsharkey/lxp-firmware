@@ -12,4 +12,4 @@
 **Manual battery parameters for "unmatched" (non-BMS) packs** — persisted to
 config flash and used by the charge/discharge control (pushed to the DSP in the
 config snapshot). For BMS packs these come from the pack over CAN1 instead
-([`input-081_106-BMS`](input-081_106-BMS.md)).
+([`IR081_106-BMS`](IR081_106-BMS.md)).

@@ -16,4 +16,4 @@
 **Voltages (IR 127/128): the USART2 bank** at `BANK+0x30`/`+0x32`
 ([`docs/33`](../33-usart2-telemetry-bank.md)). **Powers/energies: ARM-computed /
 accumulated.** This is the per-leg detail of the aggregate EPS output at
-[`input-020_025-EPS-output`](input-020_025-EPS-output.md).
+[`IR020_025-EPS-output`](IR020_025-EPS-output.md).

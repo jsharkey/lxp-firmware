@@ -10,4 +10,4 @@
 
 Reports whether the AC input is treated as grid or generator. **Open:** getter
 source not yet pinned (candidate: derived from the generator-related settings /
-line mode, [`holding-146-LineMode`](holding-146-LineMode.md)).
+line mode, [`HR146-LineMode`](HR146-LineMode.md)).

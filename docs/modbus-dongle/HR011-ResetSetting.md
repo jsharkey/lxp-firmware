@@ -18,8 +18,8 @@
 
 **Command register — each bit triggers an ARM-side action**, not a stored value.
 Notably: bit 0 clears the energy/runtime counters
-([`input-028_059-energy-counters`](input-028_059-energy-counters.md),
-[`input-069_070-RunningTime`](input-069_070-RunningTime.md)); bit 7 reboots; bits
+([`IR028_059-energy-counters`](IR028_059-energy-counters.md),
+[`IR069_070-RunningTime`](IR069_070-RunningTime.md)); bit 7 reboots; bits
 5/6 drive the **battery charge/discharge switches** which propagate to the BMS over
 CAN1 ([`docs/wiring/ARM-CAN1`](../wiring/ARM-CAN1.md)). Settings changes (bit 1)
 are persisted to config flash. **Open:** confirm the exact handler per bit.

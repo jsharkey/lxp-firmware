@@ -22,7 +22,7 @@ on `0x3xx` (`0x311–0x329`, `0x370–0x381`), none on `0x4xx`. The ARM parses t
   surface, and a different battery (one that streams per-pack telemetry on CAN
   `0x4xx`) would populate it.
 - **Not a live source on this system.** For the attached pack, per-battery data on
-  the dongle is limited to the aggregate [`IR 81-106 BMS block`](input-081_106-BMS.md).
+  the dongle is limited to the aggregate [`IR 81-106 BMS block`](IR081_106-BMS.md).
 
 ## Addressing
 
@@ -83,5 +83,5 @@ scalars via `sub_08021b68`, which the Modbus getters do not read).
 
 | what | register(s) | live on this pack? |
 |---|---|---|
-| aggregate pack SOC/SOH, V/I/T, limits, faults, cell min/max | [IR 5](input-005-SOC_SOH.md), [IR 81-106](input-081_106-BMS.md) | ✔ yes (CAN `0x351/355/356/359`) |
+| aggregate pack SOC/SOH, V/I/T, limits, faults, cell min/max | [IR 5](IR005-SOC_SOH.md), [IR 81-106](IR081_106-BMS.md) | ✔ yes (CAN `0x351/355/356/359`) |
 | **per-pack** V/SOC/cell detail, one block per stacked pack | **IR 5000-5126** (this doc) | ✗ no — needs a CAN-`0x4xx` per-pack battery |

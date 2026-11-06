@@ -32,7 +32,7 @@ locally:
   the frame's own bit** — it is the safety CPU's "sample mismatch" verdict.
 - **Warnings:** grid warnings **W016/17/18** (bits 16-18, and the other high bits)
   come from the frame; low bits 0-9 incl. **W008** (FW-version mismatch) are
-  **ARM-computed** (W008 from the version compare, [`holding-009_010-FW-versions`](holding-009_010-FW-versions.md)).
+  **ARM-computed** (W008 from the version compare, [`HR009_010-FW-versions`](HR009_010-FW-versions.md)).
 
 > **Fault/warn order (corrected per [`docs/33`](../33-usart2-telemetry-bank.md)).**
 > Earlier drafts (docs/30) swapped which bank word was fault vs warn; the table
@@ -86,9 +86,9 @@ locally:
 
 > **W008** (bit 8) is the version-mismatch warning the ARM computes locally from
 > the per-processor FW-version bytes — see
-> [`holding-009_010-FW-versions`](holding-009_010-FW-versions.md).
+> [`HR009_010-FW-versions`](HR009_010-FW-versions.md).
 
 The internal DTC (IR 6) and the BMS fault/warn words (IR 99/100) are separate —
-see [`input-006-InternalFault`](input-006-InternalFault.md) and
-[`input-081_106-BMS`](input-081_106-BMS.md). The firmware's own enum lives in
+see [`IR006-InternalFault`](IR006-InternalFault.md) and
+[`IR081_106-BMS`](IR081_106-BMS.md). The firmware's own enum lives in
 [`include/inv/faults.h`](../../include/inv/faults.h).

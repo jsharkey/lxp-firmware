@@ -128,7 +128,7 @@ a numbered doc and a subdir file disagree, **the subdir file wins.**
 | domain | authoritative source | holds |
 |---|---|---|
 | **Inter-processor & external protocols; hardware IO** | [`docs/wiring/`](docs/wiring/README.md) | one file per physical link (`ARM-USART3`, `DSP-SCI-C`, …): ports, **pins**, electrical type, baud, framing, direction; the overview carries the system block diagram + the full ARM pin map |
-| **The external dongle Modbus registers** | [`docs/modbus-dongle/`](docs/modbus-dongle/README.md) | one file per register/group (`input-001-Vpv1`, `holding-022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
+| **The external dongle Modbus registers** | [`docs/modbus-dongle/`](docs/modbus-dongle/README.md) | one file per register/group (`IR001-Vpv1`, `HR022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
 
 **When your work touches one of these domains, update the relevant file there —
 don't just drop the finding in a numbered doc or a commit message.** If you pin a

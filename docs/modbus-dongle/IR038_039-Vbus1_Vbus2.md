@@ -11,4 +11,4 @@
 
 **The USART2 bank** at the offsets above, relayed over USART2
 ([`docs/33`](../33-usart2-telemetry-bank.md)). Half-bus voltage is a separate
-register — [`input-120-VBusP`](input-120-VBusP.md).
+register — [`IR120-VBusP`](IR120-VBusP.md).

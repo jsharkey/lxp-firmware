@@ -10,7 +10,7 @@ Erec_all, Echg_all, Edischg_all, Eeps_all, Etogrid_all, Etouser_all (see
 [`modbus_map.h`](../../include/inv/modbus_map.h) for the exact pairing).
 
 *(IR 38-39 Vbus1/2 sit between the two blocks — see
-[`input-038_039-Vbus1_Vbus2`](input-038_039-Vbus1_Vbus2.md).)*
+[`IR038_039-Vbus1_Vbus2`](IR038_039-Vbus1_Vbus2.md).)*
 
 ## Where the data comes from
 
@@ -22,4 +22,4 @@ word+byte-swapped encoding ([index](README.md)).
 
 > Signedness/accumulation reset: the daily counters roll at day boundary; the
 > cumulative counters can be cleared via `HR 11` ResetSetting.EnergyRecordClr
-> ([`holding-011-ResetSetting`](holding-011-ResetSetting.md)).
+> ([`HR011-ResetSetting`](HR011-ResetSetting.md)).

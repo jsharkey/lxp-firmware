@@ -45,4 +45,4 @@ is an internal consumer, not something the dongle sees.
 relay-gating draft misread `== 2` as AC-First output-priority; corrected in
 [`docs/18`](../18-power-path-relays.md)/[`docs/16`](../16-arm-io-map.md).
 Output-priority is a *holding* register —
-[`holding-145-OutputPrioConfig`](holding-145-OutputPrioConfig.md).
+[`HR145-OutputPrioConfig`](HR145-OutputPrioConfig.md).
