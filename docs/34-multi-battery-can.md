@@ -285,6 +285,41 @@ reaches the dongle.
 > this pack's `0x3xx` frames unless we deliberately build per-pack visibility as a
 > superset. Not implemented.
 
+### 2c. Does picking the right *protocol* light the bank? (resolving the open question)
+
+Both ends **do** have a protocol selector — and that was the remaining "unresolved"
+piece above. But neither selection routes the EG4 pack's data into the 5000 bank:
+
+- **The two selectors (confirmed).** The **battery** picks one of **8
+  inverter-brand presets** `P01-EG4 … P07-LUX … P08-SMA` (which inverter it talks
+  to; strings `@0x31a00`+, [`docs/wiring/ARM-CAN1.md`](wiring/ARM-CAN1.md)). The
+  **ARM** picks one of **24 battery-brand "Lithium Type" presets** (HMI menu 9;
+  strings `@0x2e088`): `0 Standard, 1 HinaESS, 2 Pylon, 3 Enopte, 4 MSUN, 5 GSL1,
+  6 Lux, 7 Aobo, 8 Dyness, 9 Stealth, 10 TeLongMei, 11 Merit, 12 BYD, 13 SHINWA,
+  14 WeCo, 15 Murata, 16 BITek, 17 OKSolar, 18 GW, 19 Beta, 20 Revov, 21 BeebeeJ,
+  22 Naxin, 23 Soltaro`. (`6 Lux` is the EG4/Luxpower native — there is no literal
+  "EG4" entry, and **`Lux` is not the per-pack protocol**.)
+- **The ARM `0x4xx` parser is *unconditional*, not Lithium-Type-gated.** The
+  per-pack serving test injects `0x4xx` and fills IR 5000+ at the harness's
+  **default (`0`/Standard)** config — no "pick Pylon first" step. So selecting a
+  battery brand on the ARM does **not** gate whether per-pack `0x4xx` is parsed;
+  any pack that sends `0x4xx` lights the bank regardless of the setting.
+- **No EG4 battery preset emits `0x4xx`.** The EG4-LL TX descriptor table
+  (`@0x31a20`, all 55 entries) is `0x3xx` across every preset branch; a raw-word
+  scan of the image finds no `0x400|sub<<5|pack` id series, and the Pylontech-style
+  `0x42xx` frames it *can* build are a **different** family (`& 0xf00 = 0x200`,
+  docs/20), not the bank's `0x4xx`. So no battery-side preset makes an EG4 pack
+  stream the per-pack frames either.
+
+**Resolution.** Picking a protocol does **not** make the attached EG4 pack's
+per-pack detail reach IR 5000-5126. The bank is a **Pylontech-family** feature
+(`0x400`-base per-pack frames): a pack that *natively* speaks that protocol — with
+the ARM on `Lithium Type = Pylon` or even the default — would populate it; the EG4
+`0x3xx` pack cannot, on any setting. The EG4 pairing's richer per-pack data stays
+on `0x3xx` → unserved internal scalars. *(So the specific guess "EG4/Lux is the
+per-pack protocol" is not borne out; the general idea "a per-pack-protocol pack
+lights the bank" is — just not with an EG4 pack.)*
+
 ## 3. Firmware update over CAN (extra credit)
 
 The battery is a **two-stage** design: a bootloader occupies `0x0`–`0x20000`
