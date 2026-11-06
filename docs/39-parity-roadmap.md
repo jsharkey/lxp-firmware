@@ -93,7 +93,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | area | factory | ours today | gap |
 |---|---|---|---|
 | Dongle Modbus port | UART5 + RS-485 DE ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md)) | **UART5 + DE on PA15** (`src/uart/uart5.c`); USART3 left to the DSP (`src/dsp/dsp_link_port.c`) | **closed (T01)**; harness auto-detects UART5 (ours) / USART3 (factory, its UART5 RX is a T02 task) |
-| Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **2** persisted (HR 101/102, `settings_persist_hr` in `src/main.c`) | 54 registers |
+| Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **62** persisted via `include/inv/settings_map.h` (T03): docs/23's 56 + 6 AC-First windows, cross-image green | gated schedules (74, 76-89), Q(V)/PF block — need a precondition |
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
 | State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | `IR_STATE` hard-seeded to Standby in `main.c` | whole classifier |
@@ -189,7 +189,26 @@ Turned out bigger than one card, so **split** (keep the ID for references):
 - Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)
-**Status:** `[~] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
+**Status:** `[x] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
+
+**Done.** Our firmware now persists the full pinned set via a const table
+(`include/inv/settings_map.h`: HR → slot/offset/width/scale), driving both
+`settings_persist_hr` and `settings_seed_hr` (`src/main.c`); `config_flash` gained
+1-byte accessors for the packed slot-5 block. `tests/test_persist_crossimage.py`
+is now table-driven (`tests/settings_persist_contract.py`) and green both ways:
+ours→flash over the **whole table**, byte-exact to the factory layout and
+byte-identical to the factory's own record per storage class; and factory→ours
+*live* round-trip one register per storage class. **62 registers** covered
+(docs/23's 56 + the 6 AC-First windows newly pinned here). A full-table *live*
+ours→factory read-back is blocked on **T02** — the factory RTOS re-journals on boot
+and wedges the dongle when it boots on a device we have written (see docs/23
+"Harness note"). The oracle settled three docs/23 errors/notes — slot-5 `+0x00..+0x07`
+are **1-byte** fields, HR 109 is at **+0xa5** (not +0xa4), and two factory
+behaviours (HR 21 `FuncEn` read-merge, HR 112 slave-mode write gating) → docs/31
+Q8/Q9. Still gated (follow-up, as docs/23 predicted): the charge-first /
+forced-discharge schedules (74, 76-89) and the Q(V)/PF block — they draw no `0x06`
+echo without a precondition. See [`docs/23`](23-arm-config-writer.md) "Width
+correction & harness notes".
 
 [`docs/23`](23-arm-config-writer.md) pins **56 HRs** to slot-0/slot-5 offsets,
 widths and `×10` scalings, all dynamically. We persist 2.

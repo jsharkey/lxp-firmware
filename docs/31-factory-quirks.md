@@ -189,6 +189,40 @@ read back what it produced — see each entry's *How found*.
   (is HR 22 remapped, or write-gated behind a mode?) before we match or fix.
 - **Status:** suspected (one image, func-06 only; func-16 and other images untried).
 
+## Q8 — HR 21 (`FuncEn`) does not read back verbatim; the factory OR-s a capability bit
+
+- **Area:** dongle Modbus settings (`docs/23`, `docs/wiring/ARM-UART5-dongle/`)
+- **Observed:** write `FuncEn = 0x0136` (310) over the dongle and read it back and
+  the factory returns `0x0336` (822) — the stored value **OR-ed with `0x200`**
+  (bit 9). The stored record byte is exactly what was written (`+0x13` in slot 0);
+  only the *read* is a merge.
+- **Interpretation:** `FuncEn` is a bitmask and the factory reports it with a
+  firmware-forced capability/enable bit set regardless of what was stored, so the
+  Modbus read reflects the *effective* mask, not the stored one. Not a storage bug
+  — a read-side merge.
+- **Our firmware:** stores and reads `FuncEn` verbatim (no forced bit), so a
+  straight write/read round-trips. The cross-image persistence oracle therefore
+  checks `(got & written) == written` for HR 21 (our bits must all survive) rather
+  than exact equality (`tests/test_persist_crossimage.py`, `READ_OR_MASK`).
+- **How found:** the full-table cross-image round-trip (task T03): every other
+  pinned register read back verbatim; HR 21 came back with the extra bit.
+- **Status:** confirmed (ceaa-07xx). Which bit-9 function it advertises is not yet
+  named.
+
+## Q9 — HR 112 (`SetSystemType`) rejects value 2 (slave) in a black-box write
+
+- **Area:** dongle Modbus settings (`docs/23`)
+- **Observed:** a dongle `0x06` write of `SetSystemType = 2` (1-ph parallel
+  **slave**) draws **no echo** — the factory rejects it — while `= 1` (master) is
+  accepted and stored (`+0x1b`, slot 0). The register is otherwise writable.
+- **Interpretation:** selecting slave is gated on a parallel-system precondition
+  (a master/phase/ID must be configured first), so a bare write is refused. This
+  is the same "gated write" class docs/23 notes for ~47 other registers.
+- **Our firmware:** has no such validation yet (accepts any value); range/precondition
+  checks are task T04. The persistence oracle writes `= 1` (the accepted value).
+- **How found:** nudging the T03 test value to 2 drew no echo; 1 round-tripped.
+- **Status:** confirmed (ceaa-07xx, black-box). The exact precondition is unpinned.
+
 ---
 
 ## Not quirks (recorded so we don't re-flag them)

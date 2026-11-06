@@ -21,28 +21,41 @@
 #include "inv/bms_can_map.h"
 #include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
+#include "inv/settings_map.h"
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
 #include "inv/energy.h"
 #include "inv/settings_validate.h"
 
-/* Holding registers that persist to the SPI config flash (docs/23 field map).
- * The wire value is scaled to the on-flash units the factory uses so a record
- * written here is read correctly by the factory firmware and vice-versa. */
+/* Holding registers that persist to the SPI config flash (docs/23 field map,
+ * table in include/inv/settings_map.h). The wire value is scaled to the on-flash
+ * units the factory uses, and written at the factory's slot/offset/width, so a
+ * record written here is read correctly by the factory firmware and vice-versa
+ * (proven both ways by tests/test_persist_crossimage.py). */
 static void settings_persist_hr(uint16_t reg, uint16_t val)
 {
-    switch (reg) {
-    case HR_CHARGE_CURR:  config_set_u16(CFG_SLOT_MAIN, CFG_OFF_CHARGE_CURR, val * 10u); break;
-    case HR_DISCHG_CURR:  config_set_u16(CFG_SLOT_MAIN, CFG_OFF_DISCHG_CURR, val * 10u); break;
-    default: break;   /* not persisted (yet) */
+    for (unsigned i = 0; i < SETTINGS_MAP_LEN; i++) {
+        const settings_field_t *f = &SETTINGS_MAP[i];
+        if (f->reg != reg) continue;
+        uint16_t stored = (uint16_t)(val * f->scale);
+        if (f->width == 1)
+            config_set_u8(f->slot, f->off, (uint8_t)stored);
+        else
+            config_set_u16(f->slot, f->off, stored);
+        return;
     }
+    /* reg not in the pinned set -> not persisted */
 }
 
 /* Seed the holding-register image from the config flash at boot (inverse scale). */
 static void settings_seed_hr(uint16_t *hold)
 {
-    hold[HR_CHARGE_CURR] = config_get_u16(CFG_SLOT_MAIN, CFG_OFF_CHARGE_CURR) / 10u;
-    hold[HR_DISCHG_CURR] = config_get_u16(CFG_SLOT_MAIN, CFG_OFF_DISCHG_CURR) / 10u;
+    for (unsigned i = 0; i < SETTINGS_MAP_LEN; i++) {
+        const settings_field_t *f = &SETTINGS_MAP[i];
+        uint16_t stored = (f->width == 1) ? config_get_u8(f->slot, f->off)
+                                          : config_get_u16(f->slot, f->off);
+        hold[f->reg] = (uint16_t)(stored / f->scale);
+    }
 }
 
 /* Shared system snapshot the subsystems read/write. */

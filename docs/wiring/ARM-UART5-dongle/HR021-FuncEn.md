@@ -30,3 +30,4 @@ Several **Application-tab** toggles live in feature-enable words: the manual exp
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **HR 21 (FuncEn):** [`test_dsp_config.c`](../../../tests/test_dsp_config.c) sets `HR_FUNC_EN` (ACChargeEn) and confirms it flows into the config push. The full bit→toggle mapping is otherwise not yet covered.
+- **Persistence (slot 0 `+0x13`):** [`test_persist_crossimage.py`](../../../tests/test_persist_crossimage.py) round-trips it cross-image. NB the factory does **not** echo FuncEn verbatim on read — it OR-s a capability bit (`stored | 0x200`), so the test checks `(got & written) == written`. See [`docs/31`](../../31-factory-quirks.md) Q8.

@@ -224,6 +224,12 @@ time-window suites). The key entry points the sections point at:
   regs), `RTC_WALK`, and relay specs both images are held to.
 - **`timewindow_contract.py` / `test_timewindow.py`** — AC-First (HR 152-157) and
   AC-charge (HR 68-73) window evaluators vs the RTC.
+- **`settings_persist_contract.py` / `test_persist_crossimage.py`** — the pinned
+  settings table (HR → slot/offset/width/scale, mirror of
+  [`include/inv/settings_map.h`](../../../include/inv/settings_map.h)) round-tripped
+  cross-image: ours writes a record the factory reads back, and vice-versa. Covers
+  all **62** persisted holdings — slot 0: 15, 20, 21, 68-73, 99, 101-103, 105, 107,
+  109, 110, 112, 119, 120, 147, 151-157; slot 5: 23, 25-40, 43-53, 59-66, 75.
 - **`dsppush_contract.py` / `test_dsp_push.py`** — which holding writes are pushed
   to the DSP config blocks.
 - **`test_bms_can.c`, `test_acfirst.c`, `test_rtc.c`, `test_modbus.c`,

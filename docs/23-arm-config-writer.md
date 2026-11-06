@@ -142,6 +142,12 @@ Modbus spec. Values are stored in the register's documented wire units unless no
 | 71 | ACChgEnd1 | `+0x40` | 2B | 2824 |
 | 72 | ACChgStart2 | `+0x42` | 2B | 3338 |
 | 73 | ACChgEnd2 | `+0x44` | 2B | 3852 |
+| 152 | ACFirstStart0 | `+0x64` | 2B | — |
+| 153 | ACFirstEnd0 | `+0x66` | 2B | — |
+| 154 | ACFirstStart1 | `+0x68` | 2B | — |
+| 155 | ACFirstEnd1 | `+0x6a` | 2B | — |
+| 156 | ACFirstStart2 | `+0x6c` | 2B | — |
+| 157 | ACFirstEnd2 | `+0x6e` | 2B | — |
 | 147 | Battery capacity | `+0x70` | 2B | 100 |
 | 99 | ChargeVoltRef (lead-acid) | `+0x74` | 2B | 560 |
 | 151 | EqualizationTime | `+0x7c` | 2B | 4 |
@@ -150,19 +156,19 @@ Modbus spec. Values are stored in the register's documented wire units unless no
 | 103 | MaxBackFlow | `+0x9c` | 2B | 500 (×10) |
 | 105 | EOD | `+0x9e` | 2B | 20 |
 | 107 | TemprUpperLimitDischg | `+0xa1` | 2B | 310 |
-| 109 | TemprUpperLimitChg | `+0xa4` | 2B | 330 |
+| 109 | TemprUpperLimitChg | `+0xa5` | 2B | 330 |
 
 #### Slot 5 — grid-code protection & power-command settings
 
 | HR | Field | Offset | Width | stored |
 |---|---|---|---|---|
-| 60 | ActivePowerPercentCMD | `+0x00` | 2B | 55 |
-| 61 | ReactivePowerPercentCMD | `+0x01` | 2B | 30 |
-| 64 | ChargePowerPercentCMD | `+0x02` | 2B | 51 |
-| 65 | DischgPowerPercentCMD | `+0x03` | 2B | 52 |
-| 66 | ACChgPowerCMD | `+0x04` | 2B | 53 |
-| 23 | ConnectTime | `+0x05` | 2B | 120 |
-| 59 | ReactivePowerCMDType | `+0x07` | 2B | 3 |
+| 60 | ActivePowerPercentCMD | `+0x00` | **1B** | 55 |
+| 61 | ReactivePowerPercentCMD | `+0x01` | **1B** | 30 |
+| 64 | ChargePowerPercentCMD | `+0x02` | **1B** | 51 |
+| 65 | DischgPowerPercentCMD | `+0x03` | **1B** | 52 |
+| 66 | ACChgPowerCMD | `+0x04` | **1B** | 53 |
+| 23 | ConnectTime | `+0x05` | **1B** | 120 |
+| 59 | ReactivePowerCMDType | `+0x07` | **1B** | 3 |
 | 30 | GridVoltLimit1High | `+0x0a` | 2B | 2700 |
 | 34 | GridVoltLimit2High | `+0x0c` | 2B | 2800 |
 | 38 | GridVoltLimit3High | `+0x0e` | 2B | 2900 |
@@ -190,6 +196,38 @@ Modbus spec. Values are stored in the register's documented wire units unless no
 | 28 | GridFreqConnHigh | `+0x3e` | 2B | 5200 |
 | 27 | GridFreqConnLow | `+0x40` | 2B | 4800 |
 | 75 | ChgFirstSOCLimit | `+0x7a` | 2B | 82 |
+
+### Width correction & harness notes (task T03, cross-image oracle)
+
+Re-checking the full table with a **cross-image round-trip oracle** (ours writes a
+record, the factory reads it back, and vice-versa — `tests/test_persist_crossimage.py`,
+machine-readable table `include/inv/settings_map.h`) settled two things this doc
+first got wrong and surfaced a couple of factory behaviours:
+
+- **Slot-5 `+0x00..+0x07` are 1-byte fields, not "2B".** The power-command block
+  (HR 60/61/64/65/66/23/59) is a packed run of single bytes — the offsets advance
+  by 1, and each value fits a byte. The "2B" above was a transcription default;
+  corrected in the table. The grid-code block from `+0x0a` on is genuinely 2B.
+- **HR 109 (TemprUpperLimitChg) is at `+0xa5`, not `+0xa4`.** Writing a distinct
+  value and locating it in the record puts it at `+0xa5`/`+0xa6`; `+0xa4` holds an
+  unrelated byte. Corrected above.
+- **HR 112 (SetSystemType): value 2 (slave) is rejected** by the factory in this
+  black-box harness (no `0x06` echo); value 1 (master) is accepted. The write is
+  gated (parallel-mode precondition). See [`docs/31`](31-factory-quirks.md).
+- **HR 21 (FuncEn) does not read back verbatim** — the factory reports it with an
+  extra capability bit set (`stored | 0x200`). Our stored bits all survive; the
+  read is a merge, not an echo. See [`docs/31`](31-factory-quirks.md).
+- **Harness shape (not a device fact):** the emulated factory serves exactly one
+  dongle *write* per boot (a settings write blocks further dongle service until
+  reboot), and it **re-journals its loaded config early in boot**, which wedges the
+  dongle for the rest of that boot whenever it boots on a device *our* firmware has
+  written. So the oracle cannot drive the factory to read back a 62-register flash
+  our firmware produced (that is a T02 dependency — the factory RTOS in the sim).
+  Instead it (a) checks our firmware writes the whole table byte-exact to this
+  layout and byte-identical to the factory's own record per storage class, and
+  (b) does the *live* round-trip the other way — the factory writes, our firmware
+  reads back — one register per storage class. All 62 rows (the 56 above + the 6
+  AC-First windows) are covered.
 
 **Not resolved dynamically.** ~47 settings registers are *rejected* by the factory
 firmware in this black-box harness (no `0x06` echo), so their offsets are not pinned

@@ -23,10 +23,8 @@
 #define CFG_SLOTS        6
 #define CFG_PAYLOAD_LEN  0xFAu     /* bytes [0x00:0xFA] covered by the CRC */
 
-/* Slot/offset of the fields we currently model (docs/23). */
-#define CFG_SLOT_MAIN       0
-#define CFG_OFF_CHARGE_CURR 0x8Cu  /* HR 101 ChargeCurr, stored as amps x10 */
-#define CFG_OFF_DISCHG_CURR 0x8Eu  /* HR 102 DischgCurr, stored as amps x10 */
+/* Which holding registers persist, and their slot/offset/width/scale, is the
+ * table in inv/settings_map.h (docs/23). This header is just the store. */
 
 /* Load every slot's newest valid record from flash into the in-RAM images and
  * initialise each ring's write pointer. Call once at boot (brings up SPI1). */
@@ -36,6 +34,11 @@ void config_flash_init(void);
  * changes the value marks the slot dirty; config_flash_poll() journals it. */
 uint16_t config_get_u16(uint8_t slot, uint16_t off);
 void     config_set_u16(uint8_t slot, uint16_t off, uint16_t value);
+
+/* Same, for a single-byte payload field (e.g. slot-5's packed power-command
+ * block). A read-modify-write preserves every neighbouring byte. */
+uint8_t  config_get_u8(uint8_t slot, uint16_t off);
+void     config_set_u8(uint8_t slot, uint16_t off, uint8_t value);
 
 /* Flush any dirty slot to flash as a new journaled record. Returns true if it
  * wrote anything. Call from the main loop. */

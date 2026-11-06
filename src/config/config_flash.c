@@ -96,6 +96,18 @@ void config_set_u16(uint8_t slot, uint16_t off, uint16_t value)
     s_dirty[slot] = true;
 }
 
+uint8_t config_get_u8(uint8_t slot, uint16_t off)
+{
+    return s_img[slot][off];
+}
+
+void config_set_u8(uint8_t slot, uint16_t off, uint8_t value)
+{
+    if (s_img[slot][off] == value) return;            /* no change, no wear */
+    s_img[slot][off] = value;
+    s_dirty[slot] = true;
+}
+
 static void flush_slot(uint8_t slot)
 {
     uint8_t *img = s_img[slot];

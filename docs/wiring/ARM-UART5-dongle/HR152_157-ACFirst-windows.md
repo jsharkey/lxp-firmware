@@ -35,3 +35,4 @@ _Tests that exercise these registers. **Keep this list current when you add or c
 - **DSP push (HR 152-157 → config block 5):** [`test_dsp_push.py`](../../../tests/test_dsp_push.py) / [`dsppush_contract.py`](../../../tests/dsppush_contract.py) `DSP_PUSH`.
 - **End-to-end over the wire (HR 152/153 → IR 126 bit 8):** [`test_arm_sim.py`](../../../tests/test_arm_sim.py) `test_modbus_acfirst_window_tracks_rtc`.
 - **Pure predicate:** [`test_acfirst.c`](../../../tests/test_acfirst.c).
+- **Persistence (HR 152-157, slot 0 `+0x64..+0x6e`):** [`test_persist_crossimage.py`](../../../tests/test_persist_crossimage.py) / [`settings_persist_contract.py`](../../../tests/settings_persist_contract.py) — written, journaled, and read back across both images. Offsets pinned by the T03 probe (not in docs/23's original table).
