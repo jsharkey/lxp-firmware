@@ -193,7 +193,8 @@ int main(void) {
     settings_seed_hr(g_rt.holding_reg);      /* persisted values override the defaults */
 
     systick_init_1ms();
-    mb_port_init(&g_mb);
+    mb_port_init(&g_mb);                 /* dongle Modbus slave on UART5 (docs/26) */
+    dsp_link_port_init(19200U);          /* USART3 is the DSP link's alone now */
     bms_can_init(&g_bms);
     can_port_init();                    /* battery BMS bus on CAN1 (docs/20) */
     relay_init();

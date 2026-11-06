@@ -75,15 +75,36 @@ register ([`docs/34`](../../34-multi-battery-can.md)).
 - Factory: handler `sub_0802afe2` @ `0x40005000`, buffer `0x20008ca4`.
 - Reimplementation: transport-agnostic engine
   [`src/modbus/modbus.c`](../../../src/modbus/modbus.c), port
-  [`src/modbus/modbus_port.c`](../../../src/modbus/modbus_port.c), map
+  [`src/modbus/modbus_port.c`](../../../src/modbus/modbus_port.c) over the UART5
+  driver [`src/uart/uart5.c`](../../../src/uart/uart5.c), map
   [`include/inv/modbus_map.h`](../../../include/inv/modbus_map.h).
 
-> **Known port mis-binding (reimplementation).** Our Modbus slave is currently
-> bound to **USART3** as a placeholder (`modbus_port.c` → `uart3_init`), because
-> USART3 was the factory's only NVIC-vectored EG4-framed UART and looked like the
-> external port. The engine is transport-agnostic; the fix is to **move the port
-> binding USART3 → UART5** and wire the RS-485 DE (PA15) into `mb_port_set_tx()`,
-> leaving USART3 to the DSP. Tracked in [`docs/04`](../../04-modbus.md).
+> **Port binding (reimplementation): on UART5 (T01, resolved).** Our Modbus
+> slave runs on **UART5** (`modbus_port.c` → `uart5_init`), with the RS-485 DE on
+> **PA15** driven high before the first TX byte and released on TC
+> (`uart5_set_de`). USART3 is the DSP link's alone (`src/dsp/dsp_link_port.c`
+> brings it up). Was a USART3 placeholder; moved in T01 ([`docs/39`](../../39-parity-roadmap.md)).
+
+### Harness / oracle note (T01)
+
+Dynamic re-proof on the `ceaa-07xx` image (`tests/arm_sim_modbus.py`): feeding an
+EG4-Modbus read on **UART5** draws **no reply** from the factory in the harness —
+its UART5 receive path (`sub_0802afe2`) is a scheduler task that never gets the
+CPU without the RTOS running (**T02**). The factory **does** answer on **USART3**
+(its NVIC-vectored DSP-facing slave ISR), serving the same register model. So the
+`ModbusDongle` **auto-detects** the port: our firmware answers on UART5; the
+factory falls back to USART3 (a valid register oracle until T02 lets its UART5
+task run). Probing UART5 on the factory is avoided entirely — its UART5 ISR
+consumes a request and disturbs the config-flash/persistence, so detection tries
+USART3 first.
+
+### Test coverage
+
+Every common Modbus test (`tests/test_arm_sim.py`: register read/write, AC-First
+status, time set/read-back, OptimalChg round-trip, cold-boot persistence) now
+runs over this UART5 binding for our firmware and passes for both images. The DE
+sequencing around TX is pinned by `test_modbus_de_toggles_around_tx`
+(`tests/test_arm_sim_self_only.py`).
 
 ## Corrections folded in
 

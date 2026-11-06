@@ -1,22 +1,27 @@
 /*
- * Modbus-RTU port over the interrupt-driven USART3 driver (inv/uart.h).
+ * Modbus-RTU port over the interrupt-driven UART5 driver (inv/uart5.h) — the
+ * external RS-485 "dongle" link.
  *
  * This is the hardware glue around the transport-agnostic engine in modbus.c.
- * Bytes are received in the USART3 ISR into a ring; this layer drains that ring
+ * Bytes are received in the UART5 ISR into a ring; this layer drains that ring
  * each poll, reassembles RTU frames by the inter-character gap, and queues any
- * response for background (interrupt) transmission — matching the factory, whose
- * USART3 Modbus is fully interrupt-driven (never polled from the main loop).
+ * response for background (interrupt) transmission.
  *
- * CONFIRMED by RE (docs/05, docs/08): EG4 Modbus-family protocol on USART3,
- * address 0/1, funcs 0x03/0x04/0x06/0x10 plus undocumented 0x21/0x22/0x23;
- * USART3 is the only NVIC-vectored UART in the stock image.
- * RS-485 DE/RE: provide uart3_set_de() in a board file (the driver drives it).
+ * Port (docs/26, docs/wiring/ARM-UART5-dongle): the factory serves the plug-in
+ * datalogger on **UART5** (PC12 TX / PD2 RX, RS-485 half-duplex, DE on PA15),
+ * where the ARM is the Modbus *slave* — not USART3, which is the ARM↔DSP link
+ * (the ARM is the master there, so a dongle master cannot sit on it). The UART5
+ * driver drives the RS-485 DE (PA15) around each transmit via uart5_set_de().
+ *
+ * Framing (EG4 Modbus-family): address 0/1, funcs 0x03/0x04/0x06/0x10 plus the
+ * bootloader 0x21/0x22/0x23. Baud: the spec says 19200; this image's UART5 reads
+ * 9600 and the dongle baud is field-configurable (docs/wiring/ARM-UART5-dongle).
  */
 #include "inv/modbus.h"
-#include "inv/uart.h"
+#include "inv/uart5.h"
 
-#define MB_BAUD      19200U
-#define MB_GAP_MS    2U          /* RTU inter-frame idle (~2 ms @ 19200) */
+#define MB_BAUD      9600U
+#define MB_GAP_MS    4U          /* RTU inter-frame idle (~4 ms @ 9600) */
 
 static uint8_t   rx_buf[MB_FRAME_MAX + 8];
 static uint16_t  rx_len;
@@ -27,7 +32,7 @@ void mb_port_init(const mb_config_t *cfg)
 {
     s_cfg = cfg;
     rx_len = 0;
-    uart3_init(MB_BAUD);
+    uart5_init(MB_BAUD);
 }
 
 /*
@@ -38,7 +43,7 @@ void mb_port_init(const mb_config_t *cfg)
 void mb_port_poll(uint32_t now_ms)
 {
     uint8_t b;
-    while (uart3_rx_get(&b)) {
+    while (uart5_rx_get(&b)) {
         if (rx_len < sizeof rx_buf) rx_buf[rx_len++] = b;
         last_byte_ms = now_ms;
     }
@@ -47,6 +52,6 @@ void mb_port_poll(uint32_t now_ms)
         uint8_t resp[MB_FRAME_MAX];
         size_t n = inv_modbus_process(s_cfg, rx_buf, rx_len, resp, sizeof resp);
         rx_len = 0;
-        if (n > 0) uart3_tx(resp, (uint32_t)n);
+        if (n > 0) uart5_tx(resp, (uint32_t)n);
     }
 }

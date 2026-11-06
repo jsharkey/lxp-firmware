@@ -76,7 +76,11 @@ size_t dsp_push_next(dsp_push_t *p, const dsp_cfg_src_t *src,
  * DSP's FUN_00081034 (docs/08). Declared here for tests. */
 uint16_t dsp_crc16(const uint8_t *buf, size_t len);
 
-/* ---- port (src/dsp/dsp_link_port.c): transmit a built frame on USART3 ---- */
+/* ---- port (src/dsp/dsp_link_port.c): the ARM↔DSP link on USART3 ---- */
+/* Configure USART3 for the DSP push (TX). Call once at boot: the dongle Modbus
+ * now owns UART5 (docs/26), so USART3 is the DSP's alone and must be brought up
+ * here rather than as a side effect of the Modbus port init. */
+void dsp_link_port_init(uint32_t baud);
 void dsp_link_tx(const uint8_t *frame, size_t len);
 
 #endif /* INV_DSP_LINK_H */

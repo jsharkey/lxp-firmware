@@ -92,7 +92,7 @@ call/wiring line or two to `main.c`. Rebase often.
 
 | area | factory | ours today | gap |
 |---|---|---|---|
-| Dongle Modbus port | UART5 + RS-485 DE ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md)) | engine bound to **USART3** (`src/modbus/modbus_port.c`), the same port as the DSP push (`src/dsp/dsp_link_port.c`) | **blocks real hardware**; harness `ModbusDongle` also drives USART3 |
+| Dongle Modbus port | UART5 + RS-485 DE ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md)) | **UART5 + DE on PA15** (`src/uart/uart5.c`); USART3 left to the DSP (`src/dsp/dsp_link_port.c`) | **closed (T01)**; harness auto-detects UART5 (ours) / USART3 (factory, its UART5 RX is a T02 task) |
 | Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **2** persisted (HR 101/102, `settings_persist_hr` in `src/main.c`) | 54 registers |
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
@@ -118,7 +118,22 @@ tasks below are what close them.
 ## P0 — unblockers and the biggest gaps
 
 ### T01 — Move the dongle Modbus slave to UART5 (ours + harness)
-**Status:** `[~] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
+**Status:** `[x] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
+
+> **Done.** Ours now serves Modbus on **UART5** (`src/uart/uart5.c`, PC12/PD2,
+> RS-485 DE on PA15), rebound in `src/modbus/modbus_port.c`; USART3 is the DSP
+> link's alone (`src/dsp/dsp_link_port.c` brings it up). The harness
+> `ModbusDongle` auto-detects the port. **Oracle finding:** the factory answers
+> on **USART3** in the harness, **not** UART5 — its UART5 receive path
+> (`sub_0802afe2`) is a scheduler task that needs the RTOS running (**T02**);
+> the USART3 register model it serves is the same, so it is a valid oracle
+> meanwhile (and probing UART5 on the factory is avoided — its ISR disturbs
+> persistence). `make test-sim` green for both images (common 9/9 each, verified
+> on the `ceaa-07xx` image from `lxp-factory`; the committed `reference/com_flat.bin`
+> is the 05-series and answers on USART3 the same way). DE sequencing pinned by
+> `test_modbus_de_toggles_around_tx`. Docs: README port note, [`docs/04`](04-modbus.md),
+> [`docs/wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md). The full UART5
+> oracle for the factory is a **T02 follow-up**.
 
 Today our Modbus engine and the DSP config push **share USART3**, so on real
 hardware the dongle can never reach us. The factory serves the dongle on

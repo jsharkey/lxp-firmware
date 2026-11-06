@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
 """
-A black-box Modbus-RTU "dongle" that talks to the firmware image over USART3 --
-the RS485/dongle link (docs/04, docs/16) -- the same way a real monitoring tool
-would: it frames a request, feeds the bytes in on the UART, lets the firmware's
-own loop parse them and transmit a reply, and captures that reply off the UART.
+A black-box Modbus-RTU "dongle" that talks to the firmware image over its
+external RS-485 port the way a real monitoring datalogger would: it frames a
+request, feeds the bytes in on the UART, lets the firmware's own loop/ISR parse
+them and transmit a reply, and captures that reply off the UART.
 
-It names no firmware symbol and poke no internal RAM, so it is usable from the
+It names no firmware symbol and pokes no internal RAM, so it is usable from the
 *common* tests against any image that speaks the EG4 Modbus dongle protocol.
 
-How it drives the UART without modifying tools/arm_sim.py: it adds its own
-Unicorn hooks on the USART3 data/status registers through the sim's `uc`
-handle. On a status read it raises RXNE while a request byte is queued; on a
-data read it hands over the next queued byte; on a data write it captures the
-byte the firmware transmitted.
+Which UART? (T01 / docs/26 / docs/wiring/ARM-UART5-dongle). The factory's external
+dongle port is **UART5** (`0x40005000`), where the ARM is the Modbus *slave* —
+USART3 is the ARM↔DSP link (the ARM is the master there). Our firmware now serves
+the dongle on UART5 too (`src/modbus/modbus_port.c`). But in *this* harness the
+factory only answers on **USART3**: its UART5 receive path is a scheduler task
+that never gets the CPU without the RTOS running (T02), whereas the USART3 slave
+path is the NVIC-vectored ISR we can drive. The USART3 register model the factory
+serves there is the same one the dongle reads, so it is a valid register oracle
+until T02 lands. (Proven: feeding a read on UART5 draws no reply from the factory;
+on USART3 it does.)
 
-Polled vs interrupt-driven, as one black box: our firmware polls USART3 in its
-loop (CR1 has neither RXNEIE nor TXEIE), so the hooks above are all it needs.
-The factory never polls -- it receives on the USART3 RX interrupt and transmits
-from the TX interrupt. So the transaction loop watches CR1: whenever the firmware
-has armed an interrupt (RXNEIE with a byte queued, or TXEIE), it delivers the
-USART3 IRQ via the RTOS engine (sim.pend_irq), running the firmware's own ISR to
-take a byte or emit one. A polled firmware arms neither, so nothing is pended --
-the same code drives both. (This is why it runs under enable_rtos, not plain
-SysTick injection; the engine also boots the factory's RTOS, and SysTick still
-advances the firmware's ms time base for RTU framing.)
+So the dongle **auto-detects** the port: it tries UART5 first (ours answers), and
+falls back to USART3 (the factory answers). Each port is driven one at a time —
+driving both at once is unsafe because the factory's UART5 ISR consumes the bytes
+without replying, starving the USART3 path. Once a port answers it is latched.
 
-USART3 currently carries the DSP config push as well as the dongle Modbus (a
-known placeholder collision -- see src/dsp/dsp_link_port.c), so the captured TX
-stream is a mix. We therefore stop and extract on the first *contiguous, valid*
-Modbus response frame that matches the request (right address, function code and
-CRC); the DSP frames use address 0 and a different shape, so they never match.
+How it drives a UART without modifying tools/arm_sim.py: it adds Unicorn hooks on
+that UART's data/status registers. On a status read it raises RXNE while a request
+byte is queued; on a data read it hands over the next queued byte; on a data write
+it captures the transmitted byte. A polled firmware reads SR/DR from its loop; an
+interrupt-driven one (RXNEIE/TXEIE armed) is serviced by pending that UART's IRQ
+through the RTOS engine (sim.pend_irq). The same code drives both.
+
+USART3 also carries the DSP push, so that port's TX stream is a mix; we stop and
+extract on the first *contiguous, valid* Modbus response frame that matches the
+request (right address, function code, CRC). DSP frames use address 0 and a
+different shape, so they never match.
 
 Framing (EG4 18kPV-12LV family, little-endian on the wire, CRC-16/MODBUS):
     request  0x06 write1 : addr func SN[10] regLo regHi valLo valHi      CRC
@@ -41,16 +46,25 @@ import os, sys, struct
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 
-# USART3 (the one NVIC-vectored UART; our mb_port_init configures it) -----
-USART3 = 0x40004800
-MB_SR  = USART3 + 0x00     # status register
-MB_DR  = USART3 + 0x04     # data register
-MB_CR1 = USART3 + 0x0C     # control register 1
-SR_RXNE = 1 << 5           # read-data-register-not-empty
-CR1_RXNEIE = 1 << 5        # RX-not-empty interrupt enable
-CR1_TXEIE  = 1 << 7        # TX-empty interrupt enable
-USART3_VEC = 16 + 39       # NVIC USART3_IRQn=39 -> exception vector 55 (both images)
-_TXN_CHUNK = 40_000        # instructions per step while driving a transaction
+SR_RXNE    = 1 << 5        # status: read-data-register-not-empty
+CR1_RXNEIE = 1 << 5        # control: RX-not-empty interrupt enable
+CR1_TXEIE  = 1 << 7        # control: TX-empty interrupt enable
+
+# The candidate dongle ports. Each: (name, base, exception-vector).
+#   UART5  0x40005000, IRQ 53 -> exception vector 69  (ours; factory's real port)
+#   USART3 0x40004800, IRQ 39 -> exception vector 55  (factory's reachable slave)
+PORT_UART5  = ("UART5",  0x40005000, 16 + 53)
+PORT_USART3 = ("USART3", 0x40004800, 16 + 39)
+# Detection order is USART3 THEN UART5, deliberately: probing UART5 on the factory
+# has a side effect (its UART5 ISR consumes the request and disturbs the config
+# flash/persistence), so we must never probe the factory's UART5. The factory
+# answers on USART3, so it latches there before UART5 is ever tried. Our firmware
+# does not serve Modbus on USART3 (that port is the DSP link, TX-only, no RX IRQ),
+# so the USART3 probe is inert for ours and detection falls through to UART5.
+DEFAULT_PORTS = [PORT_USART3, PORT_UART5]
+
+_TXN_CHUNK   = 40_000      # instructions per step while driving a transaction
+_PROBE_GRACE = 1_000_000   # bail a detection probe if the port's DR is never read
 
 # Device defaults our firmware boots with (src/main.c). check_sn is off, so the
 # SN is only echoed back, not matched -- any 10 bytes work as a stand-in.
@@ -89,104 +103,148 @@ def _crc_ok(resp):
 class ModbusDongle:
     """Drive `sim` (an already-constructed ArmSim) as a Modbus master. Boots the
     image into its main loop on construction; then write_single()/read_holding()
-    perform one request/response transaction each."""
+    perform one request/response transaction each, over whichever port the image
+    answers on (auto-detected: UART5 first, USART3 fallback)."""
 
     def __init__(self, sim, addr=DEFAULT_ADDR, sn=DEFAULT_SN,
-                 systick=20_000, boot_insn=4_000_000, txn_insn=4_000_000):
+                 systick=20_000, boot_insn=4_000_000, txn_insn=4_000_000,
+                 ports=None):
         # boot_insn covers the full power-on path before the main loop services
-        # Modbus. Our firmware paints a boot splash on the real LCD (a bit-banged
-        # TFT, ~millions of emulated instructions), so 1M was too tight and left
-        # the first request unanswered; 4M boots both images with margin (the
-        # factory, which boots faster, just idles the remainder).
+        # Modbus (our firmware paints a boot splash on the real LCD -- millions of
+        # emulated instructions; 4M boots both images with margin).
         self.sim = sim
         self.addr = addr
         self.sn = bytes(sn)
         self._txn_insn = txn_insn
+        self._ports = list(ports) if ports else list(DEFAULT_PORTS)
+        self._port = self._ports[0] if len(self._ports) == 1 else None  # latched
         self._rx = []              # request bytes still to hand to the firmware
-        self._tx = bytearray()     # bytes the firmware has transmitted
+        self._tx = {}              # per-port captured TX: name -> bytearray
+        self._cur = None           # name of the port currently being driven
         self._rlen = 0             # expected response length (tail window to test)
         self._match = None         # validator(window) -> True when it's our reply
         self._resp = None          # the extracted response frame, once seen
         self._install_hooks()
         # The factory boots only with a valid config flash (docs/21); provide one
-        # unless the caller already attached an SPI device. Inert for images that
-        # don't use the config flash (e.g. our firmware).
+        # unless the caller already attached an SPI device. Inert for our image.
         if getattr(sim, "spi_flash", None) is None:
             sim.attach_config_flash()
-        # Use the exception engine, not plain SysTick injection: the factory's
-        # dongle UART is interrupt-driven (RX and TX), so the transaction loop
-        # must be able to deliver the USART3 IRQ (sim.pend_irq); the engine also
-        # runs the factory's RTOS. A polled firmware (ours) is unaffected.
+        # Use the exception engine, not plain SysTick injection: an interrupt-driven
+        # dongle UART (RX and TX) needs the IRQ delivered (sim.pend_irq); the engine
+        # also runs the factory's RTOS. A polled firmware is unaffected.
         sim.enable_rtos(systick)
         sim.run_reset(max_insn=boot_insn)   # boot through init into the loop
 
     # -- UART glue (added on top of arm_sim's own peripheral hooks) ----------
     def _install_hooks(self):
         uc = self.sim.uc
+        for name, base, _vec in self._ports:
+            sr, dr = base + 0x00, base + 0x04
+            uc.hook_add(UC_HOOK_MEM_READ,  self._mk_sr_read(sr),      begin=sr, end=sr + 4)
+            uc.hook_add(UC_HOOK_MEM_READ,  self._mk_dr_read(name, dr), begin=dr, end=dr + 4)
+            uc.hook_add(UC_HOOK_MEM_WRITE, self._mk_dr_write(name),   begin=dr, end=dr + 4)
 
+    def _mk_sr_read(self, sr):
         def on_sr_read(uc, access, addr, size, value, ud):
             # arm_sim already forced SR=TXE|TC here; add RXNE while a byte waits.
             if self._rx:
-                cur = struct.unpack("<I", uc.mem_read(MB_SR, 4))[0]
-                uc.mem_write(MB_SR, struct.pack("<I", cur | SR_RXNE))
+                cur = struct.unpack("<I", uc.mem_read(sr, 4))[0]
+                uc.mem_write(sr, struct.pack("<I", cur | SR_RXNE))
             return True
+        return on_sr_read
 
+    def _mk_dr_read(self, name, dr):
         def on_dr_read(uc, access, addr, size, value, ud):
+            if self._cur == name:
+                self._saw_dr = True            # the firmware receives on this port
             if self._rx:
-                uc.mem_write(MB_DR, struct.pack("<I", self._rx.pop(0)))
-                # Interrupt-driven RX: while bytes remain, re-pend the IRQ so the
-                # ISR runs again immediately -- bytes are delivered back-to-back
-                # instead of one per run-chunk, which is most of the speed-up. An
-                # ISR that takes one byte per interrupt gets one re-pend per byte;
-                # a drain-all ISR re-pends per byte too but pend_irq is idempotent,
-                # so it collapses to a single (harmless) extra delivery. (A polled
-                # firmware reads DR from its loop with RXNEIE clear -> no pend.)
-                if self._rx and (self.sim.r32(MB_CR1) & CR1_RXNEIE):
-                    self.sim.pend_irq(USART3_VEC)
+                uc.mem_write(dr, struct.pack("<I", self._rx.pop(0)))
+                # Re-pend the IRQ while bytes remain so an interrupt-driven RX
+                # delivers them back-to-back (idempotent; a polled RX ignores it).
+                if self._rx and self._cur == name:
+                    self._pend(name)
             return True
+        return on_dr_read
 
+    def _mk_dr_write(self, name):
         def on_dr_write(uc, access, addr, size, value, ud):
-            self._tx.append(value & 0xFF)
-            # Interrupt-driven TX: the ISR writes one byte per TXE IRQ; while it
-            # still wants to send (TXEIE set), re-pend so the rest of the reply
-            # drains back-to-back.
-            if self.sim.r32(MB_CR1) & CR1_TXEIE:
-                self.sim.pend_irq(USART3_VEC)
-            # Stop as soon as our reply appears as a contiguous tail window (the
-            # DSP push shares this UART, so count-based stopping won't do).
-            if self._resp is None and self._rlen and len(self._tx) >= self._rlen:
-                window = bytes(self._tx[-self._rlen:])
-                if self._match(window):
-                    self._resp = window
-                    self.sim._halt = True      # break the run-chunk loop
-                    uc.emu_stop()
+            buf = self._tx.setdefault(name, bytearray())
+            buf.append(value & 0xFF)
+            if self._cur == name:
+                self._pend(name)   # TX ISR: re-pend so the reply drains back-to-back
+                # Stop as soon as our reply appears as a contiguous tail window.
+                if self._resp is None and self._rlen and len(buf) >= self._rlen:
+                    window = bytes(buf[-self._rlen:])
+                    if self._match(window):
+                        self._resp = window
+                        self.sim._halt = True
+                        uc.emu_stop()
             return True
+        return on_dr_write
 
-        uc.hook_add(UC_HOOK_MEM_READ,  on_sr_read, begin=MB_SR, end=MB_SR + 4)
-        uc.hook_add(UC_HOOK_MEM_READ,  on_dr_read, begin=MB_DR, end=MB_DR + 4)
-        uc.hook_add(UC_HOOK_MEM_WRITE, on_dr_write, begin=MB_DR, end=MB_DR + 4)
+    def _pend(self, name):
+        """Deliver the IRQ of port `name` if the firmware has armed it there."""
+        for n, base, vec in self._ports:
+            if n == name and (self.sim.r32(base + 0x0C) & (CR1_RXNEIE | CR1_TXEIE)):
+                self.sim.pend_irq(vec)
+            if n == name:
+                return
 
     # -- one request/response transaction ------------------------------------
-    def _txn(self, request, rlen, match):
+    def _run_on_port(self, port, request, rlen, match, budget):
+        name, base, vec = port
+        cr1 = base + 0x0C
+        self._cur = name
         self._rx = list(request)
-        self._tx = bytearray()
+        self._tx[name] = bytearray()
         self._rlen = rlen
         self._match = match
         self._resp = None
-        remaining = self._txn_insn
+        self._saw_dr = False
+        remaining = budget
+        used = 0
         while self._resp is None and remaining > 0:
-            # Interrupt-driven firmware (the factory) receives on the USART3 RX
-            # IRQ and transmits from its TX IRQ -- it never polls. When it has
-            # armed either (CR1.RXNEIE with a byte still queued, or CR1.TXEIE),
-            # deliver that IRQ through the RTOS engine so its ISR runs. A polled
-            # firmware (ours) arms neither, so we never pend and its own SR/DR
-            # polling -- serviced by the hooks below -- drives the exchange.
-            cr1 = self.sim.r32(MB_CR1)
-            if (cr1 & CR1_RXNEIE and self._rx) or (cr1 & CR1_TXEIE):
-                self.sim.pend_irq(USART3_VEC)
+            c = self.sim.r32(cr1)
+            if (c & CR1_RXNEIE and self._rx) or (c & CR1_TXEIE):
+                self.sim.pend_irq(vec)
             self.sim.run(_TXN_CHUNK)        # resume; on_dr_write stops us on a reply
             remaining -= _TXN_CHUNK
+            used += _TXN_CHUNK
+            # Early bail: if the firmware has not even *read* this port's data
+            # register within a grace window, it is not receiving here -- don't
+            # burn the whole budget on a dead port (e.g. our inert USART3 probe).
+            if not self._saw_dr and used >= _PROBE_GRACE:
+                break
+        self._cur = None
         return self._resp
+
+    def _ensure_port(self):
+        """Lazily latch the port the image answers on, using an **idempotent read
+        probe** (never the caller's real request, which may be a write). A read of
+        IR 0 (operating state) is served by both images and mutates nothing. Each
+        port gets the full transaction budget, so the answering port replies (and
+        is latched) before the next port is tried -- critical because we must not
+        probe the factory's UART5 at all (see DEFAULT_PORTS). A probe returns as
+        soon as a reply is seen, so the answering port is cheap; only a genuine
+        miss burns the full budget (our firmware's inert USART3 probe)."""
+        if self._port is not None:
+            return
+        probe = _frame(self.addr, FC_READ_INPUT, struct.pack("<HH", 0, 1), self.sn)
+        rlen = _HDR + 3 + 2 + _CRC
+
+        def match(w):
+            return (w[0] == self.addr and w[1] == FC_READ_INPUT and _crc_ok(w)
+                    and w[_HDR + 2] == 2)
+
+        for port in self._ports:
+            if self._run_on_port(port, probe, rlen, match, self._txn_insn) is not None:
+                self._port = port
+                return
+
+    def _txn(self, request, rlen, match):
+        self._ensure_port()
+        port = self._port if self._port is not None else self._ports[-1]
+        return self._run_on_port(port, request, rlen, match, self._txn_insn)
 
     def write_single(self, reg, val):
         """Function 0x06. Returns the value the device echoed, or None if no

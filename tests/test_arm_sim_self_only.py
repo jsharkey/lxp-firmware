@@ -160,6 +160,32 @@ def test_rtc_is_live_clock():
     check_live_clock(sim)
 
 
+# --- RS-485 driver-enable around the dongle TX (T01, UART5 on PA15) ---------
+def test_modbus_de_toggles_around_tx():
+    """On a dongle Modbus transaction our UART5 slave asserts the RS-485
+    driver-enable (PA15 high) to drive the bus, then releases it (low) once the
+    reply has fully left the shift register (TC) -- so the half-duplex bus is
+    handed back to receive. Proves uart5_set_de() sequences DE around TX
+    (src/uart/uart5.c; docs/wiring/ARM-UART5-dongle). Ours-specific: PA15 is our
+    DE pin; the factory's UART5 DE is not exercised in this harness (its UART5
+    path is a non-NVIC task, T02)."""
+    from arm_sim_modbus import ModbusDongle
+    sim = _ours()
+    mb = ModbusDongle(sim)
+    sim.clear_drives()                        # ignore boot-time / init DE drives
+    assert mb.write_single(101, 42) == 42, "UART5 Modbus write was not acknowledged"
+    # The dongle halts on the reply's last byte -- before the TC handler releases
+    # the line. Run a little more so the final transmit completes (TC) and DE drops.
+    for _ in range(5):
+        sim.pend_irq(16 + 53)                 # UART5 IRQ -> ISR runs its TC branch
+        sim.run(100_000)
+    de = [d for (p, i, d) in sim.drive_log if (p, i) == ("A", 15)]   # PA15 = DE
+    assert "HIGH" in de, "DE (PA15) was never asserted for the reply TX: %r" % de
+    assert de[-1] == "LOW", "DE (PA15) left asserted after TX (not released on TC): %r" % de
+    assert de.index("HIGH") < (len(de) - 1 - de[::-1].index("LOW")), \
+        "DE did not go HIGH-before-LOW around a transmit: %r" % de
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]

@@ -53,6 +53,7 @@ typedef struct {
 #define RCC_APB2ENR_SPI1EN   (1UL << 12)
 #define RCC_APB2ENR_USART1EN (1UL << 14)
 #define RCC_APB1ENR_USART3EN (1UL << 18)
+#define RCC_APB1ENR_UART5EN  (1UL << 20)
 
 /* ---- FLASH access control ---- */
 typedef struct { __IO uint32_t ACR; } FLASH_TypeDef;
@@ -78,6 +79,8 @@ typedef struct {
 } USART_TypeDef;
 #define USART1 ((USART_TypeDef *)(APB2PERIPH_BASE + 0x3800UL)) /* 0x40013800 */
 #define USART3 ((USART_TypeDef *)(APB1PERIPH_BASE + 0x4800UL)) /* 0x40004800 */
+#define UART5  ((USART_TypeDef *)(APB1PERIPH_BASE + 0x5000UL)) /* 0x40005000 */
+#define UART5  ((USART_TypeDef *)(APB1PERIPH_BASE + 0x5000UL)) /* 0x40005000 */
 #define USART_SR_TXE  (1UL << 7)
 #define USART_SR_TC   (1UL << 6)
 #define USART_SR_RXNE (1UL << 5)
@@ -112,6 +115,8 @@ typedef struct {
 } AFIO_TypeDef;
 #define AFIO ((AFIO_TypeDef *)(APB2PERIPH_BASE + 0x0000UL))   /* 0x40010000 */
 #define AFIO_MAPR_CAN_REMAP      (3UL << 13)
+/* SWJ_CFG (bits 24-26): 010 = JTAG-DP off, SW-DP on -> frees PA15/PB3/PB4 */
+#define AFIO_MAPR_SWJ_NOJTAG     (2UL << 24)
 #define AFIO_MAPR_CAN_REMAP_PB89 (2UL << 13)   /* CAN1: RX=PB8, TX=PB9 (docs/16) */
 
 /* ---- bxCAN (CAN1) ---- */
@@ -152,6 +157,7 @@ typedef struct {
 /* ---- external IRQ numbers (STM32F103 high-density) ---- */
 #define USB_LP_CAN1_RX0_IRQn  20
 #define USART3_IRQn           39
+#define UART5_IRQn            53
 
 /* ---- Cortex-M3 core: SysTick, SCB, NVIC ---- */
 typedef struct {

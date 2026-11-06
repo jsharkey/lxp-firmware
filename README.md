@@ -57,7 +57,7 @@ Honest picture of where things stand:
 - [ ] Document the **ARM↔DSP internal protocol** (the remaining hard interface)
 - [x] **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
 - [x] Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
-- [x] **Modbus-RTU slave** — engine + UART port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md)). *Port note:* the engine is currently bound to **USART3** in our skeleton; the factory serves the external dongle's EG4-Modbus on **UART5** (USART3 is the ARM↔DSP link), so the port binding is slated to move USART3→UART5 — see [`docs/26-dongle-firmware.md`](docs/26-dongle-firmware.md)
+- [x] **Modbus-RTU slave** — engine + UART port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md)). *Port note:* the slave is now on **UART5** (RS-485 DE on PA15), matching the factory's external-dongle port; **USART3** is left to the ARM↔DSP link (T01 — [`docs/wiring/ARM-UART5-dongle`](docs/wiring/ARM-UART5-dongle/README.md), [`docs/26-dongle-firmware.md`](docs/26-dongle-firmware.md), [`docs/39`](docs/39-parity-roadmap.md))
 - [x] **Interrupt-driven UART** — RX/TX ring buffers serviced from the USART3 ISR, mirroring the factory's interrupt-driven UART mechanism (USART3 is its only vectored UART — the DSP link); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
 - [x] **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
 - [x] **Factory graphic HMI runs in the emulator** — reverse-engineered the factory LCD (a **240×160 monochrome MIPI-DCS LCD bit-banged 4-wire on GPIOB** (1bpp, 8 px/byte): PB12 SCLK / PB13 SDA / PB14 DC / PB15 /CS — *not* SPI1, which is the config flash; corrects the `docs/16` "status-LED" guess) and modelled it, so the factory image's **own display code** paints its real **overview** and **Common settings** screens under the harness, navigated by the real front-panel keys. On-screen app (`make factory-hmi`), ~18 s boot / ~6 s per key after a harness speed-up. The simulator is **firmware-agnostic** (`make hmi-sim [FIRMWARE=App.hex]`): with no image it runs the open-source build, and our firmware now drives the **same** panel in the same wire format (`src/hmi/lcd_tft.c`), posting a "Hello World!" as the first milestone toward a drop-in replacement. See [`docs/28-factory-hmi.md`](docs/28-factory-hmi.md)
@@ -133,9 +133,9 @@ descriptors are always linked in. Flash to the variant's base: `0x08000000`
 Requires `gcc-arm-none-eabi` (build) and a host `cc` (tests). The firmware boots,
 runs the 72 MHz clock init, starts a 1 ms SysTick, and services a Modbus-RTU
 slave against a shared register model — the foundation the remaining
-subsystems grow into, not yet a functional replacement. (The slave is bound to
-USART3 in the skeleton; in the factory the external dongle's EG4-Modbus is on
-**UART5** while USART3 is the ARM↔DSP link — [`docs/26`](docs/26-dongle-firmware.md).) Flashing helpers
+subsystems grow into, not yet a functional replacement. (The slave is on
+**UART5** — the factory's external-dongle port — with USART3 left to the ARM↔DSP
+link; [`docs/26`](docs/26-dongle-firmware.md).) Flashing helpers
 (ST-Link / OpenOCD) are commented in the `Makefile`; flash to `0x08000000`.
 
 ## Repository layout
@@ -146,8 +146,8 @@ docs/wiring/ per-link wiring source-of-truth (ports, pins, peers, framing)
 include/     stm32f103.h (minimal device header) + inv/ recovered data model
 include/inv/ states, faults, settings, modbus_map, hmi_menu, variant
 src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleton)
-src/modbus/  Modbus-RTU slave engine + USART3 port
-src/uart/    interrupt-driven USART3 driver (RX/TX rings)
+src/modbus/  Modbus-RTU slave engine + UART5 (dongle) port
+src/uart/    interrupt-driven UART5 (dongle) + USART3 (DSP) drivers (RX/TX rings)
 src/can/     CAN1 port (polled RX, as the factory) + BMS frame decoder
 src/hmi/     menu engine + menu model + keypad (keys) + graphic-LCD driver (lcd_tft)
 src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)

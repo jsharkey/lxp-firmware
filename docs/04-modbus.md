@@ -9,17 +9,20 @@ subsystem of the reimplementation and the most fully specified one (the public
 EG4 18kPV-12LV protocol doc is the authority; the 12000XP shares it).
 
 - Engine (transport-agnostic, host-testable): `src/modbus/modbus.c`
-- UART/RS-485 port: `src/modbus/modbus_port.c` (currently bound to USART3 in our
-  skeleton; the factory dongle port is **UART5** — see the Status note below and
-  [`docs/26`](26-dongle-firmware.md))
+- UART/RS-485 port: `src/modbus/modbus_port.c` over the UART5 driver
+  `src/uart/uart5.c` (bound to **UART5** — the factory's dongle port, RS-485 DE
+  on PA15; USART3 is the ARM↔DSP link. See the Status note below, T01 in
+  [`docs/39`](39-parity-roadmap.md), and [`docs/26`](26-dongle-firmware.md))
 - Register map: `include/inv/modbus_map.h`
 - API: `include/inv/modbus.h`
 - Tests (host): `tests/test_modbus.c` → `make test`
 
 ## Link
 
-RS-485, UART, **19200 bps, 8N1** (per the EG4 spec; our skeleton uses 19200 on
-USART3). Min polling period 1 s. Register width 2 bytes.
+RS-485, UART, **19200 bps, 8N1** (per the EG4 spec). Our port runs on **UART5**
+at 9600 — the rate the factory's UART5 reads post-boot; the dongle baud is
+field-configurable (see the baud note below). Min polling period 1 s. Register
+width 2 bytes.
 Function codes: `0x03` read holding, `0x04` read input, `0x06` write single,
 `0x10` write multiple (spec: only serial number + time).
 
@@ -74,16 +77,21 @@ group boundary** (groups 0–39, 40–79, 80–119, …). Violations return exce
 - [x] CRC-16, frame parse/validate, address + optional SN filter
 - [x] 0x03/0x04/0x06/0x10 handlers, exception responses, 40-reg group rule
 - [x] Host unit tests (`make test`, 19 checks)
-- [x] USART3 port (19200 8N1) with inter-frame gap framing
+- [x] **UART5 port (8N1) with inter-frame gap framing + RS-485 DE on PA15**
+      (`src/uart/uart5.c`), interrupt-driven RX/TX. The DE line is asserted
+      before the first TX byte and released on TC — oracle-tested
+      (`test_modbus_de_toggles_around_tx`). (T01, [`docs/39`](39-parity-roadmap.md).)
 - [x] **Which UART is the external Modbus/dongle port — resolved to UART5, not
       USART3.** The external dongle firmware ([`docs/26`](26-dongle-firmware.md))
       proves the dongle is an **RS-485 half-duplex master** (datalogger), so it
       sits on the ARM link where the ARM is the **slave** — **UART5** (PC12/PD2,
       DE≈PA15), per [`docs/16`](16-arm-io-map.md). **USART3 is the ARM→DSP control
       link**, not the dongle; it reuses the same EG4 frame family, which is why
-      this engine was first ported there. The transport-agnostic engine is
-      unaffected; only the *port* binding moves (USART3→UART5). The RS-485 DE/RE
-      GPIO (PA15) still needs wiring into `mb_port_set_tx()`.
+      this engine was first ported there. **Our slave is now on UART5**; USART3
+      is the DSP link's alone (`src/dsp/dsp_link_port.c`). (In the sim harness the
+      *factory* still answers on USART3 — its UART5 receive path is a scheduler
+      task that needs the RTOS running, T02; the register model it serves on
+      USART3 is the same, so it stays a valid register oracle meanwhile.)
 - [ ] Populate input registers from live telemetry (needs the DSP link)
 - [ ] Holding-register range validation + persistence (EEPROM/flash layout)
 - [ ] Hardware bring-up test against a real monitoring tool
