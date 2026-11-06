@@ -158,37 +158,44 @@ Turned out bigger than one card, so **split** (keep the ID for references):
 - **Scheduler + the relay/control task run** under `enable_rtos()` +
   `attach_config_flash()` — already proven ([`docs/19`](19-gpio-test-harness.md)
   §"The factory runs a preemptive RTOS").
-- The remaining black-box wire-level e2e is **T02a** (USART2 bytes → IR) and
-  **T02b** (state → PC6), below. Full RE recipe + the one open unknown:
-  [`docs/19`](19-gpio-test-harness.md) §"T02 in progress".
+- **T02a** (USART2 bytes → IR) is **done** (below); **T02b** (state → PC6)
+  remains. Full cracked chain + the frame-trust gate:
+  [`docs/19`](19-gpio-test-harness.md) §"T02" and [`docs/33`](33-usart2-telemetry-bank.md).
 
 #### T02a — Feed the USART2 safety link on the wire → bank/IR
-**Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
-- **Landed:** the RX is **RXNE-interrupt-driven, not DMA** (`CR1`=0x20AC,
-  `CR3` no DMAR). A reusable wire feeder `tests/arm_sim_usart2.py`
-  (`Usart2SafetyWire`) delivers bytes through the factory's *real* RX ISR
-  (SR/DR + pended NVIC line, vector 16+38); `test_usart2_rx_receives_wire_bytes`
-  proves every fed byte is received. This is the byte-reception half + the T05
-  harness foundation.
-- **Open (continuation):** the real ISR is confirmed (`vector[54]` =
-  `sub_0801bddc`) and runs per fed byte, but the DR-drain + frame assembly is a
-  **multi-function software pipeline not yet pinned**, and docs/33's parse-chain
-  attributions (`sub_080259d8` etc.) **do not match this image** under
-  disassembly. **Done when:** a fed frame changes the served IRs (replacing the
-  bank-seed in `test_safety_cpu_telemetry_reaches_modbus`). Re-derive the chain
-  from `sub_0801bddc` forward (its callees + the functions touching the USART2
-  base `0x40004400`) — full notes, the verified ISR, and **two RE traps to avoid**
-  (unreliable hook-captured PCs under `enable_rtos()`; stale docs/33 addresses) in
-  docs/19 §"T02 in progress".
+**Status:** `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
+
+**Done.** A raw USART2 safety frame fed on the wire — through the factory's *real*
+RXNE ISR, byte by byte — is assembled, CRC-checked, distributed and tag-parsed by
+the firmware into its telemetry bank, and the decoded measurements come back out
+as the right Modbus input registers, with **no bank seeding**.
+`test_usart2_frame_reaches_modbus` feeds a tag-2 frame and reads IR 12/15/20/18/13
+(grid R/freq/EPS R/inverter current/grid S) back, tracking across frames.
+- **Chain cracked** (verified statically + executed, docs/33 §1): RXNE IRQ
+  `sub_0801bddc` → assembler `sub_0801bb0e` (SOF `0x49`, `frame[3]`=len,
+  CRC-16/MODBUS big-endian) → validator `0x08027560` → distributor `sub_0802677a`
+  + tag parser `sub_08025ab8` → bank **`0x2000ce5c`** → the factory's getter.
+- **Two data fixes it forced:** the telemetry bank is `0x2000ce5c`, **not**
+  `0x20009e54` (zero refs — a mis-transcription that had `FAC_SAFETY_BANK` wrong,
+  so `test_safety_cpu_telemetry_reaches_modbus` was failing; now fixed and green);
+  and docs/33's parse-chain function addresses were wrong (the field-offset map was
+  right). Root cause of the earlier dead end: a disassembler base off by `0x5000`
+  (docs/19 §T02). The reusable feeder adds `build_frame()`/`feed_frame()` for T05.
+- **Gating note for T02b:** mode/fault/warn (`BANK+0/+0xd0/+0xd4`) are published
+  only once the frame-trust counter `0x2000da3e` reaches `0x54`; measurement/ID
+  tags are ungated (published every valid frame).
 
 #### T02b — Change operating state → PC6 moves (via the running relay task)
 **Status:** `[ ]` · **Layer:** sim (factory) · **Depends:** T02a (natural state via the USART2 mode byte)
-- The relay/control task runs, but PC6 is **multi-input and time-varying**
-  (state + DSP/fault + debounce + config) and the mode classifier `sub_0801b480`
-  never runs without USART2 telemetry, so `IR_STATE` is never set. **Done when:**
-  feeding a *running* mode byte on USART2 (T02a) flows classifier→IR_STATE→relay
-  →**PC6** with no internal-function call; add a boot-snapshot cache (docs/28
-  pattern) to keep it fast.
+- T02a now lands the mode byte in the bank (`frame[+4] → BANK+0`), but the
+  distributor only publishes it once the frame-trust counter `0x2000da3e` reaches
+  `0x54` (docs/33), so the mode classifier (07 entry point still to confirm —
+  docs/33's `sub_0801b480` is disputed for 07, docs/22) sees it only after the
+  link has settled. PC6 is also **multi-input and time-varying** (state + DSP/fault +
+  debounce + config). **Done when:** feeding enough valid USART2 frames to settle
+  the counter, then a *running* mode byte, flows classifier→IR_STATE→relay→**PC6**
+  with no internal-function call; add a boot-snapshot cache (docs/28 pattern) to
+  keep the frame-count warm-up fast.
 - Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)

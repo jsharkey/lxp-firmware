@@ -205,15 +205,17 @@ T06 (classifier entry + its telemetry/STATUS base):
 - **`sub_0801b480` is not the classifier here.** At that address the 07 image has
   a periodic housekeeping task (counter `0x2000dac6`, RTC tick `sub_08018bc0`),
   not a mode classifier.
-- **The telemetry bank base `0x20009e54` is stale for 07.** It is referenced
-  nowhere in the 07 image (neither as a u32 literal nor via `movw`/`movt`); the
-  only nearby base that *is* referenced is `0x20009e50`, and the three functions
-  that load it (`sub_08011e06`, `sub_08011f8a`, `sub_08012010`, `sub_080120ac`)
-  are the **USART2 DMA/RX buffer plumbing** (DMA dst `0x20009e50`, src peripheral
-  `0x40000840`; they fill it with `'i'`/`'-'` placeholder bytes), not a getter or
-  classifier. Consistent with this, the committed
-  `test_safety_cpu_telemetry_reaches_modbus` (which seeds `0x20009e54`) is **red**
-  against the 07 image.
+- **The telemetry bank base `0x20009e54` is stale for 07 — the real base is
+  `0x2000ce5c`** (RESOLVED, T02a, docs/33). `0x20009e54` is referenced nowhere in
+  the 07 image; the nearby `0x20009e50` is a USART2 RX scratch buffer that the
+  plumbing fills with `'i'`/`'-'` (`0x2d`) placeholder bytes — which is why a dump
+  of `0x20009e54` reads as `2d 2d 2d …`. The **actual** USART2 telemetry bank has
+  **22 literal refs at `0x2000ce5c`**, is what the distributor `sub_0802677a` +
+  tag parser `sub_08025ab8` write and the getter `sub_0803289c` reads, and seeding
+  it (or feeding a wire frame into it) makes `test_safety_cpu_telemetry_reaches_modbus`
+  **and** `test_usart2_frame_reaches_modbus` pass. `FAC_SAFETY_BANK` is corrected
+  to `0x2000ce5c`. (Other docs that still cite `0x20009e54` as the 07 bank —
+  16/18/23/29/30/32/37, wiring — read `0x2000ce5c`; same field offsets.)
 - **`0x2000a0d8`+`0x90` (the 05 IR_STATE) is referenced nowhere in 07** either.
 - **The getter is reached, but its reads during a Modbus `IR 0` poll land in
   Modbus/response frame buffers** (`0x2000a304` is an ~800-byte RX/command buffer

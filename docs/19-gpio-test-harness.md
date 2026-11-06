@@ -224,13 +224,15 @@ cost). Modelling that (and any siblings) is a loose end, not a blocker. **The
 relay parity tests below don't depend on any of this** — they run the factory's
 real relay code directly with seeded state.
 
-### T02 in progress — feeding the peer links on the wire (hand-off)
+### T02 — feeding the peer links on the wire (CRACKED, T02a done)
 
 The scheduler running (above) is half of [`docs/39`](39-parity-roadmap.md) T02.
 The other half is driving the **peer-ingest tasks** black-box so a test can feed
-raw bytes and watch IRs change (no internal-function call). Findings so far,
-against `reference/com_flat.bin` (ceaa-07xx) under `attach_config_flash()` +
-`enable_rtos()`:
+raw bytes and watch IRs change (no internal-function call). The USART2 safety
+link is now **cracked end to end** and `test_usart2_frame_reaches_modbus` feeds a
+wire frame through the real RX ISR and reads the decoded value back over Modbus.
+Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) under
+`attach_config_flash()` + `enable_rtos()`:
 
 - **USART2 RX is RXNE-interrupt-driven, *not* DMA.** At the idle after boot
   `USART2->CR1` (`0x4000440C`) = `0x20AC` (UE|TE|RE|**RXNEIE**|TXEIE) and
@@ -242,41 +244,45 @@ against `reference/com_flat.bin` (ceaa-07xx) under `attach_config_flash()` +
   for DMA.) **Landed** as the reusable feeder `tests/arm_sim_usart2.py`
   (`Usart2SafetyWire`) + `test_usart2_rx_receives_wire_bytes`, which proves every
   fed byte reaches the factory's real RX ISR (the byte-reception half of T02a).
-- **The real ISR (verified).** `VTOR` = `0x08005000`; vector[16+38=54] (USART2
-  IRQ) = **`sub_0801bddc`** (matches `docs/wiring/ARM-USART2-safety.md`). Feeding
-  via the feeder runs it exactly once per fed byte (86 bytes → 86 hits), so the
-  wire-feed reaches the firmware's real interrupt. **But** `sub_0801bddc`'s body
-  reads only **RAM flag words** (`0x2000da6c`, `0x2000db75`, `0x200022c8`) and
-  bxCAN-style supervisor counters — it does **not** itself touch the USART2
-  registers. The actual DR-drain + per-byte buffering + frame assembly is a
-  **multi-function software pipeline** reached from here (callees `0x0801ba20`,
-  `0x080164bc`, …) that is **not yet pinned**.
-- **⚠ Two traps that cost a session — avoid them.** (1) **Runtime PC capture is
-  unreliable under `enable_rtos()`**: a `reg_read(PC)` inside a `UC_HOOK_MEM_*`
-  callback can return a bogus address (the engine's manual exception dispatch).
-  An earlier note here claimed "DR read at `0x080369fa`" and "`0x8019fb0` =
-  frame-ready probe" — **both wrong**: `0x080369fa` is a zero-filled gap in the
-  image, and `0x8019fb0(GPIOC, 0x100)` just tests **GPIO PC8**, not a frame flag.
-  Use **static** disassembly (capstone, THUMB) from VTOR-derived addresses, not
-  hook-captured PCs. (2) **docs/33's function map does not match this image under
-  disassembly:** `sub_080259d8` (its claimed "driver/validate") is a tag/command
-  handler (`cmp #0x7f/#0x32/#0x3c` → exception code 3), with **no** CRC call in
-  its body. Re-derive the USART2 parse chain from `sub_0801bddc` forward; treat
-  docs/33's `sub_080259d8`/`sub_08024d74`/`sub_080241a8`/`sub_08014bec`
-  attributions as **unverified for ceaa-07xx_vE_260214** until re-proven.
-- **Continuation.** Disassemble `sub_0801bddc`'s callees (`0x0801ba20`,
-  `0x080164bc`) and the three functions that reference the USART2 base
-  `0x40004400` (literal pools at `0x8020dd0 / 0x8038620 / 0x803b954`) to find the
-  `ldr [base,#4]` DR-drain + the byte buffer + the length/CRC/complete test; that
-  is the frame-completion fact still missing. Once a frame reaches `BANK`
-  (`0x20009e54`), a running mode byte should flow classifier
-  (`sub_0801b480`)→`IR_STATE`→relay→**PC6**, giving the T02b demo too.
-- **Relay/PC6 (the T02 state→PC6 demo) is gated on the same root cause.** The
-  relay task's PC6 output **evolves on its own** over emulated time and is
-  multi-input (state + DSP/fault + debounce + config), so injecting a lone
-  "state" byte does not control it; the classifier never runs (no USART2
-  telemetry), so `IR_STATE` is never set from the bank. Cracking the USART2
-  ingest unblocks both.
+- **The real ISR + full chain (verified, executed).** `VTOR` = `0x08005000`;
+  vector[16+38=54] (USART2 IRQ) = **`sub_0801bddc`** (matches
+  `docs/wiring/ARM-USART2-safety.md`), which runs once per fed byte. The complete
+  chain, confirmed statically **and** by feeding a frame end to end:
+
+  ```
+  sub_0801bddc → RX handler 0x0801bd34 (drains DR via helper 0x080369fa)
+     → assembler sub_0801bb0e (buffer 0x2000af60; SOF 0x49, frame[1]=type,
+        frame[3]=len, total=len+6, index cap <0x40; done → event-group 2 bit 2)
+     → consumer/validator 0x08027560 (CRC-16/MODBUS over frame[0:total-2] via
+        sub_080160bc; stored CRC read MSB-first 0x8016288; gate frame[1]==1)
+     → distributor sub_0802677a → tag parser sub_08025ab8 → bank 0x2000ce5c
+  ```
+
+  The bank is **`0x2000ce5c`** (22 literal refs; the old `0x20009e54` has zero and
+  was a mis-transcription — see docs/33). From the bank the factory's own getter
+  serves it over Modbus; `test_usart2_frame_reaches_modbus` feeds a tag-2 frame on
+  the wire and reads grid R/freq/etc. back as IR 12/15/… with no bank seeding.
+- **⚠ The base-offset trap that cost a session — now resolved.** `com_flat.bin`
+  loads at **base `0x08000000`** (file offset `0x5000` = App `0x08005000`). An
+  earlier pass disassembled with the base set to `0x08005000` (off by `0x5000`),
+  which produced a cascade of **false** conclusions that were recorded here and
+  are now **retracted**: that `0x080369fa` is "a zero-filled gap" (it is the real
+  DR-read helper — the hook-captured PC was correct all along), that `0x8019fb0`
+  decides frame-ready, and that `sub_080259d8` is "a tag/command handler with no
+  CRC" disproving docs/33. All three were artifacts of the wrong base. **docs/33's
+  field-offset map and gates are correct** (re-verified); only its *bank base* and
+  its *function addresses* were wrong, both fixed in docs/33. Lesson that stands:
+  pin the load base first (`VTOR`/reset vector must point into the image), then
+  disassemble; a hook-captured PC is fine once the base is right.
+- **T02b (state→PC6).** With the ingest cracked, the mode byte now reaches the
+  bank: `frame[+4] → BANK+0 → mode classifier → IR_STATE → relay → PC6` (the 07
+  classifier entry is still to confirm — docs/33's `sub_0801b480` is disputed for
+  07, docs/22). BANK+0 (mode) is gated behind the frame-trust counter
+  `0x2000da3e` ≥ `0x54` (docs/33), so driving PC6 from the wire means feeding
+  enough valid frames to settle that counter first — the remaining step for T02b. The relay task's PC6
+  output is also multi-input (state + DSP/fault + debounce + config), so it is
+  driven through the shared contract in `test_arm_sim_self_only.py`, not a lone
+  injected byte.
 
 ### The relay parity tests (target-specific: shared contract, per-image drive)
 

@@ -92,11 +92,16 @@ def test_relay_follows_working_mode():
 
 # --- safety-CPU telemetry -> Modbus input registers (docs/30, docs/33) ------
 # The factory decodes the safety CPU's USART2 telemetry into its bank at
-# 0x20009e54 (docs/33). The harness does not run the DMA+RTOS ingest task, so we
-# present the telemetry already in that bank -- where the factory's own register
-# getter reads it -- and read it back over the dongle. The getter + scaling +
-# Modbus serialisation exercised are entirely the factory's. (arm_sim_safety.py.)
-FAC_SAFETY_BANK = 0x20009e54
+# 0x2000ce5c (docs/33; this base has 22 literal refs in the image, 0x20009e54 has
+# zero -- the earlier 0x20009e54 was a mis-transcription that made this test fail).
+# This test presents the telemetry already decoded in the bank -- where the
+# factory's own register getter reads it -- and reads it back over the dongle, so
+# the getter + scaling + Modbus serialisation exercised are entirely the factory's
+# (arm_sim_safety.py). The *wire* half (raw USART2 bytes -> this same bank -> IR,
+# through the real RX ISR) is proved end to end by test_usart2_frame_reaches_modbus
+# below; this one covers the full per-field contract (all tags) that one frame
+# cannot carry at once.
+FAC_SAFETY_BANK = 0x2000ce5c
 
 
 def _safety_factory():
@@ -124,14 +129,15 @@ def test_safety_cpu_telemetry_reaches_modbus():
                                 "%r (raw %d)" % (label, name, ir, got, exp, raw))
 
 
-# --- USART2 safety-CPU wire reception (docs/39 T02a foundation, docs/19) -------
+# --- USART2 safety-CPU wire reception (docs/39 T02a, docs/19) ------------------
 # The safety CPU streams its telemetry frame on USART2; the factory receives it
 # interrupt-driven on RXNE (NOT DMA -- CR1 RXNEIE set, CR3 DMAR clear, T02 RE in
 # docs/19). The wire feeder (tests/arm_sim_usart2.py) only serves SR/DR and pends
-# the NVIC line, so every byte travels through the firmware's own RX ISR. This is
-# the wire-feed half of T02/T05; frame ASSEMBLY into the bank 0x20009e54 is still
-# open (docs/19 §"T02 in progress"), so test_safety_cpu_telemetry_reaches_modbus
-# above still seeds the bank directly. Factory-only (our USART2 driver is T05).
+# the NVIC line, so every byte travels through the firmware's own RX ISR. The full
+# ingest chain is cracked (docs/33): RX ISR sub_0801bddc -> assembler sub_0801bb0e
+# (SOF 0x49, CRC-16/MODBUS) -> distributor sub_0802677a + tag parser sub_08025ab8
+# -> bank 0x2000ce5c -> the factory's register getter -> Modbus IR. Factory-only
+# (our USART2 driver is T05).
 def test_usart2_rx_receives_wire_bytes():
     """Feeding the safety-CPU USART2 stream on the wire reaches the factory's real
     RX ISR: the RX is RXNE-interrupt-driven (not DMA), and every byte fed through
@@ -145,6 +151,39 @@ def test_usart2_rx_receives_wire_bytes():
     got = wire.feed(data)
     assert got == len(data), \
         "firmware received %d of %d USART2 bytes over the RX-ISR wire path" % (got, len(data))
+
+
+def test_usart2_frame_reaches_modbus():
+    """The WHOLE USART2 ingest, end to end on the wire: a valid EG4 type-1 safety
+    frame fed byte-by-byte through the real RX ISR is assembled, CRC-checked,
+    distributed and tag-parsed by the firmware into its telemetry bank, and the
+    decoded measurements come back out as the right Modbus input registers -- with
+    NO bank seeding. This closes T02a (feed USART2 bytes -> IR changes).
+
+    The frame carries a "tag 2" record (grid/EPS/inverter block, docs/33): frame
+    offsets +0x17/+0x19/+0x1b/+0x21/+0x23 (big-endian u16) land at bank
+    +0x20/+0x5e/+0x22/+0x24/+0x28 and serve as IR 12/15/20/18/13. A second frame
+    with new values must read back new IRs (live, not cached)."""
+    from arm_sim_usart2 import Usart2SafetyWire
+    from arm_sim_modbus import ModbusDsp
+    sim = _factory()
+    mb = ModbusDsp(sim)                          # boots the RTOS + config flash
+    wire = Usart2SafetyWire(sim, boot=False)     # share that one boot
+    assert wire.rx_is_interrupt_driven()
+
+    def tag2(grid_r, grid_freq, eps_r, inv_curr, grid_s):
+        return {0x14: (2, 1), 0x17: (grid_r, 2), 0x19: (grid_freq, 2),
+                0x1b: (eps_r, 2), 0x21: (inv_curr, 2), 0x23: (grid_s, 2)}
+
+    # IR -> (field, raw) for a snapshot; IR 18 (inverter current) is served x10.
+    for label, (gr, gf, er, ic, gs) in (("A", (2401, 5001, 2399, 1234, 2402)),
+                                        ("B", (2301, 4999, 2300, 999, 2302))):
+        got = wire.feed_frame(tag2(gr, gf, er, ic, gs))
+        assert got == 0x3f, "frame %s: only %d/%d bytes received on the wire" % (label, got, 0x3f)
+        for ir, exp in ((12, gr), (15, gf), (20, er), (18, ic * 10), (13, gs)):
+            rd = mb.read_input(ir)
+            assert rd == [exp], ("frame %s: fed wire frame -> IR %d = %r, expected [%d]"
+                                 % (label, ir, rd, exp))
 
 
 # --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------

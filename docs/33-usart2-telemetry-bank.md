@@ -1,4 +1,15 @@
-# The USART2 telemetry bank (`0x20009e54`) — format and dongle exposure
+# The USART2 telemetry bank (`0x2000ce5c`) — format and dongle exposure
+
+> **Bank base correction (verified, T02a).** An earlier revision of this doc put
+> the bank at `0x20009e54`; that address has **zero** literal references in the
+> image, while **`0x2000ce5c` has 22** and is the base the real parser writes and
+> the register getter reads. Verified end to end against `reference/com_flat.bin`
+> (= `ceaa-07xx_vE_260214`, md5 `fc5b44bd13f6…`): seeding `0x2000ce5c+off` serves
+> all 15 contract fields correctly, and a wire frame fed through the real RX ISR
+> lands there and reaches the dongle (`tests/test_arm_sim_factory_only.py` —
+> `test_usart2_frame_reaches_modbus`). The **field offsets and gates below are
+> correct as recovered**; only the base (and the §1 function addresses) are fixed
+> here. All `+off` in this doc are relative to `0x2000ce5c`.
 
 > **Dongle registers:** this bank→register map is the **provenance source** that the dongle per-register docs cite for input-register origins. Dongle-facing register docs: [`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md).
 
@@ -7,7 +18,7 @@
 > cites this doc for the bank field map. This doc is the authoritative **bank
 > format + dongle-register** reference.
 
-The ARM's richest single telemetry structure is the **USART2 bank at `0x20009e54`**.
+The ARM's richest single telemetry structure is the **USART2 bank at `0x2000ce5c`**.
 It holds the operating mode, the grid/PV measurements, and the fault/warn status the
 **safety CPU sends to the ARM over USART2** (docs/30). Per the DSP-side follow-up
 (docs/29), the measured quantities are the **safety CPU's own independent samples** —
@@ -18,40 +29,94 @@ the bank is filled from the wire frame, (2) its field map, and (3) **which field
 the external Modbus dongle** as input/holding registers.
 
 Everything here is from the factory ARM image `reference/ceaa-07xx_vE_260214.bin` (12000XP
-`ceaa-07xx`): the parsers `sub_080259d8` / `sub_08024d74` / `sub_080241a8` (write side)
-and a sweep of the register getters `sub_0803289c` (input) / `fn_ceaa` (holding) over
-every register, recording which bank offset each reads (read side).
+`ceaa-07xx`, = `reference/com_flat.bin`, md5 `fc5b44bd13f6…`), and the receive chain below
+was re-derived and **executed under the arm_sim emulator** (T02a): a frame fed on the wire
+drives the real chain into the bank and out to the dongle. The read side is a sweep of the
+register getters `sub_0803289c` (input) / `fn_ceaa` (holding), recording which bank offset
+each reads.
+
+> The function addresses in the chain below are the **verified** entry points in this image
+> (reached from the USART2 vector forward). An earlier revision named `sub_080259d8` /
+> `sub_08024d74` / `sub_080241a8` / `sub_08014bec` — those do not disassemble as this chain
+> here and are superseded.
 
 ## 1. How the bank is filled
 
 The USART2 peer sends an **EG4 "type-1", big-endian, CRC-16/MODBUS** frame (the DSP
-family, docs/10). The receive pipeline:
+family, docs/10). The receive pipeline (verified addresses, image base `0x08000000`):
 
 ```
-USART2 RX  →  staging 0x20008084  →  sub_080259d8 (driver/validate)
-                                        • CRC-16 check (sub_08014bec)
-                                        • gate: frame[1] == 1 (type) and length ≥ 0x54
-                                        • maintains link health in 0x2000a6c4 + fail
-                                          counters 0x20009048[6]  (→ comms-loss / E017)
-                                        ↓ on a good frame
-                                     sub_08024d74 (header)   writes fixed offsets:
-                                        frame[+4]  → BANK+0x00   operating mode (u8)
-                                        frame[+5]  → BANK+0xd0   FAULT status (BE u32)
-                                        frame[+9]  → BANK+0xd4   WARN  status (BE u32)
-                                        frame[+0d] → BANK+0x01   mode-2 byte (u8)
-                                        frame[+0f] → BANK+0xc4   (BE u16)
-                                        frame[+11] → BANK+0xca   (u8)
-                                        ↓ then
-                                     sub_080241a8 (bulk, from frame[+0x14])
-                                        tag-keyed sub-records (tag byte selects a block;
-                                        each block is a run of big-endian u16/u32/bytes
-                                        copied into fixed bank offsets)
+USART2 RXNE IRQ (vector 54 = sub_0801bddc)      ← interrupt-driven, NOT DMA (T02/T05)
+   → RX handler 0x0801bd34 drains DR (helper 0x080369fa) per byte
+   → assembler sub_0801bb0e  builds the frame in RAM buffer 0x2000af60:
+        frame[0]=0x49 (SOF), frame[1]=type, frame[3]=len (total = len+6),
+        running index capped < 0x40; on completion sets event-group 2 bit 2
+   → consumer/validator 0x08027560 (woken on that event):
+        • CRC-16/MODBUS over frame[0:total-2] (sub_080160bc); the stored checksum
+          is read MSB-first (0x8016288) — big-endian, the USART2 config (cfg bit6=0)
+        • gate: frame[1] == 1 (type); CRC must match
+        ↓ on a good frame
+   → distributor sub_0802677a  writes the fixed header offsets:
+        frame[+0d] → BANK+0x01   mode-2 byte (u8)            ] always
+        frame[+0f] → BANK+0xc4   (BE u16)                    ] (every valid
+        frame[+11] → BANK+0xca   (frame[+11]|frame[+12]<<8)  ]  frame)
+        frame[+13] → BANK+0xe0   (u8)                        ]
+        — and, GATED on a frame-trust counter (u16 at 0x2000da3e) ≥ 0x54:
+        frame[+4]  → BANK+0x00   operating mode (u8)
+        frame[+5]  → BANK+0xd0   FAULT status (BE u32, sub_080162a4)
+        frame[+9]  → BANK+0xd4   WARN  status (BE u32)
+        On a short count the counter increments and BANK+0/+0xd0/+0xd4 are ZEROED,
+        so stale mode/faults don't persist until the link has settled.
+        ↓ then
+   → tag parser sub_08025ab8(0x14)  (bulk, from frame[+0x14]):
+        frame[+0x14] = tag selector; the tag's record (a run of BE u16/u32/bytes
+        from frame[+0x15…]) is copied into fixed bank offsets — see §1a.
 ```
 
-All multi-byte reads are **big-endian**: `sub_08014db8` (u16 = `p[0]<<8|p[1]`),
-`sub_08014dd4` (u32 = `p[0]<<24|…|p[3]`). This is the discriminator vs the dongle's
-little-endian framing (docs/08/26). On an invalid/short frame the driver zeroes
-`BANK+0`, `BANK+0xd0`, `BANK+0xd4` so stale mode/faults don't persist.
+All multi-byte reads are **big-endian**: `0x8016288` (u16 = `p[0]<<8|p[1]`),
+`sub_080162a4` (u32 = `p[0]<<24|…|p[3]`); `0x8016296` is the LSB-first variant (used
+when cfg bit6=1, not for USART2). This big-endian framing is the discriminator vs the
+dongle's little-endian framing (docs/08/26).
+
+> **Why mode/fault/warn are gated.** `0x2000da3e` is a frame-trust counter, not a frame
+> length: the assembler caps a USART2 frame well under `0x54` bytes, so the counter — not
+> any single frame — is what crosses `0x54`. It increments on each valid frame while the
+> link is settling, zeroing mode/fault/warn; once it reaches `0x54` the distributor starts
+> trusting and publishing the safety CPU's mode/fault/warn. The measurement/identity tag
+> records (§1a) are published on every valid frame, ungated.
+
+### 1a. Tag records (`frame[+0x14]` selector → bank)
+
+The distributor's bulk tail `sub_08025ab8` parses exactly one tag record per frame. The
+selector `frame[+0x14]` chooses the block; each field below is big-endian at the given
+frame offset. (Recovered by walking `sub_08025ab8`; the SERVED ones are confirmed by
+feeding a frame and reading the dongle — `test_usart2_frame_reaches_modbus`.)
+
+| tag | frame off | w | → bank off | served as |
+|---|---|---|---|---|
+| 0 | +0x19 | u8 | +0x02 | HR 10 low (DSP FW ver) |
+| 0 | +0x15…+0x18 | u8×4 | +0x03…+0x06 | peer identity |
+| 0 | +0x20 | BE16 | +0x1e | IR 65 radiator temp 1 |
+| 0 | +0x22 | BE16 | +0x1c | IR 66 radiator temp 2 |
+| 0 | +0x24 | BE16 | +0xb6 | IR 14 grid voltage T |
+| 1 | +0x15 | BE16 | +0x0a | IR 107 inverter batt V |
+| 1 | +0x1b | BE16 | +0x0e | IR 38 BUS1 |
+| 1 | +0x1d | BE16 | +0x10 | IR 39 BUS2 |
+| 1 | +0x25 | BE16 | +0x12 | IR 120 half-BUS |
+| 2 | +0x17 | BE16 | +0x20 | IR 12 grid R |
+| 2 | +0x19 | BE16 | +0x5e | IR 15 grid freq |
+| 2 | +0x1b | BE16 | +0x22 | IR 20 EPS R |
+| 2 | +0x1d | BE16 | +0x60 | IR 23 EPS freq |
+| 2 | +0x21 | BE16 | +0x24 | IR 18 inverter current |
+| 2 | +0x23 | BE16 | +0x28 | IR 13 grid S |
+| 2 | +0x25 | BE16 | +0x62 | IR 122 generator freq |
+| 3 | — | BE16/32 | +0x40…+0xa4 | energy/power raws (not direct IRs) |
+| 4 | +0x15 | BE16 | +0x00 | (mode/aux) |
+
+So the full measurement set is **streamed across successive frames**, one tag per frame;
+each frame refreshes its block. The bank is a **parsed structure, not a raw frame copy** —
+fields land at fixed bank offsets regardless of their frame position, so the bank offset
+(not the frame offset) is the stable identifier used everywhere else.
 
 The bank is a **parsed structure, not a raw frame copy** — fields land at fixed bank
 offsets regardless of their position in the wire frame, so the bank offset (not the
