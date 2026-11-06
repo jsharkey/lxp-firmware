@@ -2,14 +2,16 @@
  * Per-pack battery telemetry — undocumented Modbus input registers 5000-5126.
  * (docs/34 §2b; factory getter sub_08020cc0, CAN parser sub_080205d4.)
  *
- * NOTE — fed by CAN 0x4xx; LIVE on a 0x4xx pack, dormant on EG4-LL. This bank is
- * served from a per-pack array filled ONLY by CAN 0x4xx frames (sub_080205d4). The
- * EG4-LL battery emits per-pack/extended telemetry on 0x3xx (0x311-0x321, 0x370-0x381),
- * which the ARM parses to internal scalars NOT read by the Modbus getter -- so this
- * bank stays empty with that pack (docs/34 §2b). A pack that natively speaks the
- * 0x4xx per-pack (Pylontech-family) protocol DOES populate it: a production-12000XP
- * capture shows two such packs decoded live (docs/34 §2d), which also pins the field
- * semantics annotated in the enum below.
+ * NOTE — fed ONLY by CAN 0x4xx (sub_080205d4); populated on a live stack, feed
+ * unexplained. The inverter serves this bank from a per-pack array filled ONLY by CAN
+ * 0x4xx frames -- re-confirmed in the harness (aggregate-only and the EG4-LL 0x3xx/
+ * 0x37x frames both leave it all-zero). A production-12000XP capture (docs/34 §2d)
+ * shows the bank POPULATED with two real packs, which pins the field semantics in the
+ * enum below. BUT the capture's packs are EG4-LL (BATT_IN280-Z03T13), whose bench
+ * image emits no 0x4xx in its static TX table, and the ASCII Battery_ID is not a code
+ * literal in any image -- so HOW the live stack emits the 0x4xx this bank needs is an
+ * OPEN question (likely a master-mode per-pack emitter; needs a CAN capture). docs/34
+ * §2d. Field addressing + semantics below are solid; the battery-side feed is not.
  *
  * Beyond the aggregate BMS block (IR 81-106), the factory serves PER-PACK battery
  * telemetry on a separate high register range that no public EG4 map lists. The

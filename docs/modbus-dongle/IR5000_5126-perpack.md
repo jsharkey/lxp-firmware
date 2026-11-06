@@ -1,30 +1,33 @@
-# IR 5000-5126 — per-pack battery bank (undocumented; live on a `0x4xx` pack)
+# IR 5000-5126 — per-pack battery bank (undocumented; `0x4xx`-fed; live-but-unexplained)
 
 > **Dongle Modbus**, input registers (func `0x04`, read-only). **Undocumented** —
 > not in the EG4 18kPV-12LV spec PDF, not in `modbus_map.h`'s 0-152 map. See the
 > [index](README.md). Recovered from the factory `ceaa-07xx` image; full analysis
-> in [`docs/34` §2b](../34-multi-battery-can.md), **confirmed live and decoded in
-> [`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)**.
+> in [`docs/34` §2b](../34-multi-battery-can.md), live capture + the open feed
+> question in [`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp).
 
 ## Status up front
 
 The factory firmware **serves** a per-pack battery bank on input registers
-**5000-5126**, and a production-12000XP capture (same `ceaa`/V2.06 firmware family)
-shows the dongle **polling and uploading this window to the cloud every cycle**,
-alongside IR 0-380. With two packs attached it reads back two populated per-pack
-records (bases 5000 and 5030) named `Battery_ID_01` / `Battery_ID_02` — **live
-per-pack telemetry**, see [`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp).
+**5000-5126**, and a production-12000XP capture (same `ceaa`/V2.06 family) shows the
+dongle **polling and uploading this window every cycle** alongside IR 0-380, with two
+**populated** records (bases 5000/5030) named `Battery_ID_01` / `Battery_ID_02` and a
+valid Modbus CRC. So the bank is real, reachable, and non-empty on a live system.
 
-It is fed by CAN **`0x4xx`** per-pack frames. **The three EG4 battery images checked**
-(`BATT_IN280-Z03T13`/EG4-LL, `BATT_AW280-Z02T30`/EG4-LL, `BATT_WM314-Z03T21`/EG4-314)
-do **not** emit `0x4xx` (they stream `0x3xx` extended frames the ARM parses to
-unserved internal scalars), so the bank reads all-zero **with those packs**. A pack
-that speaks the `0x4xx` per-pack protocol — as in the §2d capture — populates it. So:
+**But how it gets filled on that system is unresolved.** On the inverter side the
+bank is fed **only by CAN `0x4xx`** (re-confirmed in the harness: aggregate-only and
+the EG4-LL `0x3xx`/`0x37x` frames both leave it all-zero; it is id-keyed to
+`0x400|sub<<5|pack`). Yet the capture's packs are EG4-LL `BATT_IN280-Z03T13`, whose
+bench image emits **no `0x4xx`** in its static TX table. The ASCII `Battery_ID` is
+**not a code literal in any image** (inverter, battery, or ESP32 dongle), and the
+dongle is a dumb relay — so the data is battery-sourced runtime/NV data that reached
+the inverter as `0x4xx`, most likely via a **master-mode per-pack emitter** a single
+bench unit never fires (hypothesis; needs a CAN capture). See [`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp).
 
-- **Live** on a `0x4xx`-per-pack (Pylontech-family) pack: per-pack V/I/SOC/SOH, cell
-  min/max V and T, limits, version and an ASCII pack id, one 30-slot record per pack.
-- **Dormant** with the EG4-LL `0x3xx` packs — for those, per-battery data on the
-  dongle is the aggregate [`IR 81-106 BMS block`](IR081_106-BMS.md) only.
+- **Register addressing, dongle framing, field semantics:** proven (below / §2d).
+- **The `0x4xx` → 5000 fill path:** proven in firmware + harness.
+- **That `BATT_IN280-Z03T13` emits `0x4xx`:** *not* proven — inferred from the live
+  populated bank, not yet seen on the bus.
 
 ## Addressing
 
@@ -73,11 +76,15 @@ same capture, the rest are best-read from magnitude.
 | 26 | 5026 | `0x4C0` (6) | b6 (u8, hi 0) | (string tail / zero) |
 
 **Field meaning is confirmed** by the §2d capture — the bolded rows against
-known-scale aggregate registers, the rest by magnitude. Note the ASCII id in fields
-19-25 is **not** a firmware literal (absent from `ceaa-07xx_vE_260214.bin` and the battery
-image), proving these bytes are copied straight off CAN. `perpack_map.h` keeps the
-**structural** names (`PP_S<subtype>_W<word>`) as the stable index and now carries
-the semantic read in comments.
+known-scale aggregate registers, the rest by magnitude. The ASCII id in fields 19-25
+is **not a code literal in any image** (inverter `ceaa-07xx_vE_260214.bin`, battery
+`BATT_IN280-Z03T13.bin`, or the ESP32 dongle), so it is battery-sourced runtime/NV
+data (a configured pack name), not an ARM/dongle-synthesised label — though the CAN
+frame carrying it into the bank is **not yet observed on the bus** (§2d). The
+subtype/byte→field mapping is from the inverter's `0x4xx` parser; it holds for data
+that arrives as `0x4xx`, which is the bank's only fill path. `perpack_map.h` keeps the
+**structural** names (`PP_S<subtype>_W<word>`) as the stable index and now carries the
+semantic read in comments.
 
 ## Where the data comes from
 
@@ -85,18 +92,20 @@ CAN **`0x4xx`** → parser `sub_080205d4` → per-pack array `0x2000691c[pack]` 
 presence bitmask `0x2000a770` / count `0x2000a8ae` → getter `sub_08020cc0` →
 input registers 5000-5126 → dongle.
 
-Proven end-to-end two ways: in the harness with **synthetic** `0x4xx` frames
-(`tests/test_arm_sim_factory_only.py::test_per_pack_telemetry_reaches_modbus`), and
-**in the wild** by a production-12000XP capture that uploads this exact window with
-two real packs decoded ([`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)).
-The EG4-LL packs never drive it — see [`docs/34` §2b](../34-multi-battery-can.md)
-for the dormancy proof (their TX table has no `0x4xx`; the `0x311-0x321`/`0x370-0x381`
-extended frames go to internal scalars via `sub_08021b68`, which the Modbus getters
-do not read) — but a `0x4xx`-per-pack pack does, as §2d shows.
+The inverter-side path is proven in firmware + harness with **synthetic** `0x4xx`
+frames (`tests/test_arm_sim_factory_only.py::test_per_pack_telemetry_reaches_modbus`).
+A production-12000XP capture ([`docs/34` §2d](../34-multi-battery-can.md#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp))
+shows the window **populated and uploaded** with two real packs — proving the bank is
+live — but on packs (`BATT_IN280-Z03T13`/EG4-LL) whose **bench image emits no `0x4xx`**
+in its static TX table (§2b). So the upstream leg (what makes the live stack emit the
+`0x4xx` this path consumes) is **inferred, not observed**: most likely a master-mode
+per-pack emitter a single bench unit never fires (§2d). The `0x311-0x321`/`0x370-0x381`
+extended frames an EG4-LL *does* send go to internal scalars via `sub_08021b68`, which
+the Modbus getters do not read.
 
 ## Contrast with the live battery surface
 
 | what | register(s) | live? |
 |---|---|---|
 | aggregate pack SOC/SOH, V/I/T, limits, faults, cell min/max | [IR 5](IR005-SOC_SOH.md), [IR 81-106](IR081_106-BMS.md) | ✔ yes, any pack (CAN `0x351/355/356/359`) |
-| **per-pack** V/SOC/cell detail, one block per stacked pack | **IR 5000-5126** (this doc) | ✔ on a `0x4xx` per-pack pack (captured live, §2d); ✗ on EG4-LL `0x3xx` packs |
+| **per-pack** V/SOC/cell detail, one block per stacked pack | **IR 5000-5126** (this doc) | ✔ populated on a live 2-pack stack (§2d); needs CAN `0x4xx`, whose source on that stack is not yet observed |

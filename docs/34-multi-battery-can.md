@@ -118,14 +118,15 @@ field bleeds into that slot.)*
 > (decode `0x311–0x321`/`0x370–0x381`, define our own register bank) — a
 > deliberate superset, flagged as such.
 
-## 2b. The per-pack register bank (IR 5000–5126) — real; dormant on EG4-LL, live on a `0x4xx` pack
+## 2b. The per-pack register bank (IR 5000–5126) — real; `0x4xx`-fed; live on a real stack
 
-> **Headline updated by [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp):**
+> **See also [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp):**
 > a production-12000XP capture shows this bank **fully populated and uploaded every
-> cycle** for packs that speak the `0x4xx` per-pack protocol, and pins the field
-> semantics this section leaves structural. The static analysis below is correct and
-> vindicated by that capture; "dormant" is true only of the three EG4-LL `0x3xx`
-> images checked here, not of the bank in general.
+> cycle**, which pins the field semantics this section leaves structural. The
+> `0x4xx`-only fill path below is **re-confirmed in the harness** by §2d. What §2d
+> does *not* settle: the live packs are the EG4-LL `0x3xx` units analysed here, whose
+> bench image shows no `0x4xx` TX — so how the live stack produces the `0x4xx` the
+> bank needs is an **open contradiction** (§2d, "What actually feeds it").
 
 The §2 checks establish a true fact (the per-pack bytes are not in input registers
 **0–239**) but the conclusion — "no register, documented or undocumented" — was
@@ -203,12 +204,11 @@ fields. The pack index is 5 bits, so up to 32 packs page through 5000–5126.)
 
 ### Field *semantics* are not yet pinned — and why
 
-> **Now pinned by [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp).**
-> A production capture carries the live register values, so the field meanings below
-> are no longer open: field 4 = charge-V ref, 8 = pack voltage (0.01 V), 9 = current,
-> 10 = SOC‖SOH, 12/13 = max/min cell temp, 14/15 = max/min cell mV, 19–25 = ASCII
-> pack ID — each cross-checked against a known-scale aggregate register. The method
-> below is kept for the record; §2d is the answer.
+> **Field meanings now pinned by [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)'s
+> live values** (cross-checked against known-scale aggregate registers): field 4 =
+> charge-V ref, 8 = pack voltage (0.01 V), 9 = current, 10 = SOC‖SOH, 12/13 = max/min
+> cell temp, 14/15 = max/min cell mV, 19–25 = ASCII pack ID. The *fill provenance* is
+> a separate, still-open question (§2d) — the meanings hold regardless of it.
 
 The register addressing, the field→byte provenance, and the full CAN→dongle path
 above are **proven**. What each field physically *means* (which word is pack
@@ -243,12 +243,13 @@ by CAN `0x4xx` via `sub_080205d4` → array `0x2000691c` → `sub_08020cc0`), pr
 serve per-pack values when `0x4xx` frames are injected. Whether it is *fed* was the
 open question — now resolved below.
 
-### Update (battery image decoded): the 5000 bank is DORMANT *on this EG4-LL pack* (but live on a `0x4xx` pack — §2d)
+### Update (battery image decoded): the 5000 bank is DORMANT *on a single bench EG4-LL unit* (but a live stack populates it — §2d, unexplained)
 
-With the battery image (`BATT_IN280-Z03T13.bin`) now decoded, the per-pack feed
-question is settled **for this pack**, and it walks the headline **back toward the
-original** — scoped to EG4-LL only; a production capture (§2d) shows the bank live
-on a pack that does emit `0x4xx`:
+With the battery image (`BATT_IN280-Z03T13.bin`) decoded, a **single bench unit**
+emits no `0x4xx`, so the bank is dormant there. **But a live 2-pack stack of these
+same EG4-LL units populates it** (§2d) — a contradiction not resolved by the static
+image (likely a master-mode per-pack emitter; §2d). The static-TX finding below is
+correct *for one unit*; do not read it as "EG4-LL can never feed the bank":
 
 - **This pack emits no `0x4xx`.** Its CAN TX frame-ID table (`@0x31a20`, 55 entries)
   carries only `0x3xx`/`0x35x` (aggregate `0x351/355/356/359`, extended
@@ -336,24 +337,40 @@ on `0x3xx` → unserved internal scalars. *(So the specific guess "EG4/Lux is th
 per-pack protocol" is not borne out; the general idea "a per-pack-protocol pack
 lights the bank" is — just not with an EG4 pack.)*
 
-**Confirmed by capture.** [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)
-is exactly this case observed live: a production 12000XP with two packs that *do*
-speak the `0x4xx` per-pack protocol (ASCII ids `Battery_ID_01/02`, copied from CAN,
-not a firmware literal), and the bank reads back full per-pack V/I/SOC/SOH/cell
-detail — the "a per-pack-protocol pack lights the bank" half of the resolution,
-now proven rather than predicted.
+**Complicated by capture.** [§2d](#2d-live-capture-the-5000-bank-is-populated-on-a-production-12000xp)
+shows a production 12000XP with the bank **fully populated** (two records,
+`Battery_ID_01/02`, full per-pack V/I/SOC/SOH/cell detail) — but the operator's packs
+are the **EG4-LL `0x3xx`** units this section says *cannot* feed it. The inverter's
+`0x4xx`-only fill is re-confirmed in the harness, so `0x4xx` must reach it on the live
+stack; our bench EG4-LL image shows no such TX. So the "EG4 pack cannot light the
+bank" conclusion holds for a **single bench unit**, but a real **stack** evidently
+does — most likely via a master-mode per-pack emitter not in the static TX table
+(§2d). Not yet observed on the bus.
 
 ## 2d. Live capture: the 5000 bank IS populated on a production 12000XP
 
-§2b/§2c predicted the bank would light up for a pack that natively speaks the
-`0x4xx` per-pack (Pylontech-family) protocol, and stays dark for the EG4-LL
-`0x3xx` packs. A **packet capture of a production 12000XP datalogger talking to the
-EG4 cloud** now confirms that prediction with live data — and, because the capture
-carries the actual register *values*, finally **pins the field semantics** that
-§2b left deliberately unlabeled. This is dynamic evidence (the top of the
-claims-discipline hierarchy), and it **corrects the "dormant, reads all-zero"
-headline**: on this real system the bank is fully populated and shipped off-box
-every cycle.
+*(…but the feed is not yet explained — see the correction below.)*
+
+A **packet capture of a production 12000XP datalogger talking to the EG4 cloud**
+shows the dongle polling input registers **5000–5126 every cycle** and uploading two
+**fully populated** per-pack records. This is dynamic evidence (top of the
+claims-discipline hierarchy) that the bank is **served, non-empty, and shipped
+off-box** on a real system, and the register values let us **pin the field
+semantics** §2b left unlabeled.
+
+> **Correction (this section was over-claimed on first write).** The capture does
+> **not** prove "these packs speak `0x4xx`" or that the ASCII id is "copied verbatim
+> from CAN." The operator confirms the setup is the **07 ARM firmware + `BATT_IN280-Z03T13`
+> (EG4-LL) packs** — the very packs §2b/§2c showed emit **only `0x3xx`**. A follow-up
+> investigation (below) re-confirms, in the harness, that the inverter's 5000 bank is
+> fed **only** by CAN `0x4xx` (aggregate-only and `0x3xx`/`0x37x` inputs leave it
+> zero), and that the ASCII `Battery_ID` string is **not a code literal in any image**
+> (inverter, battery, *or* the ESP32 dongle). So on our reference artifacts the
+> populated bank is a genuine **contradiction**: the inverter served it (valid Modbus
+> CRC, relayed by a dumb dongle), the only fill path is `0x4xx`, yet the bench battery
+> image shows no `0x4xx` TX. **How the live stack produces `0x4xx` is unresolved** —
+> see "What actually feeds it" below. The register addressing, the dongle framing, and
+> the decoded field semantics stand; the *provenance* claim does not.
 
 ### Source and method
 
@@ -396,11 +413,14 @@ packs). `IR96 BatParallelNum = 2` in the aggregate block agrees: two packs → t
 populated records.
 
 Pack 0 is named **`Battery_ID_01`**, pack 1 **`Battery_ID_02`** — ASCII, in the
-fields §2b sourced to CAN subtypes 5–6. **That string is not a firmware literal**
-(absent from both the ARM image `ceaa-07xx_vE_260214.bin` and the EG4-LL battery image), so it is **copied
-verbatim from the CAN bus** into the per-pack array — direct proof the bank is fed
-by a byte-copy of per-pack CAN frames, and that these packs *do* emit the `0x4xx`
-series the EG4-LL packs do not.
+fields §2b sourced to the per-pack record's subtype-5/6 slots. **That string is not a
+code literal in any image** — raw-byte-absent from the ARM image
+(`ceaa-07xx_vE_260214.bin`), the EG4-LL battery image (`BATT_IN280-Z03T13.bin`), **and
+the ESP32 dongle image** (`esp32_dongle`, ESP-IDF v4.4.5). So it is neither an ARM
+`sprintf` template nor a dongle-synthesized label; it can only be **runtime data** —
+most plausibly the BMS's stored/configured per-pack identity (a factory-default name
+in the pack's NV), carried as telemetry. Where it enters the register bank is the
+open question resolved — or not — below.
 
 **Field semantics** (field = `reg − 5000` within a pack; values from pack 0 /
 pack 1, cross-checked against known-scale aggregate registers from the *same*
@@ -440,17 +460,56 @@ max-cell-mV **fluctuate independently per pack** (pack 0 V 5428–5430, pack 1 V
 5428–5430; max-cell 3402–3403) — the bank tracks live per-pack telemetry, it is not
 a one-shot fill.
 
-### Net correction
+### What actually feeds it — ruling out the easy answers
 
-The per-pack bank (IR 5000–5126) is **not universally dormant**. It is dormant only
-on the three EG4-LL `0x3xx` images statically checked (§2b "Checked three EG4
-battery models"); on a production 12000XP with packs that speak the `0x4xx`
-per-pack protocol it is **fully live — polled and uploaded to the cloud every
-cycle** — and its field layout decodes to per-pack V / I / SOC / SOH / max&min cell
-V / max&min cell temp / limits / version / ASCII ID, exactly the quantity set §2b
-predicted. The structural map in `perpack_map.h` and §2b is **vindicated by live
-data**; the only thing that changes is the headline, from "real but dormant" to
-"real, and live on a `0x4xx` pack — proven by capture."
+With the operator's ground truth (07 ARM + EG4-LL `BATT_IN280-Z03T13` packs), the
+populated bank is a puzzle. A three-way elimination, mostly dynamic:
+
+1. **Not the dongle.** The uplink image is a generic ESP32-C3 ESP-IDF Modbus→cloud
+   bridge: **zero battery/`Battery`/`Battery_ID` strings**, no per-pack semantics. And
+   the reg-5000 window carries a **valid CRC-16/MODBUS** device frame (`init.pcap`
+   reg 5000: rx `0x08d5` = calc) — a well-formed *inverter* Modbus response the dongle
+   relays verbatim, not something it fabricates. So the **inverter served these bytes**.
+2. **Not inverter synthesis from the aggregate.** In the harness against the factory
+   `ceaa-07xx` image: inject **only** the aggregate (`0x351/355/356/359`) with
+   `BatParallelNum = 2` → IR 5000+ reads **all-zero**. The inverter does not fan the
+   aggregate out into per-pack slots.
+3. **Not the EG4-LL's `0x3xx`/`0x37x` frames.** Inject the EG4-LL's extended
+   `0x311–0x321` and `0x370–0x381` → IR 5000+ still **all-zero**. The bank is
+   **id-keyed to `0x400|sub<<5|pack`**, so no `0x3xx` id can reach it regardless of
+   content. Only injecting `0x4xx` lights it (control case passes). *(Experiment:
+   `arm_sim` + `CanBattery.send()`, three stages, factory image.)*
+
+So the inverter fills IR 5000+ **only from CAN `0x4xx`** — exactly as §2b concluded —
+and it genuinely served a populated bank in the capture. The forced inference is that
+**`0x4xx` per-pack frames reached the inverter on the live system.** Yet the bench
+`BATT_IN280-Z03T13` image's **static** TX descriptor table is all `0x3xx` (§2b), and a
+raw scan found no `0x4xx` id-arithmetic (inconclusive — a linear sweep desyncs over
+this image). **This is the open contradiction.**
+
+### Most likely resolution (hypothesis, not proven)
+
+The static TX table enumerates fixed-id *broadcast* frames. A **per-pack emitter** —
+a master pack relaying each stacked member as `0x400|sub<<5|pack` — would be a
+**runtime loop**, not a table entry, and would send **nothing on a single bench unit
+with no slaves**. That single mechanism explains everything: the master EG4-LL in a
+real ≥2-pack stack emits `0x4xx` per member (each carrying that member's
+V/I/SOC/SOH/cell-min-max and its NV `Battery_ID_NN`), the inverter's unconditional
+`0x4xx` parser fills one 30-reg record per pack, and the dongle relays IR 5000+ to the
+cloud. The alternative is a **firmware-version skew** (the deployed BMS/ARM differs
+from our reference images). Distinguishing them needs **a CAN-bus capture from the
+live stack**, or the deployed BMS image — neither is in hand. Until then:
+
+- **Proven:** the bank is served, non-empty, per-pack, uploaded every cycle (valid
+  CRC); its field semantics decode and cross-check against the aggregate; the fill is
+  `0x4xx`-only on the inverter side; the ASCII id is in no code image (→ runtime/NV data).
+- **Not proven:** that `BATT_IN280-Z03T13` emits `0x4xx`. The single-unit "dormant"
+  finding (§2b) and the live "populated" finding are reconciled *only* by the
+  unverified stack/master-mode emitter above.
+
+So §2b's structural map and the field semantics here **stand**; the earlier headline
+"live on a `0x4xx` pack — proven by capture" is **withdrawn** in favour of "populated
+on a live 2-pack stack; the `0x4xx` source is inferred, not yet observed on the bus."
 
 ## 3. Firmware update over CAN (extra credit)
 
