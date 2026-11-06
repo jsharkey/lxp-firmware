@@ -117,7 +117,7 @@ below are what close them.
 ## P0 — unblockers and the biggest gaps
 
 ### T01 — Move the dongle Modbus slave to UART5 (ours + harness)
-**Status:** `[ ]` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
+**Status:** `[~] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
 
 Today our Modbus engine and the DSP config push **share USART3**, so on real
 hardware the dongle can never reach us. The factory serves the dongle on
