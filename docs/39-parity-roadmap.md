@@ -154,7 +154,7 @@ it, and confirm a task runs.
   in parallel with T03/T04.
 
 ### T03 — Persist the full pinned settings table (54 more registers)
-**Status:** `[ ]` · **Layer:** sim (cross-image) + host · **Independent**
+**Status:** `[~] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
 
 [`docs/23`](23-arm-config-writer.md) pins **56 HRs** to slot-0/slot-5 offsets,
 widths and `×10` scalings, all dynamically. We persist 2.
