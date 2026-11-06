@@ -22,6 +22,7 @@
 #include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
 #include "inv/acfirst.h"
+#include "inv/rtc.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map).
  * The wire value is scaled to the on-flash units the factory uses so a record
@@ -98,11 +99,20 @@ static mb_exception_t mb_rd_hold(void *c, uint16_t a, uint16_t *o) {
     *o = g_rt.holding_reg[a];
     return MB_OK;
 }
+/* A write to any Modbus time register (HR 12-14) sets the ARM wall clock. */
+static void apply_if_time_reg(uint16_t reg) {
+    if (reg >= HR_TIME_YEAR_MONTH && reg <= HR_TIME_MIN_SEC)
+        rtc_set_from_modbus(g_rt.holding_reg[HR_TIME_YEAR_MONTH],
+                            g_rt.holding_reg[HR_TIME_DATE_HOUR],
+                            g_rt.holding_reg[HR_TIME_MIN_SEC]);
+}
+
 static mb_exception_t mb_wr_hold(void *c, uint16_t a, uint16_t v) {
     (void)c;
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
     g_rt.holding_reg[a] = v;    /* TODO: validate ranges */
     settings_persist_hr(a, v);  /* journal persisted settings to the config flash */
+    apply_if_time_reg(a);       /* HR 12-14 -> set the wall clock */
     return MB_OK;
 }
 
@@ -123,6 +133,7 @@ static bool hmi_write(uint16_t r, uint16_t v) {
     if (r < 256) {
         g_rt.holding_reg[r] = v;       /* TODO: validate */
         settings_persist_hr(r, v);     /* journal persisted settings to the config flash */
+        apply_if_time_reg(r);          /* HR 12-14 -> set the wall clock */
         return true;
     }
     return false;
@@ -188,8 +199,12 @@ int main(void) {
     for (int i = 0; i < MB_SN_LEN; i++) g_dsp_src.sn[i] = g_mb.sn[i];
     dsp_push_init(&g_dsp);
 
-    uint32_t last_render = 0, last_dsp = 0, last_bms = 0;
+    uint32_t last_render = 0, last_dsp = 0, last_bms = 0, last_rtc = 0;
     for (;;) {
+        if ((uint32_t)(g_ticks - last_rtc) >= 1000) {   /* 1 Hz wall-clock tick */
+            last_rtc = g_ticks;
+            rtc_tick();
+        }
         /* Publish the safety CPU's decoded USART2 telemetry (grid/PV/bus V,
          * frequency, temps, inverter current) into the register image before
          * serving Modbus, so the dongle sees the latest values (docs/30/33). */
@@ -207,14 +222,12 @@ int main(void) {
         pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
         relay_poll();           /* apply AC transfer-relay state (PA12/PB3) */
 
-        /* AC-First load-priority windows vs. the RTC (docs/25). The ARM owns the
-         * clock: derive the minute-of-day from the time registers (HR 13/14) and
-         * publish "any AC-First window active now" as IR 126 bit 8 -- the
-         * externally observable verdict. (A hardware build syncs HR 13/14 to the
-         * STM32 RTC and advances it; here the set time is the clock.) */
+        /* AC-First load-priority windows vs. the wall clock (docs/25, docs/36).
+         * The ARM owns the clock (g_rtc): HR 12-14 writes set it and rtc_tick()
+         * advances it, so this tracks real time of day. Publish "any AC-First
+         * window active now" as IR 126 bit 8 -- the externally observable verdict. */
         {
-            uint16_t now_min = acfirst_clock_minutes(g_rt.holding_reg[HR_TIME_DATE_HOUR],
-                                                     g_rt.holding_reg[HR_TIME_MIN_SEC]);
+            uint16_t now_min = rtc_now_minutes();
             if (acfirst_window_active(&g_rt.holding_reg[HR_ACFIRST_START_0],
                                       ACFIRST_NUM_WINDOWS, now_min))
                 g_rt.input_reg[IR_ACFIRST_STATUS] |= IR_ACFIRST_WIN_ACTIVE;

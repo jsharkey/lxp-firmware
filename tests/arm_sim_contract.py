@@ -86,3 +86,25 @@ SAFETY_TELEMETRY_B = {
     "freq": 6001, "iinv": 152, "veps_r": 2402, "feps": 5997, "vbus1": 3912,
     "vbus2": 3889, "vbus_p": 1948, "gen_freq": 6002, "t_rad1": 360, "t_rad2": 350,
 }
+
+
+# --- RTC wall-clock calendar walk (docs/36) --------------------------------
+# Both firmwares keep a 7-byte software calendar advanced one second at a time
+# (ours src/rtc/rtc.c; factory sub_08018bc0). Forcing the clock and walking it
+# forward must carry sec->min->hour->day->month->year with the right
+# days-in-month and leap-year handling. Each vector:
+#   (label, start (sec,min,hour,day,month,year), +seconds, expected (same shape))
+# `year` is offset from 2000. Driven via ArmSim.set_rtc()/advance_rtc() in both
+# test_arm_sim_self_only.py (ours, by symbol) and test_arm_sim_factory_only.py
+# (factory, by address) -- one spec, both images.
+RTC_WALK = [
+    ("tick +1s",             (0, 0, 0, 1, 1, 24),    1, (1, 0, 0, 1, 1, 24)),
+    ("minute carry",         (58, 0, 0, 1, 1, 24),   4, (2, 1, 0, 1, 1, 24)),
+    ("hour carry",           (58, 59, 0, 1, 1, 24),  4, (2, 0, 1, 1, 1, 24)),
+    ("day carry",            (58, 59, 23, 1, 1, 24), 4, (2, 0, 0, 2, 1, 24)),
+    ("30-day month -> next", (58, 59, 23, 30, 4, 24),4, (2, 0, 0, 1, 5, 24)),
+    ("non-leap Feb -> Mar",  (58, 59, 23, 28, 2, 23),4, (2, 0, 0, 1, 3, 23)),
+    ("leap Feb 28 -> Feb 29",(58, 59, 23, 28, 2, 24),4, (2, 0, 0, 29, 2, 24)),
+    ("leap Feb 29 -> Mar",   (58, 59, 23, 29, 2, 24),4, (2, 0, 0, 1, 3, 24)),
+    ("year roll",            (58, 59, 23, 31, 12, 24),4,(2, 0, 0, 1, 1, 25)),
+]

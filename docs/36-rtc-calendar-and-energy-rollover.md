@@ -48,8 +48,32 @@ only the calendar + those two pure helpers), callable in isolation with no boot.
 | 2024-02-28 23:59:58 | 4 | 2024-02-29 | **leap** Feb |
 | 2024-12-31 23:59:58 | 4 | 2025-01-01 | year roll |
 
-**Test:** `tests/test_arm_sim_factory_only.py::test_rtc_calendar_walks_forward`
-(07-series only; SKIPs elsewhere).
+## 1a. Simulator RTC control + our firmware's RTC (both sides of the contract)
+
+The harness (`tools/arm_sim.py`) now owns a general wall-clock control so any
+test can shift time around cheaply, against **either** firmware:
+
+- `sim.configure_rtc(calendar, tick=None, prescale=None, calls_per_sec=1)` —
+  register an image's 7-byte calendar and its 1 s advance function.
+- `sim.set_rtc(sec, minute, hour, day, month, year)` — force the clock (a direct
+  RAM poke; no boot).
+- `sim.advance_rtc(seconds)` — walk it forward by calling the firmware's **own**
+  tick, so its real carry / days-in-month / leap logic runs.
+- `sim.get_rtc()` → `(sec, minute, hour, day, month, year)`.
+
+Our firmware gained a matching real RTC, **`src/rtc/rtc.c`** (`g_rtc`,
+`rtc_tick()`, `rtc_set_from_modbus()`, `rtc_now_minutes()`): the same 7-byte
+layout and carry/leap rules as the factory. It is **settable from HR 12-14**,
+**ticks at 1 Hz** from the main loop, and now **drives the AC-First window
+evaluator** (so our clock actually advances, instead of reading the static
+time registers). Host-tested in `tests/test_rtc.c` (`make test`).
+
+**Tests (shared spec, both images):** the `RTC_WALK` vectors in
+`tests/arm_sim_contract.py` are asserted against **ours** (by symbol,
+`test_arm_sim_self_only.py`) and the **factory** (by address,
+`test_arm_sim_factory_only.py`) — the same one-spec/both-images pattern as the
+relay and safety-telemetry contracts. The factory side is 07-series-specific and
+SKIPs on other images (e.g. the 05-series `reference/com_flat.bin`).
 
 ## 2. The energy counters (what we're aiming at)
 

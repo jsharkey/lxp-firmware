@@ -29,7 +29,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
-                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B)
+                              SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
+                              RTC_WALK)
 from arm_sim_runner import Skip, run_tests
 
 # Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
@@ -130,6 +131,24 @@ def test_safety_cpu_telemetry_reaches_modbus():
             got = fake.served(name)
             assert got == exp, ("ours snapshot %s: %s -> IR %d = %r, expected "
                                 "%r (raw %d)" % (label, name, ir, got, exp, raw))
+
+
+# --- RTC wall-clock calendar walk (src/rtc/rtc.c, docs/36) ------------------
+# Our calendar g_rtc and its 1 s advance rtc_tick() are driven by symbol through
+# the simulator's RTC control -- the SAME RTC_WALK vectors the factory oracle is
+# held to in test_arm_sim_factory_only.py.
+def test_rtc_calendar_walks_forward():
+    """Walk our RTC forward across second/minute/hour/day/month/year and leap
+    boundaries (the shared RTC_WALK contract) and confirm the calendar carries
+    correctly. Same spec as the factory oracle."""
+    sim = _ours()
+    sim.configure_rtc(sim.sym("g_rtc"), "rtc_tick", prescale=None, calls_per_sec=1)
+    for label, start, secs, exp in RTC_WALK:
+        sim.set_rtc(*start)
+        sim.advance_rtc(secs)
+        got = sim.get_rtc()
+        assert got == exp, ("ours RTC walk %s: from %r +%ds = %r, expected %r"
+                            % (label, start, secs, got, exp))
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------

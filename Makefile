@@ -87,6 +87,8 @@ test:
 	@./$(BUILD)/test_bms_can
 	$(HOSTCC) $(HOSTFLAGS) src/sched/acfirst.c tests/test_acfirst.c -o $(BUILD)/test_acfirst
 	@./$(BUILD)/test_acfirst
+	$(HOSTCC) $(HOSTFLAGS) src/rtc/rtc.c tests/test_rtc.c -o $(BUILD)/test_rtc
+	@./$(BUILD)/test_rtc
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
