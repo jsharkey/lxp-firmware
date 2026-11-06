@@ -74,7 +74,7 @@ same capture, the rest are best-read from magnitude.
 
 **Field meaning is confirmed** by the §2d capture — the bolded rows against
 known-scale aggregate registers, the rest by magnitude. Note the ASCII id in fields
-19-25 is **not** a firmware literal (absent from `com_flat.bin` and the battery
+19-25 is **not** a firmware literal (absent from `ceaa-07xx_vE_260214.bin` and the battery
 image), proving these bytes are copied straight off CAN. `perpack_map.h` keeps the
 **structural** names (`PP_S<subtype>_W<word>`) as the stable index and now carries
 the semantic read in comments.

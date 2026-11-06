@@ -397,7 +397,7 @@ populated records.
 
 Pack 0 is named **`Battery_ID_01`**, pack 1 **`Battery_ID_02`** — ASCII, in the
 fields §2b sourced to CAN subtypes 5–6. **That string is not a firmware literal**
-(absent from both `com_flat.bin` and the EG4-LL battery image), so it is **copied
+(absent from both the ARM image `ceaa-07xx_vE_260214.bin` and the EG4-LL battery image), so it is **copied
 verbatim from the CAN bus** into the per-pack array — direct proof the bank is fed
 by a byte-copy of per-pack CAN frames, and that these packs *do* emit the `0x4xx`
 series the EG4-LL packs do not.
