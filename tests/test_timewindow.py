@@ -2,22 +2,27 @@
 """Focused time-window micro-tests (docs/35) -- the SAME vectors, factory-vs-ours.
 
 A small, cheap complement to the full-simulator suite: it does not boot an image
-or speak Modbus. It drives only the AC-First "is the clock inside a window now?"
-evaluator, two ways:
+or speak Modbus. It drives only the time-window "is the clock inside a window
+now?" evaluators, calling ONE function in isolation under Unicorn -- the SAME
+strategy for both firmwares:
 
-  * our compiled acfirst_window_active() (src/sched/acfirst.c) via ctypes, and
-  * the factory ARM evaluator called in isolation under Unicorn (RTC + window
-    registers seeded, nothing else) -- the tools/emu_acfirst.py recipe, reduced.
+  * ours    -- our firmware's acfirst_window_active(), resolved by SYMBOL from
+               build/firmware.elf and called through the real ARM calling
+               convention (so our code runs exactly as the firmware runs it).
+  * factory -- the factory ARM evaluator (AC-First / AC-charge), seeded with only
+               the RTC + window registers -- the tools/emu_acfirst.py recipe.
 
 Run (from repo root):
-    python3 tests/test_timewindow.py                       # ours; factory if available
+    python3 tests/test_timewindow.py                       # factory if available
     python3 tests/test_timewindow.py path/to/factory.bin   # name the factory image
     python3 tests/test_timewindow.py --profile ceaa07 img.bin   # force a profile
-Or: `make test-window`. The factory image profile is auto-detected by default
-(works for the 05-series and 07-series images alike).
+    python3 tests/test_timewindow.py --ours-bin B --ours-elf E   # our firmware build
+Or: `make test-window` (builds our firmware first). The factory image profile is
+auto-detected by default (works for the 05-series and 07-series images alike).
 
-Ours always runs (needs only host `cc`). The factory half SKIPS cleanly when
-unicorn or the (proprietary, never-committed) image is absent.
+Both halves run under Unicorn: each SKIPS cleanly when unicorn, a built firmware
+(ours), or the proprietary never-committed factory image is absent. (Host-only,
+toolchain-free coverage of the pure function lives in tests/test_acfirst.c.)
 """
 import os
 import sys
@@ -30,38 +35,51 @@ from arm_sim_runner import run_tests, Skip          # noqa: E402
 from timewindow_contract import VECTORS, OursBackend, FactoryBackend  # noqa: E402
 
 
-# --- argv: optional factory image + profile ---------------------------------
+# --- argv: optional factory image + profile + our firmware paths ------------
 def _parse(argv):
-    image, symbols, profile, positional = None, None, "auto", []
+    image = symbols = ours_bin = ours_elf = None
+    profile, positional = "auto", []
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--symbols":
-            symbols = argv[i + 1]; i += 2
-        elif a.startswith("--symbols="):
-            symbols = a.split("=", 1)[1]; i += 1
-        elif a == "--profile":
-            profile = argv[i + 1]; i += 2
-        elif a.startswith("--profile="):
-            profile = a.split("=", 1)[1]; i += 1
+        for opt in ("--symbols", "--profile", "--ours-bin", "--ours-elf"):
+            if a == opt:
+                val = argv[i + 1]; i += 2; break
+            if a.startswith(opt + "="):
+                val = a.split("=", 1)[1]; i += 1; break
         else:
-            positional.append(a); i += 1
+            positional.append(a); i += 1; continue
+        if opt == "--symbols":
+            symbols = val
+        elif opt == "--profile":
+            profile = val
+        elif opt == "--ours-bin":
+            ours_bin = val
+        elif opt == "--ours-elf":
+            ours_elf = val
     if positional:
         image = positional[0]
     image = image or os.environ.get("LXP_FACTORY_BIN") \
         or os.path.join(ROOT, "reference", "com_flat.bin")
-    return image, symbols, profile
+    return image, symbols, profile, ours_bin, ours_elf
 
 
-FACTORY_IMAGE, SYMBOLS, PROFILE = _parse(sys.argv[1:])
+FACTORY_IMAGE, SYMBOLS, PROFILE, OURS_BIN, OURS_ELF = _parse(sys.argv[1:])
 
 _ours_cache = []
 
 
 def _ours():
     if not _ours_cache:
-        _ours_cache.append(OursBackend())
+        _ours_cache.append(OursBackend(OURS_BIN, OURS_ELF))
     return _ours_cache[0]
+
+
+def _ours_or_skip():
+    ob = _ours()
+    if not ob.available():
+        raise Skip("needs unicorn + a built firmware (run `make`)")
+    return ob
 
 
 def _factory_or_skip(window_type):
@@ -82,7 +100,7 @@ def _check_against_spec(backend):
 
 
 def _agrees_with_ours(backend):
-    ob = _ours()
+    ob = _ours_or_skip()
     diffs = []
     for name, windows, hour, minute, _expected in VECTORS:
         f = backend.active(windows, hour, minute)
@@ -97,8 +115,8 @@ def _agrees_with_ours(backend):
 # Our acfirst_window_active() is a generic start-incl/end-excl/wrap predicate, so
 # it is the oracle for EVERY factory window evaluator.
 def test_ours_matches_spec():
-    """Our compiled acfirst_window_active() satisfies the window spec."""
-    _check_against_spec(_ours())
+    """Our acfirst_window_active() (under Unicorn, by symbol) satisfies the spec."""
+    _check_against_spec(_ours_or_skip())
 
 
 def test_acfirst_factory_matches_spec():
@@ -124,6 +142,8 @@ def test_acchg_factory_agrees_with_ours():
 
 if __name__ == "__main__":
     have = os.path.exists(FACTORY_IMAGE)
-    label = "ours=acfirst.c  factory=%s" % (
+    ours_ok = _ours().available()
+    label = "ours=%s  factory=%s" % (
+        os.path.basename(OURS_BIN or "build/firmware.bin") if ours_ok else "(skip)",
         os.path.basename(FACTORY_IMAGE) if have else "(none)")
     sys.exit(run_tests("time-window micro-contract (AC-First + AC-charge)", label, globals()))
