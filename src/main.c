@@ -96,7 +96,15 @@ static mb_exception_t mb_rd_input(void *c, uint16_t a, uint16_t *o) {
 static mb_exception_t mb_rd_hold(void *c, uint16_t a, uint16_t *o) {
     (void)c;
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
-    *o = g_rt.holding_reg[a];
+    switch (a) {
+    /* The time registers read back the LIVE wall clock (docs/36), not the raw
+     * set value -- matching the factory, whose HR 12-14 getter reconstructs from
+     * its calendar. So a dongle polling the time sees it advance. */
+    case HR_TIME_YEAR_MONTH: *o = (uint16_t)(g_rtc.year   | (g_rtc.month << 8)); break;
+    case HR_TIME_DATE_HOUR:  *o = (uint16_t)(g_rtc.day    | (g_rtc.hour  << 8)); break;
+    case HR_TIME_MIN_SEC:    *o = (uint16_t)(g_rtc.minute | (g_rtc.sec   << 8)); break;
+    default:                 *o = g_rt.holding_reg[a]; break;
+    }
     return MB_OK;
 }
 /* A write to any Modbus time register (HR 12-14) sets the ARM wall clock. */

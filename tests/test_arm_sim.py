@@ -343,6 +343,42 @@ def test_settings_persist_across_cold_boot():
         "after a cold boot, ChargeCurr read back as %r, not [%d]" % (got, value)
 
 
+def test_modbus_time_set_reads_back():
+    """Set the wall clock from the dongle and confirm the device's internal RTC
+    took it. The EG4 time registers are HR 12-14 (docs/04): HR 12 =
+    year|(month<<8), HR 13 = day|(hour<<8), HR 14 = minute|(sec<<8). Write a full
+    date-time with 0x06 writes, then read HR 12-14 back with 0x03 and confirm the
+    clock reads the same time.
+
+    Pure wire-level black box, so it holds for any EG4-dongle image. Both keep a
+    real wall clock the time registers read: the factory reconstructs HR 12-14
+    from its calendar 0x2000d850 (proven live -- a read follows the clock, not the
+    last write), and ours serves them from g_rtc (src/rtc/rtc.c); so this confirms
+    the write reached the internal RTC, not just a register echo."""
+    from arm_sim_modbus import ModbusDongle
+    HR_TIME_YEAR_MONTH, HR_TIME_DATE_HOUR, HR_TIME_MIN_SEC = 12, 13, 14
+    yr, mon, day, hr, mn, sec = 24, 3, 15, 14, 30, 45     # 2024-03-15 14:30:45
+
+    mb = ModbusDongle(_sim())
+    assert mb.write_single(HR_TIME_YEAR_MONTH, yr | (mon << 8)) == (yr | (mon << 8)), \
+        "time write HR12 (year/month) not acknowledged"
+    assert mb.write_single(HR_TIME_DATE_HOUR, day | (hr << 8)) == (day | (hr << 8)), \
+        "time write HR13 (date/hour) not acknowledged"
+    assert mb.write_single(HR_TIME_MIN_SEC, mn | (sec << 8)) == (mn | (sec << 8)), \
+        "time write HR14 (minute/sec) not acknowledged"
+
+    got = None
+    for _ in range(4):                     # tolerate a transient missed reply
+        got = mb.read_holding(HR_TIME_YEAR_MONTH, 3)
+        if got:
+            break
+    assert got, "no reply reading the time registers (HR 12-14)"
+    rd = (got[0] & 0xFF, got[0] >> 8, got[1] & 0xFF, got[1] >> 8, got[2] & 0xFF, got[2] >> 8)
+    assert rd == (yr, mon, day, hr, mn, sec), (
+        "internal clock read back (Y,Mo,D,H,Mi,S) = %r, expected %r"
+        % (rd, (yr, mon, day, hr, mn, sec)))
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 def _main(argv):
     # Optional single positional arg: the image to test. (argparse would reject
