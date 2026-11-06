@@ -20,4 +20,4 @@ DATA MENU **Grid tab**: `Pinv` = inverted power, `Prec` = rectified power.
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **IR 16 / IR 17 (Pinv/Prec):** ARM-computed, scaled on serve (T07) — [`test_telemetry.py`](../../../tests/test_telemetry.py) / [`telemetry_contract.py`](../../../tests/telemetry_contract.py) confirm `IR = (uint16_t)(internal_0.1W / 10)`. Host [`test_telemetry.c`](../../../tests/test_telemetry.c).

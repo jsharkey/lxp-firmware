@@ -25,6 +25,7 @@
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
 #include "inv/energy.h"
+#include "inv/telemetry.h"
 #include "inv/settings_validate.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map,
@@ -179,6 +180,11 @@ static bool dsp_rd_holding(void *c, uint16_t reg, uint16_t *o) {
     *o = g_rt.holding_reg[reg];
     return true;
 }
+/* ARM-computed telemetry (T07). The internal quantities are fed from the DSP /
+ * safety-CPU links once those RX paths land (T05/T09); inv_telemetry_publish()
+ * serves them to the dongle input registers with the factory scaling. */
+inv_telemetry_t g_telemetry;
+
 static dsp_push_t  g_dsp;
 static dsp_cfg_src_t g_dsp_src = { .address = 0, .read_holding = dsp_rd_holding };
 
@@ -248,11 +254,13 @@ int main(void) {
                 energy_set_power(ch, g_rt.input_reg[ch_pwr[ch]]);
             energy_tick((uint8_t)g_rt.input_reg[IR_STATE]);
             energy_rollover(g_rtc.day);
+            inv_telemetry_runtime_tick(&g_telemetry, (uint8_t)g_rt.input_reg[IR_STATE]);
         }
         /* Publish the safety CPU's decoded USART2 telemetry (grid/PV/bus V,
          * frequency, temps, inverter current) into the register image before
          * serving Modbus, so the dongle sees the latest values (docs/30/33). */
         safety_cpu_publish(g_rt.input_reg, 160);
+        inv_telemetry_publish(g_rt.input_reg, &g_telemetry);  /* ARM-computed powers / Seps / runtime (T07) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
         mb_port_poll(g_ticks);

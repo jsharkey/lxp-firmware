@@ -22,4 +22,4 @@ DATA MENU **Grid tab**: `Pexport` = power output to grid (0 on this off-grid inv
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **IR 26 / IR 27 (Ptogrid/Ptouser):** ARM-computed, scaled on serve (T07) — [`test_telemetry.py`](../../../tests/test_telemetry.py) / [`telemetry_contract.py`](../../../tests/telemetry_contract.py) confirm `IR = (uint16_t)(internal_0.1W / 10)`. Host [`test_telemetry.c`](../../../tests/test_telemetry.c).

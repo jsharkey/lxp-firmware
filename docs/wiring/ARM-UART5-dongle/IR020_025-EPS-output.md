@@ -27,4 +27,5 @@ DATA MENU **UPS tab**: `Veps` = load voltage, `Feps` = load frequency, `VepsL1N`
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **IR 20 (VepsR) / IR 23 (Feps):** safety-CPU telemetry — [`arm_sim_contract.py`](../../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY` (`veps_r`, `feps`), asserted by `test_safety_cpu_telemetry_reaches_modbus`.
-- **IR 21 / 22 / 24 / 25:** _No automated test exercises this register yet — a focused test is welcome._
+- **IR 24 (Peps) / IR 25 (Seps):** ARM-computed, served (T07) — [`test_telemetry.py`](../../../tests/test_telemetry.py) / [`telemetry_contract.py`](../../../tests/telemetry_contract.py): **Peps** is scaled `IR = (uint16_t)(internal_0.1W / 10)`; **Seps** (apparent power) is served **1:1 in VA** (no /10 — its getter reads a u16 source). Host [`test_telemetry.c`](../../../tests/test_telemetry.c).
+- **IR 21 / 22 (VepsS / VepsT):** _No automated test exercises this register yet — a focused test is welcome._

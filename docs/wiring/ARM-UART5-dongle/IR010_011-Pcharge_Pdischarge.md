@@ -22,4 +22,4 @@ DATA MENU **Battery tab**: `Pchg` = battery charge power, `Pdischg` = battery di
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **IR 10 / IR 11 (Pcharge/Pdischarge):** ARM-computed sign-split of the battery power, scaled on serve (T07) — [`test_telemetry.py`](../../../tests/test_telemetry.py) / [`telemetry_contract.py`](../../../tests/telemetry_contract.py) confirm `IR = (uint16_t)(internal_0.1W / 10)`. The getter applies no sign clamp of its own, so the charge/discharge split (each ≥ 0) is done upstream in the compute. Host [`test_telemetry.c`](../../../tests/test_telemetry.c).

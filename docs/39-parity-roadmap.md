@@ -97,7 +97,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
 | State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | `IR_STATE` hard-seeded to Standby in `main.c` | whole classifier |
-| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | energy integrator only (`src/energy/`) | IR 7-11, 16-17, 24-27, 69-70, … |
+| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (needs T09 DSP RX); IR 19 PF, 77, 64/67 |
 | DSP link RX | `0x49` telemetry parsed by `FUN_08025ab8` ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **TX only** | parser + link-loss supervision |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
@@ -107,11 +107,11 @@ call/wiring line or two to `main.c`. Rebase often.
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
 | Harness depth | — | factory RTOS tasks **don't run** in the sim, so peer data is injected at the bank, not on the wire ([`docs/19`](19-gpio-test-harness.md), `tests/arm_sim_safety.py`) | wire-level e2e for USART2/USART3/relay task |
 
-Register-level coverage: **28 of 55** `docs/wiring/ARM-UART5-dongle/` register files list **no
-test** at all (recount as of T04). These include IR 6, 10-11, 16-17, 19, 26-27,
-60-63, 69-70, 77, 107 and HR 11, 16, 23-62, 103, 110, 112-113, 146-148, 194-198.
-(T04 added write-validation coverage for HR 9-10, 15, 20, 22, 66, 101, 105.) The
-tasks below are what close them.
+Register-level coverage: **23 of 56** `docs/wiring/ARM-UART5-dongle/` register files list **no
+test** at all (recount as of T07). These include IR 6, 19, 60-63, 77, 107 and
+HR 11, 16, 23-62, 103, 110, 112-113, 146-148, 194-198. (T04 added write-validation
+coverage for HR 9-10, 15, 20, 22, 66, 101, 105; T07 added serve coverage for
+IR 7-11, 16-17, 24-27, 69-70.) The tasks below are what close them.
 
 ---
 
@@ -310,7 +310,34 @@ fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
   over Modbus on both images.
 
 ### T07 — ARM-computed telemetry registers
-**Status:** `[~] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
+**Status:** `[x] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
+
+**Done (serve layer).** The computed power registers are served from a 32-bit
+value the ARM keeps internally in **0.1 W**, as `IR = (uint16_t)(internal / 10)` —
+unsigned, truncating, **not a float** (this *corrects the card's "float" guess*,
+recovered by injecting the STATUS-struct source and reading the getter
+`sub_0803289c`). Covered: **IR 7/8 Ppv**, **10/11 Pcharge/Pdischarge** (the getter
+adds no sign clamp — the split is upstream), **16/17 Pinv/Prec**, **24 Peps**,
+**26/27 Ptogrid/Ptouser** (all `/10`); **IR 25 Seps** served **1:1** in VA; **IR
+69/70 RunningTime** a u32 seconds counter split low/high (advances 1/s while
+`op_state ≥ 3`). Ours: `inv_telemetry_publish()`/`inv_power_to_ir()`
+([`src/telemetry/telemetry.c`](../src/telemetry/telemetry.c),
+[`include/inv/telemetry.h`](../include/inv/telemetry.h)), wired into
+[`src/main.c`](../src/main.c) and feeding `src/energy/`. Tests: common
+[`tests/test_telemetry.py`](../tests/test_telemetry.py) +
+[`telemetry_contract.py`](../tests/telemetry_contract.py) (factory + ours agree),
+host [`tests/test_telemetry.c`](../tests/test_telemetry.c). Register coverage
+updated for IR 7-11, 16-17, 24-27, 69-70.
+
+**Deferred (the V·I / sign-split COMPUTE itself).** The getter only *serves* a
+pre-computed value; the upstream compute is filled by the DSP `0x49` telemetry
+parser (`sub_08025ab8`, a scheduler task that doesn't run in the harness) — so the
+internal quantities are **injected** here (as the card allows) and the real
+compute lands with **T09** (DSP RX). Also not yet covered: **IR 19 PF** (a bank
+field — relayed per docs/33, not ARM-computed), **IR 77 ACInputType**, **IR 64
+Tinner / 67 Tbat**, and RunningTime cross-boot persistence — left for a T07b.
+
+Original card:
 
 These are the registers the ARM **computes** rather than relays
 ([`docs/22`](22-arm-dsp-core-split.md) "PV power is ARM-computed",

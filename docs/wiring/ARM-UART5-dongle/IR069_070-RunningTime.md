@@ -18,4 +18,4 @@ dongle's word+byte-swapped encoding.
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **IR 69 / IR 70 (RunningTime):** ARM-maintained u32 seconds counter served as a low/high register pair (T07) — [`test_telemetry.py`](../../../tests/test_telemetry.py) / [`telemetry_contract.py`](../../../tests/telemetry_contract.py) confirm IR 69 = `runtime & 0xFFFF`, IR 70 = `runtime >> 16`. The counter advances 1/s only while running (`op_state >= 3`, like the factory); host [`test_telemetry.c`](../../../tests/test_telemetry.c). (Cross-boot persistence is not yet reimplemented — follow-up.)
