@@ -74,7 +74,10 @@ dongle holding reg (output-priority / AC-charge enable / grid-charge slots)
 **ARM-side source (docs [field-provenance](field-provenance.md)):** the builder
 reads output priority from the *working* location `0x2000a343` (low byte), not
 directly from its holding register **HR 145 `OutputPrioConfig`** — i.e.
-`HR 145 → (write) 0x2000a343 → this block's 0x1E → DSP 0xADA8`. Most of this block's
+`HR 145 → (write) 0x2000a343 → this block's 0x1E → DSP 0xADA8`. This chain is now
+**proven end-to-end** — the `{0 Bat, 1 PV, 2 AC-First}` enum matches exactly at both
+ends and HR 145 is dongle-writable on the factory image
+([`hr-controlled-fields.md`](hr-controlled-fields.md) §1). Most of this block's
 other fields come from the grid-charge **slot-record** working struct
 (`0x2000a330…`), except `0x28` which is read directly from **HR 20 `PVInputModel`**
 (→ `0xAD8D`) and the slot-enable mask `0x25` (`0x2000a7a8` → `0xAD54`).

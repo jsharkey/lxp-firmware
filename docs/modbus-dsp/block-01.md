@@ -27,6 +27,15 @@ against. Evidence:
 So the ARM pushes the configured battery limits; the DSP continuously takes the
 **min** of configured vs live-BMS and clamps the converter to it.
 
+> **HR cross-check (both images).** The DSP reads block-1 voltages in **0.1 V**
+> and currents in **0.1 A**; the candidate dongle registers are documented in
+> exactly those units — HR 99/144/148 (charge/float/nominal voltage, 0.1 V) and
+> HR 101/102 (charge/discharge current, A → 0.1 A). The units agree end to end, so
+> the **block identity is high**; because block 1 is *computed* from BMS+settings
+> (field-provenance), no single HR maps 1:1 to a `0xB23x` field — control is
+> **indirect**. Full chain + factory-image writability:
+> [`hr-controlled-fields.md`](hr-controlled-fields.md) §3.
+
 ## Fields — per-field guess (**confidence per row**)
 
 Offsets/targets from [`docs/10`](../10-dsp-config-field-map.md); roles from

@@ -77,12 +77,15 @@ the **same spec against both images**: [`tests/test_dsp_push.py`](../../tests/te
 | 7 | `0x080` | **measurement calibration gains, cont.** (`0xABFx`/`0xACxx`) — *inferred* | [→](block-07.md) |
 | 8 | `0x100` | **2 calibration gains + 2 reserved** (`0xABDx`/`0xABEx`) — *inferred* | [→](block-08.md) |
 
+**Which fields a dongle holding register controls** (end-to-end, both factory
+images, with confidence): [`hr-controlled-fields.md`](hr-controlled-fields.md).
+
 ## Index — other frames on this wire
 
 | frame | direction | purpose | doc |
 |---|---|---|---|
 | 20-byte header (`0x00`–`0x13`) | both | SOF/type/len + id/serial + status, precedes every block | [→](frame-header.md) |
-| clock (`0xA5 0xA5` + y/m/d h:m:s) | ARM → DSP | stream the RTC (the DSP has no power-off clock) | [→](clock.md) |
+| clock (`0xA5 0xA5` + y/m/d h:m:s) | ARM-built | RTC stream — **the DSP does not consume it** (no parser / no time math) | [→](clock.md) |
 | telemetry (`SOF 0x49`) | DSP → ARM | working-state + PV/grid/freq mirror | [→](telemetry-0x49.md) |
 | bootloader `0x21/0x22/0x23` | ARM → DSP | firmware update (session/erase/program/verify) | [→](bootloader-21_23.md) |
 
