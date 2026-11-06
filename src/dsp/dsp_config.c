@@ -92,7 +92,7 @@ size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
         /* Slot-committer path: commit the schedule settings into the working slot
          * records (gated by each feature's enable bit, marking dirty), then
          * serialise this block's record -- slot-active mask + window times, BE.
-         * Mirrors the factory settings->slot->block chain (docs/modbus-dsp). */
+         * Mirrors the factory settings->slot->block chain (docs/wiring/ARM-USART3-DSP). */
         dsp_slots_commit(&g_dsp_slots, src);
         const dsp_slot_record_t *rec = (block_id == DSP_BLOCK_AC_CHARGE)
                                      ? &g_dsp_slots.ac_charge : &g_dsp_slots.ac_first;

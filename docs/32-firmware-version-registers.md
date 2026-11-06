@@ -1,8 +1,8 @@
 # Firmware-version registers (HR 9 / HR 10) — one byte per processor
 
-> **Dongle registers:** dongle-facing version registers: [`docs/modbus-dongle/HR009_010-FW-versions.md`](modbus-dongle/HR009_010-FW-versions.md).
+> **Dongle registers:** dongle-facing version registers: [`docs/wiring/ARM-UART5-dongle/HR009_010-FW-versions.md`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md).
 
-> **Authoritative wiring:** the version byte reaches the ARM over USART2 (safety-CPU relay) — see [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md). This doc remains the per-byte version-register trace.
+> **Authoritative wiring:** the version byte reaches the ARM over USART2 (safety-CPU relay) — see [`docs/wiring/ARM-USART2-safety.md`](wiring/ARM-USART2-safety.md). This doc remains the per-byte version-register trace.
 
 The EG4 Modbus map exposes four firmware-version fields packed into two holding
 registers. They are a clean per-processor fingerprint of the multi-CPU system, so

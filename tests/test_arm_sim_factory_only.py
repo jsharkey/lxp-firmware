@@ -184,7 +184,7 @@ def test_per_pack_telemetry_reaches_modbus():
 #
 # This clock is the foundation every time-of-day feature keys off -- including
 # the energy-counter DAILY ROLLOVER at IR 28-37
-# (docs/modbus-dongle/input-028_059-energy-counters.md), a FOLLOW-UP still blocked
+# (docs/wiring/ARM-UART5-dongle/input-028_059-energy-counters.md), a FOLLOW-UP still blocked
 # on locating that image's energy struct/accumulator (RE hand-off in docs/36).
 FAC_RTC_TICK     = 0x08018bc0
 FAC_CALENDAR     = 0x2000d850

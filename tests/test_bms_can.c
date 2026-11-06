@@ -89,7 +89,7 @@ int main(void)
     /* ===================================================================== *
      * Field sweep: every decoded field, its edges, and the DLC guards and    *
      * frame independence that feed the IR 81-106 BMS block (docs/20,         *
-     * docs/modbus-dongle/IR081_106-BMS.md).                                  *
+     * docs/wiring/ARM-UART5-dongle/IR081_106-BMS.md).                                  *
      * ===================================================================== */
 
     /* 0x355 SOC/SOH endpoints, on a fresh pack (minimum DLC 4, no hi-res). */

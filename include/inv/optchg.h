@@ -11,12 +11,12 @@
  * slot si lives in regs[si/8] bits [2*(si%8) + 1 : 2*(si%8)], so HR 126 holds
  * Time0 (bits 0-1) .. Time7 (bits 14-15), HR 127 holds Time8..Time15, and so on.
  * (Layout per the EG4 18kPV-12LV Modbus protocol; see
- * docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md.)
+ * docs/wiring/ARM-UART5-dongle/HR126_131-OptimalChg_DisChg.md.)
  *
  * The ARM would look up the current slot's mark against the clock, like the
  * AC-First windows (inv/acfirst.h). NOTE: the ceaa-07xx factory image does NOT
  * evaluate this table at all -- it is stored and read back over Modbus but never
- * consumed (dormant; see docs/31 Q5 and docs/modbus-dongle/HR126_131). To stay
+ * consumed (dormant; see docs/31 Q5 and docs/wiring/ARM-UART5-dongle/HR126_131). To stay
  * behaviour-compatible with the factory oracle, this evaluator is intentionally
  * NOT wired into the main loop; it exists as a pure, host-testable helper (and a
  * ready implementation should a later image activate the feature).

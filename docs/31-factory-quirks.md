@@ -88,7 +88,7 @@ read back what it produced — see each entry's *How found*.
 
 ## Q4 — `0x356` battery current may reach IR 98 with a 10× unit mismatch
 
-- **Area:** battery CAN → Modbus (`docs/20`, `docs/modbus-dongle/IR081_106-BMS.md`)
+- **Area:** battery CAN → Modbus (`docs/20`, `docs/wiring/ARM-UART5-dongle/IR081_106-BMS.md`)
 - **Observed:** the dongle Modbus spec calls IR 98 `BatCurrent_BMS` **0.01 A**
   (and IR 81/82 max charge/discharge current likewise 0.01 A), but the
   battery-firmware frame map ([`include/inv/bms_can_map.h`](../include/inv/bms_can_map.h),
@@ -113,7 +113,7 @@ read back what it produced — see each entry's *How found*.
 
 ## Q5 — `OptimalChg_DisChg` (HR 126-131) is defined but never evaluated
 
-- **Area:** dongle Modbus / scheduler (`docs/25`, `docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md`)
+- **Area:** dongle Modbus / scheduler (`docs/25`, `docs/wiring/ARM-UART5-dongle/HR126_131-OptimalChg_DisChg.md`)
 - **Observed:** the 48-slot × 2-bit half-hour charge/discharge table is fully
   writable and reads back (stored at RAM `0x2000D814`, next to the RTC), and the
   spec gates it behind `stSysEnable.HalfHourACChrStartEn` (HR 120 bit 0). But the
@@ -128,7 +128,7 @@ read back what it produced — see each entry's *How found*.
   write path). No evaluator reads it. A `UC_HOOK_MEM_READ` over the block sees
   zero reads during a long run except when a dongle `0x03` of HR 126-131 runs the
   getter. Writing the table moves no DSP config-push byte, and the DSP does not
-  evaluate time windows anyway ([`docs/modbus-dsp/clock.md`](modbus-dsp/clock.md)).
+  evaluate time windows anyway ([`docs/wiring/ARM-USART3-DSP/clock.md`](wiring/ARM-USART3-DSP/clock.md)).
   So the feature is present in the register map but inert in this firmware — the
   same "defined but dormant" pattern as the per-pack range (IR 5000-5126).
 - **Our firmware:** keeps a tested pure evaluator (`optchg_slot_mode()`,

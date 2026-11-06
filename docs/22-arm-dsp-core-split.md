@@ -1,6 +1,6 @@
 # Where the state machine lives — the ARM/DSP split, traced through IR_STATE
 
-> **Authoritative wiring:** the USART2↔safety-CPU link is specified in [`docs/wiring/ARM-USART2.md`](wiring/ARM-USART2.md). **Note:** the table cell calling PV voltage "DSP telemetry, verbatim" is stale — the measured values are the safety CPU's own (see the correction note below it, and docs/29).
+> **Authoritative wiring:** the USART2↔safety-CPU link is specified in [`docs/wiring/ARM-USART2-safety.md`](wiring/ARM-USART2-safety.md). **Note:** the table cell calling PV voltage "DSP telemetry, verbatim" is stale — the measured values are the safety CPU's own (see the correction note below it, and docs/29).
 
 A long-standing open question was whether the core operating-state machine lives
 on the ARM "com" MCU or the TI C2000 DSP, and the evidence looked contradictory:

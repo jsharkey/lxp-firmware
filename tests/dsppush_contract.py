@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Shared ARM->DSP config-push contract -- the SAME spec, factory-vs-ours.
 
-This is a *live USART3 capture* contract, done the definitive way docs/modbus-dsp
+This is a *live USART3 capture* contract, done the definitive way docs/wiring/ARM-USART3-DSP
 asks for: write a holding register over the dongle (the real Modbus write handler
 stores it), then serialize the config snapshot with the image's *own* builder, and
 see which config-frame byte moved. Differential (value A vs B) so it is immune to
 scaling, packing and offset guesses -- a frame byte that changes is driven by that
 register; one that never changes is not.
 
-It settles the open question in docs/modbus-dsp/field-provenance.md about the
+It settles the open question in docs/wiring/ARM-USART3-DSP/field-provenance.md about the
 HR 64-89 charge/discharge schedule:
 
   * AC-charge WINDOW times HR 68-73  ARE pushed -> config block 4, @0x17..0x21 (BE16)
@@ -167,7 +167,7 @@ class FactoryBackend(_Backend):
     # carries it, else fall back to the stable flash address for the 07-series
     # com_flat.bin -- symbol-map regenerations relabel/merge functions, but the
     # address is fixed for this image (calling it mid-"function" is identical, it
-    # is the same bytes). docs/modbus-dsp/field-provenance.md.
+    # is the same bytes). docs/wiring/ARM-USART3-DSP/field-provenance.md.
     _FILL_ADDR = 0x08024dfc
 
     def _new_sim(self):

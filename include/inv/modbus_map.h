@@ -7,7 +7,7 @@
  *
  * Per-register prose — what each register means, where its data comes from
  * (for inputs) and the side-effects of writing it (for holdings) — lives in
- * docs/modbus-dongle/ (authoritative for the dongle surface). This header is
+ * docs/wiring/ARM-UART5-dongle/ (authoritative for the dongle surface). This header is
  * the machine-readable companion to that tree.
  *
  * TARGET DEVICE NOTE: this map is the 18kPV-12LV SUPERSET. The firmware builds
@@ -267,7 +267,7 @@ enum mb_hold_reg {
        1 charging, 2 discharging. HR 126 = Time0-7 (00:00-04:00) .. HR 131 =
        Time40-47 (20:00-00:00). Evaluated against the ARM RTC like the other time
        windows (inv/optchg.h); not pushed to the DSP as a per-slot verdict.
-       docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md. */
+       docs/wiring/ARM-UART5-dongle/HR126_131-OptimalChg_DisChg.md. */
     HR_OPTCHG_TABLE_0   = 126, /* Time0-7   00:00-04:00 */
     HR_OPTCHG_TABLE_1   = 127, /* Time8-15  04:00-08:00 */
     HR_OPTCHG_TABLE_2   = 128, /* Time16-23 08:00-12:00 */

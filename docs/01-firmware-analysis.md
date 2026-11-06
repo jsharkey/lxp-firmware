@@ -12,7 +12,7 @@ Where a fact is an inference rather than a direct read, it is marked *(inferred)
 > addresses do **not** match this image's. Treat the specific addresses below as
 > 05-series; for the current IO map / links / registers see
 > [`docs/16`](16-arm-io-map.md), [`docs/wiring/`](wiring/README.md) and
-> [`docs/modbus-dongle/`](modbus-dongle/README.md), and
+> [`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md), and
 > [`docs/11`](11-12000xp-revisions.md) for the 05→07 delta.
 
 ## Image facts (direct reads)

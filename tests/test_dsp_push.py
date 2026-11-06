@@ -5,7 +5,7 @@ Writes a holding register over the Modbus dongle, then serializes the config
 snapshot with the image's OWN block builder and checks which config-frame byte
 moved (differential A-vs-B). Proves where the HR 64-89 charge/discharge schedule
 registers actually land on the ARM->DSP link -- see dsppush_contract.py and
-docs/modbus-dsp/field-provenance.md.
+docs/wiring/ARM-USART3-DSP/field-provenance.md.
 
   * ours    -- our dsp_build_config_frame(&g_dsp_src, ...) by symbol (src/dsp/)
   * factory -- the real per-block filler sub_08024dfc by address
@@ -77,7 +77,7 @@ def _ours_or_skip():
 # The window TIMES occupy payload offsets 0x17..0x22 (three big-endian u16 pairs).
 # The slot-enable / dirty mask word (payload 0x15..0x16, -> DSP 0xAD54) also moves
 # when a schedule edit dirties its slot -- that is the slot-committer design working
-# (docs/modbus-dsp), not a window byte -- so the spec is asserted over the window
+# (docs/wiring/ARM-USART3-DSP), not a window byte -- so the spec is asserted over the window
 # region only. (The factory also mirrors that mask into block 0 @0x25 and blocks
 # 3/6 @0x15; all outside this window, so excluded uniformly for both images.)
 WIN_LO, WIN_HI = 0x17, 0x23

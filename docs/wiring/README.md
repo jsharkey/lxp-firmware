@@ -2,8 +2,8 @@
 
 **This directory is the source of truth for how the processors and peripherals
 are wired together.** Each physical link has its own doc here, named
-`<ENDPOINT>-<PORT>.md` (e.g. [`ARM-USART3.md`](ARM-USART3.md),
-[`DSP-SCI-C.md`](DSP-SCI-C.md)). When a numbered analysis doc (`docs/NN-*.md`)
+`<ENDPOINT>-<PORT>.md` (e.g. [`ARM-USART3.md`](ARM-USART3-DSP/README.md),
+[`DSP-SCI-C.md`](DSP-SCI-C-safety.md)). When a numbered analysis doc (`docs/NN-*.md`)
 and a doc here disagree about a wire, **the doc here wins** — the numbered docs
 are the research trail, these are the distilled, reconciled result. Fix the
 wiring doc first, then the numbered doc.
@@ -75,25 +75,25 @@ BMS in the battery pack, and the external datalogger dongle.
 > measurements + the fault word (agreement bit **E027**) + grid warnings to the
 > ARM over **USART2**. (The W008 FW-version-mismatch warning is ARM-computed, not
 > relayed.) The DSP's *own* `0x49` telemetry still reaches the ARM directly on
-> **USART3** (SCI-B). See [`ARM-USART2.md`](ARM-USART2.md),
-> [`DSP-SCI-C.md`](DSP-SCI-C.md) and the bank field map in
+> **USART3** (SCI-B). See [`ARM-USART2.md`](ARM-USART2-safety.md),
+> [`DSP-SCI-C.md`](DSP-SCI-C-safety.md) and the bank field map in
 > [`docs/33`](../33-usart2-telemetry-bank.md).
 
 ## The links at a glance
 
 | Link doc | ARM port (base) | pins | peer | electrical / baud | framing | direction | conf. |
 |---|---|---|---|---|---|---|---|
-| [ARM-USART3](ARM-USART3.md) | USART3 `0x40004800` | PB10/PB11 | **Control DSP** (SCI-B) | TTL, 19200 8N1 | EG4 type-1 block (BE, SN-less) + `0x21/22/23` bootloader | ARM→DSP config/boot; DSP→ARM `0x49` telem | ✔ |
-| [ARM-USART2](ARM-USART2.md) | USART2 `0x40004400` | PA2/PA3 (DE PC2) | **redundant/safety CPU** | RS-485, 19200, **RX-only** | EG4 type-1 (BE, CRC-16) | safety CPU→ARM | ✔ |
-| [ARM-UART5](ARM-UART5.md) | UART5 `0x40005000` | PC12/PD2 (DE PA15) | external **dongle** (ESP32-C3) | RS-485, 9600 8N1 | EG4 Modbus (LE + 10-byte SN) | dongle = master, ARM = slave | ✔ |
-| [ARM-CAN1](ARM-CAN1.md) | CAN1 `0x40006400` | PB8/PB9 (remap) | **battery BMS** (HC32F460) | CAN, ~500 kbit/s *(unconfirmed)* | classic 11-bit, SMA/Pylontech family | BMS→ARM `0x3xx`; ARM→BMS `0x30x/0x400` | ✔ pins / ~ baud |
-| [ARM-SPI1](ARM-SPI1.md) | SPI1 | PA5/PA6/PA7, CS PA4 | **config NOR flash** | SPI master | SPI NOR cmds; 6-slot journaled store | ARM ↔ flash (read+write) | ✔ (ARM) |
-| [ARM-LCD](ARM-LCD.md) | GPIO (GPIOB) | PB12/13/14/15 | **graphic LCD** panel | bit-banged 4-wire serial | MIPI-DCS, 240×160 1bpp | ARM→panel | ✔ |
-| [ARM-UART4](ARM-UART4.md) | UART4 `0x40004c00` | PC10/PC11 (DE PA15) | *meter? (open)* | RS-485, 2400 | *(EG4 family, presumed)* | open | ? |
-| [ARM-USART1](ARM-USART1.md) | USART1 `0x40013800` | PA9/PA10 *(presumed)* | *open* | *off this boot (UE=0)* | — | — | ? |
-| [DSP-SCI-C](DSP-SCI-C.md) | DSP SCI-C | — | **redundant/safety CPU** | TTL, ~9600 | `'T'` in / `'D'` out, 30-byte, CRC-16 BE | DSP = master | ✔ (DSP) |
-| [DSP-SCI-A](DSP-SCI-A.md) | DSP SCI-A | — | *open* | TTL, ~9600 | bulk `LS4_RAM` strided records | DSP→? | ✔ exists / ? peer |
-| [MPPT-USART1](MPPT-USART1.md) | MPPT USART1 `0x40013800` | — | **Control DSP** *(inferred)* | UART, Modbus-family | `0x42` SOF, big-endian registers | MPPT→DSP (DSP = master) | ✔ MPPT / ~ peer |
+| [ARM-USART3](ARM-USART3-DSP/README.md) | USART3 `0x40004800` | PB10/PB11 | **Control DSP** (SCI-B) | TTL, 19200 8N1 | EG4 type-1 block (BE, SN-less) + `0x21/22/23` bootloader | ARM→DSP config/boot; DSP→ARM `0x49` telem | ✔ |
+| [ARM-USART2](ARM-USART2-safety.md) | USART2 `0x40004400` | PA2/PA3 (DE PC2) | **redundant/safety CPU** | RS-485, 19200, **RX-only** | EG4 type-1 (BE, CRC-16) | safety CPU→ARM | ✔ |
+| [ARM-UART5](ARM-UART5-dongle/README.md) | UART5 `0x40005000` | PC12/PD2 (DE PA15) | external **dongle** (ESP32-C3) | RS-485, 9600 8N1 | EG4 Modbus (LE + 10-byte SN) | dongle = master, ARM = slave | ✔ |
+| [ARM-CAN1](ARM-CAN1-BMS.md) | CAN1 `0x40006400` | PB8/PB9 (remap) | **battery BMS** (HC32F460) | CAN, ~500 kbit/s *(unconfirmed)* | classic 11-bit, SMA/Pylontech family | BMS→ARM `0x3xx`; ARM→BMS `0x30x/0x400` | ✔ pins / ~ baud |
+| [ARM-SPI1](ARM-SPI1-flash.md) | SPI1 | PA5/PA6/PA7, CS PA4 | **config NOR flash** | SPI master | SPI NOR cmds; 6-slot journaled store | ARM ↔ flash (read+write) | ✔ (ARM) |
+| [ARM-LCD](ARM-LCD-panel.md) | GPIO (GPIOB) | PB12/13/14/15 | **graphic LCD** panel | bit-banged 4-wire serial | MIPI-DCS, 240×160 1bpp | ARM→panel | ✔ |
+| [ARM-UART4](ARM-UART4-open.md) | UART4 `0x40004c00` | PC10/PC11 (DE PA15) | *meter? (open)* | RS-485, 2400 | *(EG4 family, presumed)* | open | ? |
+| [ARM-USART1](ARM-USART1-open.md) | USART1 `0x40013800` | PA9/PA10 *(presumed)* | *open* | *off this boot (UE=0)* | — | — | ? |
+| [DSP-SCI-C](DSP-SCI-C-safety.md) | DSP SCI-C | — | **redundant/safety CPU** | TTL, ~9600 | `'T'` in / `'D'` out, 30-byte, CRC-16 BE | DSP = master | ✔ (DSP) |
+| [DSP-SCI-A](DSP-SCI-A-open.md) | DSP SCI-A | — | *open* | TTL, ~9600 | bulk `LS4_RAM` strided records | DSP→? | ✔ exists / ? peer |
+| [MPPT-USART1](MPPT-USART1-DSP.md) | MPPT USART1 `0x40013800` | — | **Control DSP** *(inferred)* | UART, Modbus-family | `0x42` SOF, big-endian registers | MPPT→DSP (DSP = master) | ✔ MPPT / ~ peer |
 
 Every serial link above reuses the **EG4/Luxpower Modbus frame family**
 (`addr func [SN?] body CRC-16/0xA001`), but they are **separate wires**, not one
@@ -120,7 +120,7 @@ Panel keys, relays, fans and indicators are driven directly on ARM GPIOs. The
 | Status LED / heartbeat | PB1, PD10, PD14 | indicator / run line / LCD-backlight-or-strobe | ~ |
 
 > The reimplementation's front-panel display is the GPIOB graphic LCD in
-> [`ARM-LCD.md`](ARM-LCD.md) (`src/hmi/lcd_tft.c`). An earlier 20×4 HD44780 I²C
+> [`ARM-LCD.md`](ARM-LCD-panel.md) (`src/hmi/lcd_tft.c`). An earlier 20×4 HD44780 I²C
 > character-LCD stand-in on **PE0/PE1** (a reimplementation convenience, never
 > factory wiring) was removed once that panel was decoded — the hardware has no
 > character LCD and no display I²C.
@@ -134,21 +134,21 @@ table cell even where a correction note follows.
   grid/PV *measurements* in the USART2 bank are the **safety CPU's own**
   (commit `896f4aa`). `docs/22`'s table cell still prints "PV voltage = DSP
   telemetry, verbatim"; that cell is stale — the correction block below it and
-  [`ARM-USART2.md`](ARM-USART2.md) are right.
+  [`ARM-USART2.md`](ARM-USART2-safety.md) are right.
 - **The external dongle is UART5, not USART3.** USART3 is the ARM↔DSP link.
   Earlier `docs/25`/`docs/22-modbus-multiplexing` drafts put the dongle on
-  USART3; retracted. See [`ARM-UART5.md`](ARM-UART5.md).
+  USART3; retracted. See [`ARM-UART5.md`](ARM-UART5-dongle/README.md).
 - **The ARM↔DSP link is the EG4 *type-1 block* protocol, not standard Modbus.**
   The "standard Modbus / func-3+SN" reading described the *dongle* channel.
-  See [`ARM-USART3.md`](ARM-USART3.md).
+  See [`ARM-USART3.md`](ARM-USART3-DSP/README.md).
 - **The factory LCD is a bit-banged GPIOB bus, not SPI1.** SPI1 is the config
-  flash. See [`ARM-LCD.md`](ARM-LCD.md) and [`docs/28`](../28-factory-hmi.md).
+  flash. See [`ARM-LCD.md`](ARM-LCD-panel.md) and [`docs/28`](../28-factory-hmi.md).
 - **DSP SCI-A is not the telemetry port to the ARM.** SCI-A carries an unrelated
   bulk dump; the ARM-facing DSP telemetry is SCI-B (= USART3). See
-  [`DSP-SCI-A.md`](DSP-SCI-A.md).
+  [`DSP-SCI-A.md`](DSP-SCI-A-open.md).
 - **CAN1 RX: polled vs interrupt-driven is unreconciled.** `docs/16`/`docs/20`
   body say polled; `docs/19`/`docs/20` correction say interrupt-driven (FMPIE0).
-  Tracked in [`ARM-CAN1.md`](ARM-CAN1.md).
+  Tracked in [`ARM-CAN1.md`](ARM-CAN1-BMS.md).
 
 ## Still open
 

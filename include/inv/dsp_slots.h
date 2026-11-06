@@ -1,7 +1,7 @@
 /*
  * ARM -> DSP grid-charge "slot records" + committers.
  *
- * Mirrors the factory design (docs/modbus-dsp/field-provenance.md): the config
+ * Mirrors the factory design (docs/wiring/ARM-USART3-DSP/field-provenance.md): the config
  * push does NOT serialize raw holding registers. The schedule settings are first
  * COMMITTED into a working "slot record" (the factory keeps these at RAM
  * 0x2000a330; a ~34-function committer family copies settings -> slot, gated by a

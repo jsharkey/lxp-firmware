@@ -1,5 +1,5 @@
 /* Host tests for the OptimalChg_DisChg half-hour schedule lookup (docs/25,
- * docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md).  make test
+ * docs/wiring/ARM-UART5-dongle/HR126_131-OptimalChg_DisChg.md).  make test
  *
  * Verifies the pure table-vs-clock logic for HR 126-131: the half-hour slot
  * index, the 8-slots-per-register / 2-bits-per-slot LSB-first packing, the three

@@ -401,7 +401,7 @@ def test_bms_telemetry_block_tracks_updates():
     (BatCurrent), IR 99/100 (BMS fault/warn), IR 103 (MaxCellTemp). The remaining
     superset entries (IR 81/82/84/101/102/104/106) are not decoded from CAN yet
     (bms_can.c), so they are deliberately NOT asserted here -- see
-    docs/modbus-dongle/IR081_106-BMS.md.
+    docs/wiring/ARM-UART5-dongle/IR081_106-BMS.md.
 
     Black box over two buses (CAN1 + the dongle UART), no symbols, so the same
     spec holds for both images."""
@@ -461,7 +461,7 @@ def test_bms_telemetry_block_tracks_updates():
 
 def test_modbus_optchg_table_roundtrip():
     """HR 126-131 OptimalChg_DisChg store/read-back over the dongle (docs/25,
-    docs/modbus-dongle/HR126_131-OptimalChg_DisChg.md).
+    docs/wiring/ARM-UART5-dongle/HR126_131-OptimalChg_DisChg.md).
 
     The 48-slot x 2-bit half-hour table is the one OptimalChg behaviour that is
     black-box observable on this image: writing the six table registers and

@@ -31,7 +31,7 @@ Short answers, from static RE of both ends plus harness probes:
 Sources: battery App `reference/BATT_IN280-Z03T13.bin` (HC32F460, flat App @
 `0x00020000`; proprietary, gitignored) via `tools/batt_canmap.py` + Thumb
 disassembly; factory ARM `reference/ceaa-07xx_vE_260214.bin` via `tools/arm_sim.py` probes;
-the dongle register surface in [`docs/modbus-dongle/`](modbus-dongle/README.md)
+the dongle register surface in [`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md)
 and [`docs/33`](33-usart2-telemetry-bank.md); battery basics in
 [`docs/20`](20-battery-bms-firmware.md).
 
@@ -77,7 +77,7 @@ frames are **received and buffered** but **not published to any Modbus register*
   not the aligned u16 register image at `0x2000_d7xx` that the Modbus getters
   serve. So the parser ingests them; nothing copies them to a register.
 - **The authoritative register surface has no per-pack slots.** The dongle's
-  per-register docs ([`docs/modbus-dongle/`](modbus-dongle/README.md)) and the
+  per-register docs ([`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md)) and the
   USART2-bank→register sweep ([`docs/33`](33-usart2-telemetry-bank.md)) list a
   **single aggregate BMS block** (IR 81–106) and nothing per-battery; the input
   map tops out around IR 152.
@@ -309,7 +309,7 @@ piece above. But neither selection routes the EG4 pack's data into the 5000 bank
 
 - **The two selectors (confirmed).** The **battery** picks one of **8
   inverter-brand presets** `P01-EG4 … P07-LUX … P08-SMA` (which inverter it talks
-  to; strings `@0x31a00`+, [`docs/wiring/ARM-CAN1.md`](wiring/ARM-CAN1.md)). The
+  to; strings `@0x31a00`+, [`docs/wiring/ARM-CAN1-BMS.md`](wiring/ARM-CAN1-BMS.md)). The
   **ARM** picks one of **24 battery-brand "Lithium Type" presets** (HMI menu 9;
   strings `@0x2e088`): `0 Standard, 1 HinaESS, 2 Pylon, 3 Enopte, 4 MSUN, 5 GSL1,
   6 Lux, 7 Aobo, 8 Dyness, 9 Stealth, 10 TeLongMei, 11 Merit, 12 BYD, 13 SHINWA,

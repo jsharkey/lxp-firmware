@@ -1,6 +1,6 @@
 # ARM → DSP configuration protocol (USART3 ↔ SCI-B)
 
-> **Authoritative wiring:** the ARM↔DSP link, framing and direction are distilled in [`docs/wiring/ARM-USART3.md`](wiring/ARM-USART3.md). This doc remains the deep dive on the config-push protocol.
+> **Authoritative wiring:** the ARM↔DSP link, framing and direction are distilled in [`docs/wiring/ARM-USART3-DSP/README.md`](wiring/ARM-USART3-DSP/README.md). This doc remains the deep dive on the config-push protocol.
 
 How the ARM "com" MCU hands operating settings to the TI C28x control DSP over
 the inter-processor serial link. Recovered by static RE of **both** sides — the

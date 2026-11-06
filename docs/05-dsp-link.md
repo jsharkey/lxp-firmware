@@ -1,6 +1,6 @@
 # Inter-processor / DSP link
 
-> **Authoritative wiring:** the ARM↔DSP link identity and the `0x21/0x22/0x23` bootloader are distilled in [`docs/wiring/ARM-USART3.md`](wiring/ARM-USART3.md). This doc is the research trail.
+> **Authoritative wiring:** the ARM↔DSP link identity and the `0x21/0x22/0x23` bootloader are distilled in [`docs/wiring/ARM-USART3-DSP/README.md`](wiring/ARM-USART3-DSP/README.md). This doc is the research trail.
 
 Status: **framing decoded from the ARM side; physical UART→peer mapping pending
 the schematic.** The TI C2000 DSP image is a **C28x** binary, which no tool in
@@ -239,7 +239,7 @@ shared `"EDSN"`/`0x21-0x23` vocabulary make that pairing all but certain.
 > data-flow trace landed on USART2 as the ARM's telemetry input — since
 > identified as the **redundant/safety-CPU** link (its grid/PV values are the
 > safety CPU's *own* samples; only the operating-mode byte is DSP-relayed), **not**
-> a DSP→ARM link. See [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) and
+> a DSP→ARM link. See [`docs/wiring/ARM-USART2`](wiring/ARM-USART2-safety.md) and
 > [`docs/30`](30-safety-cpu-arm-handoff.md).
 
 ## How to finish (ranked)

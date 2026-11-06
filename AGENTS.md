@@ -104,7 +104,7 @@ make             # 12000XP build; add VARIANT=18kpv / VARIANT=6000xp if touched
 - If a test can't run because it needs a proprietary image you don't have, say
   so explicitly in your commit/notes rather than pretending it passed.
 - **When a test exercises a dongle Modbus register, record it in that register's
-  `## Test coverage` section** in [`docs/modbus-dongle/`](docs/modbus-dongle/README.md).
+  `## Test coverage` section** in [`docs/wiring/ARM-UART5-dongle/`](docs/wiring/ARM-UART5-dongle/registers.md).
   Every `IR*`/`HR*` file carries one, listing the tests that cover each register
   and flagging the ones with no test yet. Keep it current as you add, rename, or
   retarget a test — link the test file and name the test function. That list is
@@ -136,24 +136,24 @@ a numbered doc and a subdir file disagree, **the subdir file wins.**
 | domain | authoritative source | holds |
 |---|---|---|
 | **Inter-processor & external protocols; hardware IO** | [`docs/wiring/`](docs/wiring/README.md) | one file per physical link (`ARM-USART3`, `DSP-SCI-C`, …): ports, **pins**, electrical type, baud, framing, direction; the overview carries the system block diagram + the full ARM pin map |
-| **The external dongle Modbus registers** | [`docs/modbus-dongle/`](docs/modbus-dongle/README.md) | one file per register/group (`IR001-Vpv1`, `HR022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
+| **The external dongle Modbus registers** | [`docs/wiring/ARM-UART5-dongle/`](docs/wiring/ARM-UART5-dongle/registers.md) | one file per register/group (`IR001-Vpv1`, `HR022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
 
 **When your work touches one of these domains, update the relevant file there —
 don't just drop the finding in a numbered doc or a commit message.** If you pin a
 new pin, decode a frame field, trace where an input register's value originates,
 or find a holding register's side-effect, the matching `docs/wiring/` or
-`docs/modbus-dongle/` file is where it belongs (add a numbered doc too if the
+`docs/wiring/ARM-UART5-dongle/` file is where it belongs (add a numbered doc too if the
 *derivation* is worth recording, and link the two). A finding that never reaches
 the authoritative file is invisible to the next agent.
 
 - These files are **named, not numbered**, so they sidestep the `docs/NN`
   collision problem — edit the right existing file rather than creating a new
   numbered one.
-- Scope discipline matters in `docs/modbus-dongle/`: it is **only** the dongle
+- Scope discipline matters in `docs/wiring/ARM-UART5-dongle/`: it is **only** the dongle
   Modbus surface. The internal links (ARM↔DSP, safety-CPU, MPPT) are different
   wires with different framing — document those in `docs/wiring/`, and keep the
   distinction (see that README's "four EG4-Modbus-family links" note).
-- Each `docs/modbus-dongle/` register file has a `## Test coverage` section; when
+- Each `docs/wiring/ARM-UART5-dongle/` register file has a `## Test coverage` section; when
   you write or change a test that touches a register, update that section (see
   **Build & test** above).
 - Leave a breadcrumb: when you move a fact into one of these subdirs, point the
@@ -187,7 +187,7 @@ explicit.
 - `docs/` — the recovered specification (research trail); `docs/01` and `docs/02`
   are the baseline.
 - **`docs/wiring/`** — authoritative: protocols, links, hardware IO/pins.
-- **`docs/modbus-dongle/`** — authoritative: the external dongle Modbus registers.
+- **`docs/wiring/ARM-UART5-dongle/`** — authoritative: the external dongle Modbus registers.
 - `include/inv/` — the recovered data model (states, faults, settings,
   modbus_map, hmi_menu, variant). Source of truth for the reimplementation.
 - `src/` — the GCC skeleton firmware (modbus / uart / can / hmi / dsp).

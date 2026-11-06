@@ -3,7 +3,7 @@
  *
  * The physical front panel has a four-key pad and a monochrome graphic LCD
  * (the LCD is driven by src/hmi/lcd_tft.c, bit-banged 4-wire on GPIOB — see
- * docs/28 / docs/wiring/ARM-LCD.md). There is **no** character LCD and no I²C
+ * docs/28 / docs/wiring/ARM-LCD-panel.md). There is **no** character LCD and no I²C
  * display on this hardware; an earlier 20×4 HD44780-over-PCF8574 stand-in was
  * removed once the real graphic panel was decoded.
  *

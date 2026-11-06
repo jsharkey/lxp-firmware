@@ -11,10 +11,10 @@ outputs is inferred** from the driver logic and flagged by confidence.
 
 The overall system block diagram and the per-port ARM link table have **moved to
 the wiring source-of-truth** at [`docs/wiring/README.md`](wiring/README.md), with
-one doc per physical link — e.g. [`ARM-USART3`](wiring/ARM-USART3.md) (DSP),
-[`ARM-USART2`](wiring/ARM-USART2.md) (safety CPU), [`ARM-UART5`](wiring/ARM-UART5.md)
-(dongle), [`ARM-CAN1`](wiring/ARM-CAN1.md) (BMS), [`ARM-SPI1`](wiring/ARM-SPI1.md)
-(config flash), [`ARM-LCD`](wiring/ARM-LCD.md) (panel). Defer to `docs/wiring/` for
+one doc per physical link — e.g. [`ARM-USART3`](wiring/ARM-USART3-DSP/README.md) (DSP),
+[`ARM-USART2`](wiring/ARM-USART2-safety.md) (safety CPU), [`ARM-UART5`](wiring/ARM-UART5-dongle/README.md)
+(dongle), [`ARM-CAN1`](wiring/ARM-CAN1-BMS.md) (BMS), [`ARM-SPI1`](wiring/ARM-SPI1-flash.md)
+(config flash), [`ARM-LCD`](wiring/ARM-LCD-panel.md) (panel). Defer to `docs/wiring/` for
 what each port connects to and how.
 
 This doc keeps the **full 54-pin inventory** and the **recovery method** below —

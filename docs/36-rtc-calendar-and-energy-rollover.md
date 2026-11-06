@@ -79,11 +79,11 @@ SKIPs on other images (e.g. the 05-series `reference/ceaa-05xx_com_vE_250325.bin
 ## 2. The energy counters (what we're aiming at)
 
 The dongle exposes energy integrals the ARM maintains
-([`IR028_059-energy-counters`](modbus-dongle/IR028_059-energy-counters.md)):
+([`IR028_059-energy-counters`](wiring/ARM-UART5-dongle/IR028_059-energy-counters.md)):
 
 - **Daily** IR 28-37 (u16, 0.1 kWh) — **reset at the day boundary**.
 - **Cumulative** IR 40-59 (u32 L/H, 0.1 kWh) — **persist**; cleared only via
-  `HR 11` `EnergyRecordClr` ([`HR011-ResetSetting`](modbus-dongle/HR011-ResetSetting.md)).
+  `HR 11` `EnergyRecordClr` ([`HR011-ResetSetting`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md)).
 
 Accumulation (`energy += power·Δt`) is **tick/power-driven**, not clock-driven;
 the **RTC drives only the daily reset/rollover** (§1 is that clock). So "walk the

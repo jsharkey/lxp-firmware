@@ -1,6 +1,6 @@
 # The `mppt` image (`CBAA`) — a fourth, distinct processor
 
-> **Authoritative wiring:** the MPPT↔DSP serial link is distilled in [`docs/wiring/MPPT-USART1.md`](wiring/MPPT-USART1.md). This doc remains the full characterization of the MPPT processor.
+> **Authoritative wiring:** the MPPT↔DSP serial link is distilled in [`docs/wiring/MPPT-USART1-DSP.md`](wiring/MPPT-USART1-DSP.md). This doc remains the full characterization of the MPPT processor.
 
 Analysis of the attached firmware `169a5158-CBAA-1Cxxxx_mppt_250805.hex`.
 
@@ -145,7 +145,7 @@ for another firmware to read and parse**, exactly as hypothesised.
 > the operating-mode byte is DSP-relayed) — so the final hop is *safety CPU → ARM*,
 > not "DSP → ARM verbatim". Whether the safety CPU self-measures PV/grid or shares
 > the DSP's sense lines is itself open. See
-> [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) / [`docs/30`](30-safety-cpu-arm-handoff.md).
+> [`docs/wiring/ARM-USART2`](wiring/ARM-USART2-safety.md) / [`docs/30`](30-safety-cpu-arm-handoff.md).
 
 One nuance: the CRC-16 and big-endian registers are pure Modbus, but the frame has
 a **fixed-offset layout** (header bytes 0x00–0x13, data from 0x14) rather than the
@@ -282,7 +282,7 @@ Evidence, all from the ARM image:
   | ARM UART | baud | pins | transceiver | peer |
   |---|---|---|---|---|
   | USART3 | 19200 | PB10/PB11 | TTL (no DE pin) | **DSP control link** (internal) |
-  | USART2 | 19200 | PA2/PA3 | **RS-485** (DE on `PC2`, driven in its ISR `0x0801BDE4`) | **redundant/safety-CPU telemetry** (safety CPU→ARM, RX) — see [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) |
+  | USART2 | 19200 | PA2/PA3 | **RS-485** (DE on `PC2`, driven in its ISR `0x0801BDE4`) | **redundant/safety-CPU telemetry** (safety CPU→ARM, RX) — see [`docs/wiring/ARM-USART2`](wiring/ARM-USART2-safety.md) |
   | UART4 | 2400 | PC10/PC11 | RS-485 (DE on `PA15`) | external (meter / BMS-UART) |
   | UART5 | 9600 | PC12/PD2 | RS-485 (DE on `PA15`) | **external RS-485 dongle / Modbus** |
 
@@ -296,7 +296,7 @@ Evidence, all from the ARM image:
   > `sub_0802afe2` at `0x40005000` ([`docs/08`](08-arm-dsp-config-protocol.md)); and
   > **USART2** is the ARM's telemetry input from the **redundant/safety CPU** (not
   > the DSP — superseding the earlier docs/22/23 "DSP telemetry" reading), see
-  > [`docs/wiring/ARM-USART2`](wiring/ARM-USART2.md) / [`docs/30`](30-safety-cpu-arm-handoff.md).
+  > [`docs/wiring/ARM-USART2`](wiring/ARM-USART2-safety.md) / [`docs/30`](30-safety-cpu-arm-handoff.md).
 - **The ARM does no analog metering** (docs/16: no ADC analog-in pins). It cannot
   measure PV itself; the numbers must arrive from a measuring peer.
 - **The DSP writes the ARM's telemetry register array** (docs/05, docs/08): the

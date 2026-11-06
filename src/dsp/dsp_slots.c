@@ -1,6 +1,6 @@
 /*
  * Grid-charge slot records + committers for the ARM->DSP config push.
- * See inv/dsp_slots.h and docs/modbus-dsp/field-provenance.md.
+ * See inv/dsp_slots.h and docs/wiring/ARM-USART3-DSP/field-provenance.md.
  */
 #include "inv/dsp_slots.h"
 #include "inv/modbus_map.h"

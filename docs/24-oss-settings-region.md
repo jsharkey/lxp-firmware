@@ -1,6 +1,6 @@
 # A forward-compatible OSS settings region on the config flash
 
-> **Authoritative wiring:** the SPI1↔config-flash link is distilled in [`docs/wiring/ARM-SPI1.md`](wiring/ARM-SPI1.md). This doc remains the OSS forward-compat region plan.
+> **Authoritative wiring:** the SPI1↔config-flash link is distilled in [`docs/wiring/ARM-SPI1-flash.md`](wiring/ARM-SPI1-flash.md). This doc remains the OSS forward-compat region plan.
 
 We want the open reimplementation to persist **new** settings of its own on the
 same SPI NOR config flash, while keeping the factory's settings
