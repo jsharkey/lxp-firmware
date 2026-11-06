@@ -395,7 +395,7 @@ state change and relay drop. **Prove it:**
   per peer, wired into T06's local-flags input.
 
 ### T09 — DSP link RX: parse the `0x49` telemetry frame
-**Status:** `[ ]` · **Layer:** host + sim · **Independent** (factory RX path `FUN_0801bb0e`/`FUN_08025ab8`)
+**Status:** `[~] claude 2026-11-06` · **Layer:** host + sim · **Independent** (factory RX path `FUN_0801bb0e`/`FUN_08025ab8`)
 
 Our link is TX-only. The factory parses DSP `0x49` frames on USART3
 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)). The authoritative
