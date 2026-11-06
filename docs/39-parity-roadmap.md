@@ -107,10 +107,11 @@ call/wiring line or two to `main.c`. Rebase often.
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
 | Harness depth | — | factory RTOS tasks **don't run** in the sim, so peer data is injected at the bank, not on the wire ([`docs/19`](19-gpio-test-harness.md), `tests/arm_sim_safety.py`) | wire-level e2e for USART2/USART3/relay task |
 
-Register-level coverage: **26 of 54** `docs/wiring/ARM-UART5-dongle/` register files list **no
-test** at all. These include IR 6, 10-11, 16-17, 19, 26-27, 60-63, 69-70, 77,
-107 and HR 9-11, 16, 20, 22-62, 103, 110, 112-113, 146-148, 194-198. The tasks
-below are what close them.
+Register-level coverage: **28 of 55** `docs/wiring/ARM-UART5-dongle/` register files list **no
+test** at all (recount as of T04). These include IR 6, 10-11, 16-17, 19, 26-27,
+60-63, 69-70, 77, 107 and HR 11, 16, 23-62, 103, 110, 112-113, 146-148, 194-198.
+(T04 added write-validation coverage for HR 9-10, 15, 20, 22, 66, 101, 105.) The
+tasks below are what close them.
 
 ---
 
@@ -174,7 +175,26 @@ widths and `×10` scalings, all dynamically. We persist 2.
   oracle before trusting the table**, and correct docs/23 if needed.
 
 ### T04 — Holding-register write semantics: ranges, clamps, rejects, read-only
-**Status:** `[~] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
+**Status:** `[x] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
+
+**Done.** The factory **rejects** an out-of-range write with a Modbus exception
+(it does **not** clamp or store): out-of-range → exception `3` (ILLEGAL_VALUE),
+read-only register → exception `4` (SLAVE_FAILURE), reserved address → exception
+`2`. Recovered by a fresh-boot-per-value dongle probe (the harness RX degrades
+after a rejected write, so static isolation of the validator wasn't needed and
+wasn't achieved). Ours: `settings_validate()`
+([`src/settings/settings_validate.c`](../src/settings/settings_validate.c),
+[`include/inv/settings_validate.h`](../include/inv/settings_validate.h)) in front
+of `mb_wr_hold` **and** `hmi_write` ([`src/main.c`](../src/main.c)). Tests: common
+[`tests/test_settings_validate.py`](../tests/test_settings_validate.py) +
+[`settings_contract.py`](../tests/settings_contract.py) (factory + ours agree, 11
+vectors), host [`tests/test_settings_validate.c`](../tests/test_settings_validate.c)
+(`make test`). Deviations → [`docs/31`](31-factory-quirks.md) **Q6** (HR 101/105
+enforce only one bound — replicated for parity) and **Q7** (HR 22 returns
+exception 2 on this image). Register coverage updated for HR 9/10, 15, 20, 22, 66,
+101, 105.
+
+Original card:
 
 `mb_wr_hold` accepts anything (`/* TODO: validate ranges */`). The factory's
 behaviour on an out-of-range write is **unknown**: reject with exception 3,

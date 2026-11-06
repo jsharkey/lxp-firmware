@@ -24,6 +24,7 @@
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
 #include "inv/energy.h"
+#include "inv/settings_validate.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map).
  * The wire value is scaled to the on-flash units the factory uses so a record
@@ -119,9 +120,11 @@ static void apply_if_time_reg(uint16_t reg) {
 static mb_exception_t mb_wr_hold(void *c, uint16_t a, uint16_t v) {
     (void)c;
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
-    g_rt.holding_reg[a] = v;    /* TODO: validate ranges */
-    settings_persist_hr(a, v);  /* journal persisted settings to the config flash */
-    apply_if_time_reg(a);       /* HR 12-14 -> set the wall clock */
+    sv_result_t sv = settings_validate(a, v);   /* range / read-only check (T04) */
+    if (sv.exc != MB_OK) return sv.exc;          /* reject out-of-range / read-only */
+    g_rt.holding_reg[a] = sv.value;
+    settings_persist_hr(a, sv.value);  /* journal persisted settings to the config flash */
+    apply_if_time_reg(a);              /* HR 12-14 -> set the wall clock */
     return MB_OK;
 }
 
@@ -140,9 +143,11 @@ static bool hmi_read(hmi_regspace_t sp, uint16_t r, uint16_t *o) {
 }
 static bool hmi_write(uint16_t r, uint16_t v) {
     if (r < 256) {
-        g_rt.holding_reg[r] = v;       /* TODO: validate */
-        settings_persist_hr(r, v);     /* journal persisted settings to the config flash */
-        apply_if_time_reg(r);          /* HR 12-14 -> set the wall clock */
+        sv_result_t sv = settings_validate(r, v);   /* same validation as the dongle (T04) */
+        if (sv.exc != MB_OK) return false;           /* reject out-of-range / read-only */
+        g_rt.holding_reg[r] = sv.value;
+        settings_persist_hr(r, sv.value);  /* journal persisted settings to the config flash */
+        apply_if_time_reg(r);              /* HR 12-14 -> set the wall clock */
         return true;
     }
     return false;

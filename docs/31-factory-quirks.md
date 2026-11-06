@@ -144,6 +144,53 @@ read back what it produced — see each entry's *How found*.
 
 ---
 
+## Q6 — holding-register range checks enforce only one bound on some registers
+
+- **Area:** dongle Modbus write validation (`docs/39` T04,
+  `docs/wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md`, `HR105-EOD.md`)
+- **Observed:** a holding-register write is range-checked, and an out-of-range
+  value is **rejected** (Modbus exception `3` ILLEGAL_VALUE, value not stored —
+  confirmed for HR 15/20/66, which reject above their max). But a few registers
+  enforce only the **lower** bound:
+  - **HR 101 `ChargeCurr`** (spec `0-140`): a write of `141` is **accepted and
+    stored** (echo), and the cold default reads `250` — both above the spec max.
+  - **HR 105 `EOD`** (spec `10-90`): `9` is rejected (exc 3), but `91` is
+    **accepted and stored**. Lower bound enforced, upper bound not.
+- **Expected:** the published ranges are two-sided; a value above the max should
+  be rejected (or clamped) like one below the min.
+- **Evidence:** fresh-boot-per-value dongle write probe (the harness RX state
+  degrades after a rejected write, so each value is probed on a fresh boot),
+  classifying the reply (echo vs exception + code) and the read-back
+  (`tests/settings_contract.py`, image `com_flat.bin`). Static isolation of the
+  per-register validator was not achieved (the symbol map's regeneration merged
+  it), so this is a dynamic finding.
+- **Our firmware:** **replicated for parity** — `settings_validate()`
+  (`src/settings/settings_validate.c`) uses `NO_MAX` for HR 101/105 so the common
+  test (`tests/test_settings_validate.py`) is green on both images. A stricter OSS
+  validation enforcing the documented upper bound is a reasonable **fix
+  candidate** — still-to-decide; flip the table entry and the vector if we take it.
+- **Status:** confirmed (for this image).
+
+## Q7 — HR 22 `StartPVVolt` is not writable on this image (exception 2)
+
+- **Area:** dongle Modbus write validation (`docs/wiring/ARM-UART5-dongle/HR022-StartPVVolt.md`)
+- **Observed:** a func-`0x06` write to **HR 22** (documented `StartPVVolt`,
+  `900-5000`) returns **exception `2` (ILLEGAL_ADDRESS)** regardless of the value
+  (tried in-range `2500` and out-of-range `899`), and a read of HR 22 returns
+  `65`, not a `900-5000` voltage. So on `com_flat.bin` HR 22 behaves as an
+  **unimplemented / remapped** address, not the documented PV-start-voltage.
+- **Expected:** a documented, writable holding register.
+- **Evidence:** fresh-boot dongle write/read probe (`tests/settings_contract.py`).
+  Could be variant/image-specific (this is the ceaa 05-family image; the register
+  may live elsewhere or be gated).
+- **Our firmware:** ours implements HR 22 in its register map, so ours would
+  **accept** an in-range write where the factory rejects it — a deliberate
+  divergence, **not** asserted in the common write-semantics test. Needs more RE
+  (is HR 22 remapped, or write-gated behind a mode?) before we match or fix.
+- **Status:** suspected (one image, func-06 only; func-16 and other images untried).
+
+---
+
 ## Not quirks (recorded so we don't re-flag them)
 
 These surprised us at first but are defensible factory behaviour; our firmware

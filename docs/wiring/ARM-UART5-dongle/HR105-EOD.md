@@ -22,3 +22,4 @@ SETTINGS → **Discharge tab**: `On Grid EOD Volt` (**default 42.0V**). Related 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **HR 105 (EOD):** [`test_dsp_config.c`](../../../tests/test_dsp_config.c) sets `HR_EOD` and confirms it is carried in the config push.
+- **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — in-range `50` accepted, `9` (< min 10) rejected with Modbus exception 3, but `91` (> spec max 90) is **accepted** — the factory enforces only the lower bound ([`docs/31`](../../31-factory-quirks.md) Q6, replicated for parity). Host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).

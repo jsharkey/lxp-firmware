@@ -30,4 +30,4 @@ A FW-version mismatch here is what surfaces as warning **W008** (ARM-computed; s
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — these are **read-only**; a dongle write draws Modbus exception 4 (SLAVE_FAILURE) and stores nothing. Host [`test_settings_validate.c`](../../../tests/test_settings_validate.c) covers both HR 9 and HR 10.

@@ -18,3 +18,4 @@ address.
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **HR 15 (Com Addr):** write-single path — [`test_modbus.c`](../../../tests/test_modbus.c) writes `HR_COM_ADDR` and checks the echo.
+- **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — in-range `10` accepted, `151` (> max 150) rejected with Modbus exception 3; host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).

@@ -24,4 +24,4 @@ SETTINGS → **Common tab**: `PV Input Mode` = `DC source input` | `Two MPPT con
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — in-range `3` accepted, `8` (> max 7) rejected with Modbus exception 3; host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).
