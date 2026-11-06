@@ -60,6 +60,12 @@ the push serializes **derived working structs** (slot records, battery limits), 
 raw holding registers — with the directly-mapped registers (e.g. HR 20 → block 0) and
 the remaining one-layer hop called out.
 
+**The slot-committer design** — why the factory derives slot records instead of
+serializing registers, why that is a good shape, and how our firmware mirrors it —
+is in [`slot-committer-design.md`](slot-committer-design.md). The
+holding-reg→block mapping it rests on is verified by a live USART3 capture that runs
+the **same spec against both images**: [`tests/test_dsp_push.py`](../../tests/test_dsp_push.py).
+
 ## Index — config blocks (ARM → DSP, SOF `0x41`, block id @ `0x14`)
 
 | block | `b300` bit | role | doc |

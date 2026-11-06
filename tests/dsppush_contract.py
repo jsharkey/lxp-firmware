@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Shared ARM->DSP config-push contract -- the SAME spec, factory-vs-ours.
+
+This is a *live USART3 capture* contract, done the definitive way docs/modbus-dsp
+asks for: write a holding register over the dongle (the real Modbus write handler
+stores it), then serialize the config snapshot with the image's *own* builder, and
+see which config-frame byte moved. Differential (value A vs B) so it is immune to
+scaling, packing and offset guesses -- a frame byte that changes is driven by that
+register; one that never changes is not.
+
+It settles the open question in docs/modbus-dsp/field-provenance.md about the
+HR 64-89 charge/discharge schedule:
+
+  * AC-charge WINDOW times HR 68-73  ARE pushed -> config block 4, @0x17..0x21 (BE16)
+  * AC-First WINDOW times HR 152-157 ARE pushed -> config block 5, @0x17..0x21 (BE16)
+  * AC-charge POWER   HR 66           is stored but NOT pushed (no frame byte moves)
+  * HR 67 (AC-charge SOC) and HR 74-89 (charge-priority + forced-discharge) are
+    NOT writable in the factory image at all -- those schedule features are inert
+    here, so there is nothing to push (WRITABLE_64_89 below records the live set).
+
+Both images are driven under Unicorn exactly the same way (dongle write + the
+image's own block builder), so "the factory oracle and our firmware agree" is one
+spec each satisfies -- parity by contract (cf. timewindow_contract.py).
+
+Register semantics: include/inv/modbus_map.h. Window packing: low byte = hour
+(0-23), high byte = minute (0-59).
+"""
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
+sys.path.insert(0, os.path.dirname(__file__))
+
+# --- the shared push spec ---------------------------------------------------
+# reg -> (block_id, payload_offset) of the big-endian u16 it lands in, or None if
+# the register is stored but NOT serialized into any config block.
+DSP_PUSH = {
+    # AC-charge windows  (w0s w0e w1s w1e w2s w2e) -> block 4
+    68: (4, 0x17), 69: (4, 0x19), 70: (4, 0x1b),
+    71: (4, 0x1d), 72: (4, 0x1f), 73: (4, 0x21),
+    # AC-First windows   (w0s w0e w1s w1e w2s w2e) -> block 5
+    152: (5, 0x17), 153: (5, 0x19), 154: (5, 0x1b),
+    155: (5, 0x1d), 156: (5, 0x1f), 157: (5, 0x21),
+    # AC-charge power %: stored, but not part of the config push
+    66: None,
+}
+
+# Live (writable) registers in the HR 64-89 schedule block, as the factory image
+# exposes them. 67 (AC-charge SOC) and 74-89 (charge-priority + forced-discharge)
+# are inert -- a dongle write does not store (read-back stays at the default).
+WRITABLE_64_89 = {64, 65, 66, 68, 69, 70, 71, 72, 73}
+INERT_64_89    = {67} | set(range(74, 90))
+
+# window A/B: two valid, distinct times (09:10 and 21:34), hour|minute<<8.
+WIN_A = (10 << 8) | 9
+WIN_B = (34 << 8) | 21
+# a value for non-window percent registers (valid 0-100), A/B
+PCT_A, PCT_B = 40, 73
+
+NBLOCKS = 9
+_FRAME_LO, _FRAME_HI = 0x15, 0x34     # payload window compared for a delta
+
+
+def ab_values(reg):
+    """(A, B) write values appropriate to the register's type."""
+    window_regs = set(range(68, 74)) | set(range(152, 158))
+    return (WIN_A, WIN_B) if reg in window_regs else (PCT_A, PCT_B)
+
+
+def _payload_delta(frames_a, frames_b):
+    """Set of (block, offset) payload bytes that differ between two full snapshots.
+    frames_x: {block_id: bytes}. Only payload region [0x15:0x34] is compared."""
+    hits = set()
+    for blk in set(frames_a) & set(frames_b):
+        fa, fb = frames_a[blk], frames_b[blk]
+        hi = min(len(fa), len(fb), _FRAME_HI)
+        for k in range(_FRAME_LO, hi):
+            if fa[k] != fb[k]:
+                hits.add((blk, k))
+    return hits
+
+
+class _Backend:
+    """Common driver: boot an image ONCE, then run every probe on the same sim
+    (no snapshot/restore -- the boot ends at the STOP sentinel, and probing
+    different registers in sequence does not interfere: later writes overwrite or
+    target unrelated registers, and each block build re-reads current state).
+
+    Subclasses provide _new_sim() (ArmSim + symbols) and _build_block(sim, blk)
+    -> captured frame bytes."""
+    name = "?"
+    FRAME = 0x20009414          # where the built frame is assembled (overridable)
+
+    def __init__(self):
+        self._warm = None       # (sim, dongle) for the build probes, booted once
+        self._warm_w = None     # a SEPARATE sim for writability (write-only) probes
+
+    def available(self):
+        try:
+            self._boot()
+            return True
+        except Exception:
+            return False
+
+    def _boot(self):
+        if self._warm is None:
+            from arm_sim_modbus import ModbusDongle
+            sim = self._new_sim()
+            mb = ModbusDongle(sim, boot_insn=self.boot_insn)
+            self._warm = (sim, mb)
+        return self._warm
+
+    def _boot_w(self):
+        if self._warm_w is None:
+            from arm_sim_modbus import ModbusDongle
+            sim = self._new_sim()
+            mb = ModbusDongle(sim, boot_insn=self.boot_insn)
+            self._warm_w = (sim, mb)
+        return self._warm_w
+
+    _ENGINE_VARS = ("_exc_depth", "_msp", "_pending_irqs", "_thread_on_psp",
+                    "_pendsv_set", "_systick_due", "_insns", "_tick_mark")
+
+    def writable(self, reg, value):
+        """Write `value` to `reg` over the dongle; True iff it reads back. Runs on
+        a SEPARATE sim from the build probes: probing the inert registers makes the
+        firmware reject the write (no echo), which burns a full transaction budget
+        and leaves the loop in a state the build probes should not inherit."""
+        sim, mb = self._boot_w()
+        mb.write_single(reg, value)
+        return mb.read_holding(reg) == [value]
+
+    def _blocks_after_write(self, reg, value):
+        """Write `reg`=value over the dongle, then build all blocks. Building uses
+        sim.call(), which parks the CPU at the STOP sentinel and would kill the
+        dongle's next resume -- so snapshot the CPU context + RTOS-engine vars
+        after the write and restore them after the builds, leaving the loop
+        exactly where the dongle left it for the next transaction."""
+        sim, mb = self._boot()
+        mb.write_single(reg, value)
+        ctx = sim.uc.context_save()
+        saved = {k: getattr(sim, k) for k in self._ENGINE_VARS}
+        try:
+            return {blk: self._build_block(sim, blk) for blk in range(NBLOCKS)}
+        finally:
+            sim.uc.context_restore(ctx)
+            for k, v in saved.items():
+                setattr(sim, k, (list(v) if isinstance(v, list) else v))
+
+    def push_delta(self, reg, a, b):
+        """(block, offset) payload bytes that move when `reg` goes a->b."""
+        fa = self._blocks_after_write(reg, a)
+        fb = self._blocks_after_write(reg, b)
+        return _payload_delta(fa, fb)
+
+
+class FactoryBackend(_Backend):
+    """Factory image: dongle write + the real per-block filler sub_08024dfc."""
+    name = "factory"
+    boot_insn = 1_000_000
+
+    def __init__(self, image, symbols=None):
+        super().__init__()
+        self.image = image
+        self.symbols = symbols or os.path.join(
+            os.path.dirname(__file__), "..", "reference", "symbols.csv")
+
+    # Per-block filler (the real builder). Resolve by name when the symbol map
+    # carries it, else fall back to the stable flash address for the 07-series
+    # com_flat.bin -- symbol-map regenerations relabel/merge functions, but the
+    # address is fixed for this image (calling it mid-"function" is identical, it
+    # is the same bytes). docs/modbus-dsp/field-provenance.md.
+    _FILL_ADDR = 0x08024dfc
+
+    def _new_sim(self):
+        from arm_sim import ArmSim, load_symbols_csv
+        if not os.path.exists(self.image):
+            raise FileNotFoundError(self.image)
+        syms = load_symbols_csv(self.symbols)
+        self._fill = syms.get("sub_08024dfc", self._FILL_ADDR)
+        return ArmSim(self.image, syms)
+
+    def _build_block(self, sim, blk):
+        sim.wbytes(self.FRAME, bytes([0] * 0x40))
+        sim.call(self._fill, (self.FRAME, 0x14, blk))
+        return sim.rbytes(self.FRAME, 0x40)
+
+
+class OursBackend(_Backend):
+    """Our firmware: dongle write + our dsp_build_config_frame(&g_dsp_src, ...).
+    The frame is built into a scratch page (0x30000000) the harness maps on use."""
+    name = "ours"
+    boot_insn = 4_000_000
+    SCRATCH = 0x30000000
+
+    def __init__(self, bin_path, elf_path):
+        super().__init__()
+        self.bin_path = bin_path
+        self.elf_path = elf_path
+
+    def _new_sim(self):
+        from arm_sim import ArmSim, load_symbols_nm
+        if not (self.bin_path and self.elf_path
+                and os.path.exists(self.bin_path) and os.path.exists(self.elf_path)):
+            raise FileNotFoundError(self.bin_path or "ours")
+        syms = load_symbols_nm(self.elf_path)
+        self._build_fn = syms["dsp_build_config_frame"]
+        self._src = syms["g_dsp_src"]
+        sim = ArmSim(self.bin_path, syms)
+        # Map the scratch page explicitly: it is written via the direct mem API
+        # (wbytes), which -- unlike emulated access -- does not trigger the
+        # harness's map-on-unmapped hook.
+        sim.uc.mem_map(self.SCRATCH, 0x1000)
+        return sim
+
+    def _build_block(self, sim, blk):
+        sim.wbytes(self.SCRATCH, bytes([0] * 0x40))
+        sim.call(self._build_fn, (self._src, blk, self.SCRATCH, 0x80))
+        return sim.rbytes(self.SCRATCH, 0x40)

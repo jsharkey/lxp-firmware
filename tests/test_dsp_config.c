@@ -43,7 +43,7 @@ int main(void)
     uint16_t crc = dsp_crc16(f, n - 2);
     CHECK((f[n-2] | (f[n-1] << 8)) == crc, "block0 CRC valid");
 
-    /* ---- full-snapshot rotation: 8 blocks, ids 0..7, each a valid type-1 frame ---- */
+    /* ---- full-snapshot rotation: all blocks, ids 0..N-1, each a valid type-1 frame ---- */
     dsp_push_t p; dsp_push_init(&p);
     int seen[DSP_CONFIG_NBLOCKS] = {0};
     for (int i = 0; i < DSP_CONFIG_NBLOCKS; i++) {
@@ -56,7 +56,7 @@ int main(void)
     }
     CHECK(p.next_block == 0, "rotation wraps back to block 0");
     int all = 1; for (int i = 0; i < DSP_CONFIG_NBLOCKS; i++) all &= seen[i];
-    CHECK(all, "all 8 blocks emitted in one full snapshot");
+    CHECK(all, "all blocks emitted in one full snapshot");
 
     /* a changed setting shows up in the next snapshot (full image, not delta) */
     holding[HR_OUTPUT_PRIO_CFG] = 1;        /* PV First */

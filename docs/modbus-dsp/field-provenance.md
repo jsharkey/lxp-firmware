@@ -86,23 +86,30 @@ they carry the window-*end* values (HR 69/72 for AC-charge, HR 153/156 for AC-Fi
 The real grouping is three `(start,end)` pairs `(0x17,0x19)`,`(0x1B,0x1D)`,`(0x1F,0x21)`,
 not `(0x17,0x1B)` with `0x19` dropped.
 
-### What is NOT resolved by this method (do not assume "pushed")
+### The rest of the schedule — now settled by live capture
 
-The marker method only tags the **canonical settings struct** (`0x20009854…`,
-i.e. what `fn_ceaa` serves). These schedule registers are **not** in that struct and
-**no committer reads them** by constant-base addressing, so this trace can neither
-confirm nor deny they reach the DSP:
+The static marker method only tags the **canonical settings struct**
+(`0x20009854…`, what `fn_ceaa` serves); the remaining schedule registers are not in
+it, so the trace above could not speak to them. A **live USART3 capture** now does —
+write the register over the dongle, serialize the snapshot with the real builder,
+and diff the frame bytes ([`tests/test_dsp_push.py`](../../tests/test_dsp_push.py),
+the method field-provenance called for). Result on the factory image:
 
-- **AC-charge power/SOC — HR 66/67** (not in the `fn_ceaa` map).
-- **Charge-priority — HR 74–81** (whole feature, not in the `fn_ceaa` map).
-- **Forced-discharge — HR 82–89** (whole feature, not in the `fn_ceaa` map).
+| register(s) | writable? | pushed to the DSP? |
+|---|---|---|
+| AC-charge **power** HR 66 | yes (reads back) | **NO** — stored, but no config-frame byte moves |
+| AC-charge **SOC** HR 67 | **no** (write not stored) | — inert in this image |
+| **Charge-priority** HR 74–81 | **no** | — whole feature inert in this image |
+| **Forced-discharge** HR 82–89 | **no** | — whole feature inert in this image |
+| general charge/discharge power HR 64/65 | yes | (not probed for push) |
 
-Their write-path storage is outside the canonical struct (register-indexed, which
-`ramxref` and the marker scan are blind to). Resolving them needs a **live USART3
-capture** (write the reg over the dongle, watch which `0x41`-frame byte moves) — the
-definitive method, since the push is not scheduler-driven in `arm_sim`. No evidence
-was found that HR 74–89 reach blocks 3–6; that is an **absence of evidence, not
-proof of absence** — stated here so no reader over-reads it.
+So: **HR 66 is confirmed stored-but-not-pushed**, and **HR 67 + HR 74–89 are not
+even writable here** — the AC-charge-SOC, charge-priority and forced-discharge
+schedule features are inert in this firmware, so there is nothing to push. This is
+the empirical complement to the static finding (they are absent from the settings
+struct and from every committer read), and it supersedes the earlier "absence of
+evidence" hedge for these registers in *this* image. (A different variant that
+exposes those features could push them; the capture is per-image.)
 
 ## Per-block ARM-source map (reliable)
 

@@ -2,8 +2,8 @@
  * ARM -> DSP configuration push (USART3 <-> DSP SCI-B) — public API.
  *
  * Implements the downlink documented in docs/08-arm-dsp-config-protocol.md:
- * the ARM is the master and continuously streams the COMPLETE set of 8 config
- * blocks (ids 0..7) as a repeating full snapshot — it does NOT send deltas; the
+ * the ARM is the master and continuously streams the COMPLETE set of 9 config
+ * blocks (ids 0..8) as a repeating full snapshot — it does NOT send deltas; the
  * DSP diffs each received value against its stored copy and acts on changes
  * (see docs/07 for the AC-First / block-0 semantics it drives).
  *
@@ -32,7 +32,7 @@
 #include <stdbool.h>
 
 #define DSP_FRAME_TYPE_CONFIG   1
-#define DSP_CONFIG_NBLOCKS      8
+#define DSP_CONFIG_NBLOCKS      9   /* ids 0..8 (matches the factory deserialiser) */
 #define DSP_SN_LEN              10
 
 /* wire byte offsets */
@@ -57,12 +57,12 @@ typedef struct {
     void    *ctx;
 } dsp_cfg_src_t;
 
-/* Build the type-1 config frame for `block_id` (0..7) into `out`.
+/* Build the type-1 config frame for `block_id` (0..8) into `out`.
  * Returns the total frame length (incl. CRC), or 0 on error. */
 size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
                               uint8_t *out, size_t cap);
 
-/* Driver state: rotates through the 8 blocks, one per tick, forever. */
+/* Driver state: rotates through the 9 blocks, one per tick, forever. */
 typedef struct { uint8_t next_block; } dsp_push_t;
 
 static inline void dsp_push_init(dsp_push_t *p) { p->next_block = 0; }

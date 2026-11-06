@@ -10,6 +10,7 @@
  * payload) until their field order is decoded.
  */
 #include "inv/dsp_link.h"
+#include "inv/dsp_slots.h"   /* grid-charge slot records + committers (blocks 4/5) */
 #include "inv/modbus.h"      /* reuse the shared CRC-16 */
 #include "inv/modbus_map.h"
 #include <string.h>
@@ -21,6 +22,12 @@ uint16_t dsp_crc16(const uint8_t *buf, size_t len) { return inv_modbus_crc16(buf
  * order is not explicitly documented. Default to little-endian (lo,hi) as in the
  * rest of the EG4 Modbus family; flip DSP_CRC_MSB_FIRST if a capture disagrees. */
 #define DSP_CRC_MSB_FIRST 0
+
+/* Payload multi-byte fields are BIG-ENDIAN on the ARM->DSP wire -- confirmed by
+ * live USART3 capture of the schedule windows (tests/test_dsp_push.py: HR 68 =
+ * 0x2215 serialises as bytes 22 15 at block 4 @0x17). The DSP's field readers
+ * FUN_0009E7C2/FUN_0009E6BA are big-endian (docs/08). (The dongle Modbus path is
+ * little-endian -- a different wire; do not confuse the two.) */
 
 /* Each payload field: a holding register and how many bytes to emit (1 or 2). */
 typedef struct { uint16_t reg; uint8_t width; } dsp_field_t;
@@ -40,17 +47,27 @@ static const dsp_field_t block0_fields[] = {
     /* TODO: AC-charge time windows + SOC/Volt (HR ~68-73, 158-161) once mapped */
 };
 
-/* Blocks 1..7 — target RAM clusters known (docs/08) but field order not yet
- * recovered. Empty for now: the frame is still emitted (header+blockid+CRC) so
+/* Blocks 1..8 — target RAM clusters known (docs/08) but field order not yet
+ * recovered, EXCEPT blocks 4 and 5 which carry the grid-charge time-window slot
+ * records and are built from the slot-committer (dsp_slots.c), not this table.
+ * The rest are empty for now: the frame is still emitted (header+blockid+CRC) so
  * the rotation and the DSP's completeness bitmask behave, carrying no payload. */
 static const dsp_field_t *const block_fields[DSP_CONFIG_NBLOCKS] = {
-    block0_fields, 0, 0, 0, 0, 0, 0, 0
+    block0_fields, 0, 0, 0, 0, 0, 0, 0, 0
 };
 static const uint8_t block_nfields[DSP_CONFIG_NBLOCKS] = {
-    (uint8_t)(sizeof block0_fields / sizeof block0_fields[0]), 0,0,0,0,0,0,0
+    (uint8_t)(sizeof block0_fields / sizeof block0_fields[0]), 0,0,0,0,0,0,0,0
 };
 
-static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+/* Blocks built from slot records instead of the field table (dsp_slots.c). */
+#define DSP_BLOCK_AC_CHARGE  4   /* HR 68-73  window times */
+#define DSP_BLOCK_AC_FIRST   5   /* HR 152-157 window times */
+
+/* The working slot records the push serialises (committed from settings on each
+ * build, mirroring the factory's commit-during-build; see dsp_slots.c). */
+static dsp_slots_t g_dsp_slots;
+
+static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 
 size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
                               uint8_t *out, size_t cap)
@@ -71,13 +88,24 @@ size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
     out[DSP_OFF_BLOCKID] = block_id;
     n = DSP_OFF_PAYLOAD;
 
-    /* pack this block's fields from the holding-register model */
-    const dsp_field_t *f = block_fields[block_id];
-    for (uint8_t i = 0; i < block_nfields[block_id]; i++) {
-        uint16_t v = 0;
-        if (src->read_holding) src->read_holding(src->ctx, f[i].reg, &v);
-        if (f[i].width == 2) { put16(out + n, v); n += 2; }
-        else                 { out[n++] = (uint8_t)v; }
+    if (block_id == DSP_BLOCK_AC_CHARGE || block_id == DSP_BLOCK_AC_FIRST) {
+        /* Slot-committer path: commit the schedule settings into the working slot
+         * records (gated by each feature's enable bit, marking dirty), then
+         * serialise this block's record -- slot-active mask + window times, BE.
+         * Mirrors the factory settings->slot->block chain (docs/modbus-dsp). */
+        dsp_slots_commit(&g_dsp_slots, src);
+        const dsp_slot_record_t *rec = (block_id == DSP_BLOCK_AC_CHARGE)
+                                     ? &g_dsp_slots.ac_charge : &g_dsp_slots.ac_first;
+        n += dsp_slot_serialize(rec, out + n);
+    } else {
+        /* pack this block's fields from the holding-register model */
+        const dsp_field_t *f = block_fields[block_id];
+        for (uint8_t i = 0; i < block_nfields[block_id]; i++) {
+            uint16_t v = 0;
+            if (src->read_holding) src->read_holding(src->ctx, f[i].reg, &v);
+            if (f[i].width == 2) { put16(out + n, v); n += 2; }
+            else                 { out[n++] = (uint8_t)v; }
+        }
     }
 
     /* CRC-16 over everything so far */
