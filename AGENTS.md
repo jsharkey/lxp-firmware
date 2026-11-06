@@ -10,6 +10,8 @@ follow this.
 
 ## Git workflow
 
+- **Commit as the shared Claude account — author *and* committer.** Every commit
+  must use `Claude <noreply@anthropic.com>`
 - **Commit directly to `main`.** Do **not** create working branches, and do
   **not** open pull requests. The history on `main` *is* the shared record of
   what's been learned.
