@@ -181,6 +181,11 @@ Pick an unchecked box above or an "unknown" row in
 early contributions are (a) the exact MCU part number, (b) the ARM↔DSP protocol,
 and (c) a config dump + Modbus map from a real unit.
 
+For ideas on what the open firmware could do **beyond** the factory (more
+telemetry for Home Assistant, lease-based remote controls such as direct Smart
+Port switching, standard-Modbus framing), see the brainstorm in
+[`docs/38-oss-feature-ideas.md`](docs/38-oss-feature-ideas.md).
+
 ## License
 
 **GNU GPL v3.0** — see [`LICENSE`](LICENSE). Contributions are accepted under
