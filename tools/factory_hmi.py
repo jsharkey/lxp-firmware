@@ -15,7 +15,7 @@ reimplements the HMI.
 
 Boot takes ~90s (tens of millions of instructions through config + scheduler
 until the display task paints); each keypress then runs the firmware until the
-screen settles. Needs `pip install unicorn` and reference/com_flat.bin +
+screen settles. Needs `pip install unicorn` and reference/ceaa-07xx_vE_260214.bin +
 reference/symbols.csv.
 """
 import os, sys, time, gzip, pickle, hashlib

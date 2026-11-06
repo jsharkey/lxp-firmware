@@ -39,7 +39,7 @@ the IO-map substance that the wiring docs reference.
   helper-caller while sweeping `r0`/`r1` (so wrapper dispatchers that pick a pin
   by argument take each branch), and records the live `(port, pin, mode)`.
   `tools/periph_map.py` lists the on-chip peripherals actually used. Both are
-  read-only and run against `reference/com_flat.bin` (build it with
+  read-only and run against `reference/ceaa-07xx_vE_260214.bin` (build it with
   `tools/hex2bin.py`, symbols with `tools/recurse.py`).
 
 ## On-chip peripherals in use

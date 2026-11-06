@@ -28,9 +28,9 @@ builder `sub_08014fec` with `0x2000aa0b = 1` (DSP path), and recovers
 (`0x08032000`) to return the register number itself — so every big-endian u16 in
 the captured frame *is* its source register number.
 
-Prereqs (from the ARM image): `reference/com_flat.bin`
-(`python3 tools/hex2bin.py <arm>.hex reference/com_flat.bin`) and
-`reference/symbols.csv` (`python3 tools/recurse.py reference/com_flat.bin --out reference`).
+Prereqs (from the ARM image): `reference/ceaa-07xx_vE_260214.bin`
+(`python3 tools/hex2bin.py <arm>.hex reference/ceaa-07xx_vE_260214.bin`) and
+`reference/symbols.csv` (`python3 tools/recurse.py reference/ceaa-07xx_vE_260214.bin --out reference`).
 
 ```bash
 python3 tools/emu_dsp_frame_probe.py 3 40 40   # func 3 (read holding), group 40-79  -> regs 64-79

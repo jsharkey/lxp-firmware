@@ -13,7 +13,7 @@ own menus. The browser shows exactly what the device shows.
 Boot takes ~90s (the firmware runs through config + its RTOS scheduler until the
 display task paints); the page shows a spinner until it is ready, and again for
 the ~20-30s each keypress takes to run the firmware to a settled screen. No
-third-party deps beyond unicorn + numpy + pillow. Needs reference/com_flat.bin +
+third-party deps beyond unicorn + numpy + pillow. Needs reference/ceaa-07xx_vE_260214.bin +
 reference/symbols.csv.
 """
 import os, sys, io, json, time, base64, argparse, threading

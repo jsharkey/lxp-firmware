@@ -18,7 +18,7 @@ missing, so it is a no-op where the proprietary image isn't present. Requires
 `pip install unicorn`.
 
 Usage: python3 tests/test_persist_crossimage.py [OURS.bin] [FACTORY.bin]
-  defaults: build/firmware.bin  and  $LXP_FACTORY_BIN or reference/com_flat.bin
+  defaults: build/firmware.bin  and  $LXP_FACTORY_BIN or reference/ceaa-07xx_vE_260214.bin
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
@@ -37,7 +37,7 @@ SYSTICK = 2000
 
 def _images():
     ours = _OURS[0] or os.environ.get("LXP_SIM_IMAGE") or "build/firmware.bin"
-    fac = _FACTORY[0] or os.environ.get("LXP_FACTORY_BIN") or "reference/com_flat.bin"
+    fac = _FACTORY[0] or os.environ.get("LXP_FACTORY_BIN") or "reference/ceaa-07xx_vE_260214.bin"
     for p in (ours, fac):
         if not os.path.exists(p):
             raise Skip("cross-image test needs both images; missing %s" % p)

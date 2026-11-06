@@ -213,12 +213,12 @@ class OursBackend:
 # Each is a standalone factory function that reads the RTC + its window registers
 # and sets an "active now" flag -- no boot. Addresses were recovered by finding
 # the `now = 60*hour + minute` sites in the image and the window offset each loops
-# over (see docs/35). Variants cover the 05-series (com_flat) and 07-series
+# over (see docs/35). Variants cover the 05-series (ceaa05) and 07-series
 # (ceaa07) images; `profile="auto"` probes which one the given image matches.
 EVALUATORS = {
     # AC-First load windows (HR 152-157), surfaced as IR 126 bit 8.
     "acfirst": [
-        dict(variant="com_flat",                      # 05-series (emu_acfirst.py)
+        dict(variant="ceaa05",                        # 05-series (emu_acfirst.py)
              eval_entry=0x0801ECE8, settings=0x20009854, win_off=0x64,
              rtc=0x2000A718, win_timer=0x2000A98C, enable=None,
              result=("statusbit", 0x2000A758, 24)),
@@ -284,7 +284,7 @@ class FactoryBackend:
     (default) identifies the right image variant for that type by probing: the
     variant whose evaluator reads active at 07:00 and inactive at 09:00 for a
     06:00-08:00 window. So `make test-window` works for either the 05-series
-    (com_flat) or 07-series (ceaa07) image with no flag.
+    (ceaa05) or 07-series (ceaa07) image with no flag.
     """
     def __init__(self, image, symbols=None, window_type="acfirst", profile="auto"):
         self.image = image

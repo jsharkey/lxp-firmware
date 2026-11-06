@@ -4,11 +4,11 @@
 > **holding register** through the **ARM settings/working RAM** to the **DSP config
 > block offset** documented per-block in this tree. See the [index](README.md).
 
-## The real builder (in `com_flat.bin`)
+## The real builder (in `ceaa-07xx_vE_260214.bin`)
 
 docs/10 named the push builder `FUN_080273b4`/`FUN_08026830` — those are addresses
 from a Ghidra import **based at `0x08005000`**, so they don't resolve in our flat
-image (`0x08000000`). The equivalent functions in `reference/com_flat.bin` are:
+image (`0x08000000`). The equivalent functions in `reference/ceaa-07xx_vE_260214.bin` are:
 
 | function | role |
 |---|---|

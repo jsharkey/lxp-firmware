@@ -15,7 +15,7 @@ Goal: align these offsets against docs/10's per-block layout so the full
 regs 64-89 (battery charge/discharge schedule) -> DSP RAM target map closes with
 proof on both ends.
 
-Prereqs: reference/com_flat.bin (from tools/hex2bin.py on the ARM .hex) and
+Prereqs: reference/ceaa-07xx_vE_260214.bin (from tools/hex2bin.py on the ARM .hex) and
 reference/symbols.csv (from tools/recurse.py). Read-only; sandboxed.
 
 Usage:
@@ -35,7 +35,7 @@ FN_CEAA  = 0x08032000     # per-register value getter: r0 = reg number -> value
 MODEFLAG = 0x2000aa0b     # bit0: 0 = dongle (LE+SN), 1 = DSP (BE, no SN)
 
 def probe(func=3, start=40, count=40):
-    emu = Emu("reference/com_flat.bin", "reference/symbols.csv")
+    emu = Emu("reference/ceaa-07xx_vE_260214.bin", "reference/symbols.csv")
     # --- DSP path ---
     emu.uc.mem_write(MODEFLAG, b"\x01")
     # --- request: addr, func, and (BE-path) start@RX+2, count@RX+4 big-endian ---
@@ -77,6 +77,6 @@ def main():
     print("at frame byte O (big-endian). Cross-check O against docs/10's block layout.")
 
 if __name__ == "__main__":
-    if not os.path.exists("reference/com_flat.bin"):
-        sys.exit("need reference/com_flat.bin (run tools/hex2bin.py on the ARM .hex)")
+    if not os.path.exists("reference/ceaa-07xx_vE_260214.bin"):
+        sys.exit("need reference/ceaa-07xx_vE_260214.bin (run tools/hex2bin.py on the ARM .hex)")
     main()

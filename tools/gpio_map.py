@@ -23,14 +23,14 @@ Read-only; executes the image in a sandbox, touches no hardware.
 Requires: pip install unicorn capstone.
 
 Usage: python3 tools/gpio_map.py [flat.bin] [symbols.csv]
-   defaults: reference/com_flat.bin  reference/symbols.csv
+   defaults: reference/ceaa-07xx_vE_260214.bin  reference/symbols.csv
    (build the flat image with tools/hex2bin.py and symbols with tools/recurse.py)
 """
 import sys, os, csv, bisect, struct
 from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB
 from capstone.arm import ARM_OP_IMM, ARM_OP_MEM, ARM_REG_PC, ARM_REG_R0, ARM_REG_R1
 
-FW  = sys.argv[1] if len(sys.argv) > 1 else "reference/com_flat.bin"
+FW  = sys.argv[1] if len(sys.argv) > 1 else "reference/ceaa-07xx_vE_260214.bin"
 SYM = sys.argv[2] if len(sys.argv) > 2 else "reference/symbols.csv"
 BASE = 0x08000000
 data = open(FW, "rb").read(); N = len(data)

@@ -12,9 +12,8 @@ build/
 __pycache__/
 *.pyc
 
-# Proprietary firmware (hex + reconstructed flat image)
+# Proprietary firmware (hex + reconstructed flat image, named after the hex)
 reference/*.hex
-reference/com_flat.bin
 *.hex
 
 # HMI boot cache (derived from firmware images — proprietary for the factory; generated per-user)

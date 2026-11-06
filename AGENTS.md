@@ -71,8 +71,9 @@ baton.
 ## Never commit the proprietary images
 
 The factory firmware binaries are **proprietary and must stay out of the tree.**
-`.gitignore` already excludes `reference/*.bin`, `reference/*.hex`, `*.hex`,
-`reference/com_flat.bin`, and `.hmi_cache/`.
+`.gitignore` already excludes `reference/*.bin`, `reference/*.hex`, `*.hex`, and
+`.hmi_cache/`. (The flat image is named after its source `.hex`, e.g.
+`reference/ceaa-07xx_vE_260214.bin` — the 07-series is the current reference.)
 
 - **Never `git add -f`** any of those, and never paste large verbatim dumps of
   proprietary code/data into docs or source. Describe findings; cite addresses.

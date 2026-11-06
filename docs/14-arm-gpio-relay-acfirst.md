@@ -105,7 +105,7 @@ and on-hardware question, outside this repo's scope.
 ## Settle it dynamically — `tools/emu_gpio_acfirst.py`
 
 The committed probe makes the refutation reproducible the moment the ARM image
-is available (`reference/com_flat.bin`; gitignored, not in the tree). It extends
+is available (`reference/ceaa-05xx_com_vE_250325.bin`; gitignored, not in the tree). It extends
 the Unicorn harness to **capture every GPIO level-drive write** (`ODR`/`BSRR`/
 `BRR`, all ports A-G) while:
 
@@ -125,7 +125,7 @@ GPIO write on either stage — corroborating docs/08's "signal ends in telemetry
 
 ```bash
 # with the reconstructed ARM image present:
-python3 tools/hex2bin.py <com>.hex reference/com_flat.bin --base 0x08000000
+python3 tools/hex2bin.py <com>.hex reference/ceaa-05xx_com_vE_250325.bin --base 0x08000000
 python3 tools/emu_gpio_acfirst.py
 ```
 

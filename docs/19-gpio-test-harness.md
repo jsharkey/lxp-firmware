@@ -4,7 +4,7 @@
 **both** firmwares through one API:
 
 - **our firmware** — `build/firmware.bin` + symbols from `build/firmware.elf`;
-- **the factory image** — `reference/com_flat.bin` + `reference/symbols.csv`.
+- **the factory image** — `reference/ceaa-07xx_vE_260214.bin` + `reference/symbols.csv`.
 
 So we can capture a behaviour from the factory image (the **oracle**) and assert
 our reimplementation reproduces it, pin for pin, as features land.
@@ -28,7 +28,7 @@ analog. It is for *observable GPIO* contracts.
 
 ```python
 from arm_sim import ArmSim
-sim = ArmSim.factory()                 # reference/com_flat.bin + symbols.csv
+sim = ArmSim.factory()                 # reference/ceaa-07xx_vE_260214.bin + symbols.csv
 sim = ArmSim.ours()                    # build/firmware.{bin,elf}
 sim = ArmSim("path.bin", symbols_dict) # explicit
 
@@ -245,7 +245,7 @@ functions *by name* and so needs the symbol table:
 
 ```bash
 python3 tests/test_arm_sim_self_only.py    build/firmware.bin build/firmware.elf
-python3 tests/test_arm_sim_factory_only.py reference/com_flat.bin
+python3 tests/test_arm_sim_factory_only.py reference/ceaa-07xx_vE_260214.bin
 ```
 
 **1. Working mode → run-enable relay** (`test_relay_follows_working_mode`): PC6
@@ -297,7 +297,7 @@ shared spec, not by a test that inspects both at once.
 
 ```bash
 python3 tests/test_arm_sim.py build/firmware.bin     # our firmware
-python3 tests/test_arm_sim.py reference/com_flat.bin # the factory oracle (flat .bin)
+python3 tests/test_arm_sim.py reference/ceaa-07xx_vE_260214.bin # the factory oracle (flat .bin)
 ```
 
 There are four common tests today:
@@ -433,7 +433,7 @@ test passes against both images — the factory via config flash + the RTOS engi
 ```bash
 make test-sim                                    # test-sim-ours + test-sim-factory
 make test-sim-ours                               # build our fw; common + self-only tests
-make factory LXP_FACTORY_HEX=/path/App.hex       # vendor .hex -> reference/com_flat.bin
+make factory LXP_FACTORY_HEX=/path/App.hex       # vendor .hex -> reference/ceaa-07xx_vE_260214.bin
 make test-sim-factory                            # common + factory-only tests on that .bin
 make test-sim LXP_FACTORY_HEX=/path/App.hex      # convert + run everything, end to end
 ```
@@ -453,7 +453,7 @@ rather than stopping at the first failure. Each block's banner header is the
 delimiter.
 
 The common runner only accepts a **flat `.bin`**, so a vendor Intel `.hex` is
-converted first. The factory `.bin` (`reference/com_flat.bin`, overridable with
+converted first. The factory `.bin` (`reference/ceaa-07xx_vE_260214.bin`, overridable with
 `FACTORY_BIN=`, which also honours `$LXP_FACTORY_BIN`) is an ordinary make target:
 its rule runs the same HEX→flat conversion as `tools/hex2bin.py` (gaps filled with
 `0xFF`, every byte at its true flash address) from `$LXP_FACTORY_HEX`, built only

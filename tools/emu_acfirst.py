@@ -29,7 +29,7 @@ Findings (see docs/08):
     changes. The windows are evaluated ARM-side, not pushed as frame data.
 
 Read-only: executes the flat image in a sandbox; touches no hardware.
-Usage: python3 tools/emu_acfirst.py            # from repo root (needs reference/com_flat.bin)
+Usage: python3 tools/emu_acfirst.py            # from repo root (needs reference/ceaa-05xx_com_vE_250325.bin)
 """
 import os, sys, struct
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -37,7 +37,7 @@ from emu import Emu
 from unicorn import UC_HOOK_CODE
 from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1
 
-IMG = os.environ.get("ACF_IMG", "reference/com_flat.bin")
+IMG = os.environ.get("ACF_IMG", "reference/ceaa-05xx_com_vE_250325.bin")
 SYM = os.environ.get("ACF_SYM", "reference/symbols.csv")
 
 SETTINGS = 0x20009854

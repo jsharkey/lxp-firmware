@@ -5,12 +5,13 @@ function — the "walk the clock forward" mechanism every time-of-day feature ke
 off — and (2) a **hand-off** for the still-blocked energy-counter daily rollover
 (IR 28-37) that builds on it.
 
-> **Image.** All addresses here are the **07-series** `ceaa-07xx_vE_260214`
-> (the 522 KB App-at-`0x08005000` build; my analysis image). The committed
-> `reference/com_flat.bin` the default sim suite loads is the **05-series**
-> (`0x2000a718` RTC, `0x20009854` settings, `0x20009e54` telemetry bank — see
-> `tests/timewindow_contract.py` profiles and docs/33); its RTC-advance is a
-> *different* function. The test below self-guards and SKIPs on non-07 images.
+> **Image.** All addresses here are the **07-series** `ceaa-07xx_vE_260214` (the
+> 522 KB App-at-`0x08005000` build) — the **current canonical reference image**
+> (`reference/ceaa-07xx_vE_260214.bin`). The older **05-series**
+> (`ceaa-05xx_com_vE_250325`, `0x2000a718` RTC / `0x20009854` settings /
+> `0x20009e54` telemetry bank — the `ceaa05` profile in
+> `tests/timewindow_contract.py`) has a *different* RTC-advance function, so the
+> test below self-guards and SKIPs on non-07 images.
 
 ## 1. The RTC software calendar — proven (dynamic, 07-series)
 
@@ -73,7 +74,7 @@ time registers). Host-tested in `tests/test_rtc.c` (`make test`).
 `test_arm_sim_self_only.py`) and the **factory** (by address,
 `test_arm_sim_factory_only.py`) — the same one-spec/both-images pattern as the
 relay and safety-telemetry contracts. The factory side is 07-series-specific and
-SKIPs on other images (e.g. the 05-series `reference/com_flat.bin`).
+SKIPs on other images (e.g. the 05-series `reference/ceaa-05xx_com_vE_250325.bin`).
 
 ## 2. The energy counters (what we're aiming at)
 

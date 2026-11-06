@@ -9,7 +9,7 @@ registers. They are a clean per-processor fingerprint of the multi-CPU system, s
 this note traces **where each byte actually comes from** in the factory ARM image
 and standardizes the device naming the rest of the project uses.
 
-Traced in `reference/com_flat.bin` (12000XP `ceaa-07xx`) through the holding-register
+Traced in `reference/ceaa-07xx_vE_260214.bin` (12000XP `ceaa-07xx`) through the holding-register
 getter **`fn_ceaa` @`0x08032000`** (the serializer `sub_0803373c` calls it for the
 `0x03`/holding space; the input space uses `sub_0803289c`). Register → value:
 

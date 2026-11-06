@@ -8,17 +8,23 @@ flash regions with the gaps removed, so byte offsets in the .bin do NOT equal
 flat image produced here (gaps filled with 0xFF, every byte at its true flash
 address), or references via literal pools / pointer tables will not resolve.
 
-Usage: python3 hex2bin.py firmware.hex out_flat.bin [--base 0x08000000]
+Usage: python3 hex2bin.py firmware.hex [out_flat.bin] [--base 0x08000000]
+If the output path is omitted, the flat image is named after the input .hex
+(reference/<hex basename>.bin), so the filename says which firmware it is.
 Prints the recovered segment map.
 """
-import sys, argparse
+import os, sys, argparse
 
 ap = argparse.ArgumentParser()
-ap.add_argument("hex"); ap.add_argument("out")
+ap.add_argument("hex")
+ap.add_argument("out", nargs="?",
+                help="output .bin (default: reference/<hex basename>.bin)")
 ap.add_argument("--base", default="0x08000000")
 ap.add_argument("--fill", default="0xFF")
 args = ap.parse_args()
 BASE = int(args.base, 0); FILL = int(args.fill, 0) & 0xFF
+out = args.out or os.path.join("reference",
+                               os.path.splitext(os.path.basename(args.hex))[0] + ".bin")
 
 mem = {}
 linbase = 0
@@ -46,7 +52,7 @@ lo, hi = addrs[0], addrs[-1]
 flat = bytearray([FILL]) * (hi - BASE + 1)
 for a, by in mem.items():
     flat[a - BASE] = by
-open(args.out, "wb").write(flat)
+open(out, "wb").write(flat)
 
 # segment map
 segs = []
@@ -60,4 +66,4 @@ print(f"base 0x{BASE:08x}  span 0x{lo:08x}..0x{hi:08x}  bytes present {len(mem)}
 print("segments (true flash addresses):")
 for s, e in segs:
     print(f"  0x{s:08x} .. 0x{e:08x}   {e-s+1} bytes")
-print(f"wrote {args.out}")
+print(f"wrote {out}")
