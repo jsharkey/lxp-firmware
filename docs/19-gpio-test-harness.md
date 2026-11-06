@@ -242,26 +242,35 @@ against `reference/com_flat.bin` (ceaa-07xx) under `attach_config_flash()` +
   for DMA.) **Landed** as the reusable feeder `tests/arm_sim_usart2.py`
   (`Usart2SafetyWire`) + `test_usart2_rx_receives_wire_bytes`, which proves every
   fed byte reaches the factory's real RX ISR (the byte-reception half of T02a).
-- **The byte path.** The USART2 RX ISR (DR read at `0x080369fa`, via
-  `FUN_0801bb0e`) pushes 12-byte `{byte, periph=0x40004400, flags}` items onto a
-  FreeRTOS queue at `0x2000df7c` and yields (ready bitmask `0x2000da16`, selector
-  `0x0801c544`). A consumer in `0x0801b6xx–0x0801bexx` drains it; a sibling loop
-  there is the **comms-loss supervisor** (counts missing-frame ticks to
-  thresholds 3/100 → E017, `0x8019fb0` is its "frame ready?" probe, which stays
-  0 while no frame assembles).
-- **Open crux.** Feeding a candidate EG4 "type-1" frame
-  (`[0]=0x49 [1]=1 [2:3]=len BE [4]=mode [5:9]=fault …`, CRC-16/MODBUS) gets the
-  bytes queued, but the consumer only **occasionally and non-deterministically**
-  writes the staging buffer `0x20008084` (which `sub_08024d74` reads, docs/30),
-  and the validator/distributor `sub_080259d8`/`sub_08024d74` and classifier
-  `sub_0801b480` have **not** yet been driven, so `BANK` (`0x20009e54`) does not
-  change. A length/CRC/SOF sweep (SOF∈{0x49,0xA5,none} × len × CRC{lsb,msb,none})
-  found no accepted format, and `CR1.IDLEIE`=0 rules out IDLE-line framing. The
-  remaining fact to nail is the consumer's **frame-completion condition** (what
-  `0x8019fb0` waits on / how bytes advance to a validated frame) — single-step
-  the consumer from a `0x2000df7c` read. Once a frame reaches `BANK`, a *running*
-  mode byte should flow classifier→`IR_STATE`→relay→**PC6**, giving the second
-  T02 demo for free.
+- **The real ISR (verified).** `VTOR` = `0x08005000`; vector[16+38=54] (USART2
+  IRQ) = **`sub_0801bddc`** (matches `docs/wiring/ARM-USART2-safety.md`). Feeding
+  via the feeder runs it exactly once per fed byte (86 bytes → 86 hits), so the
+  wire-feed reaches the firmware's real interrupt. **But** `sub_0801bddc`'s body
+  reads only **RAM flag words** (`0x2000da6c`, `0x2000db75`, `0x200022c8`) and
+  bxCAN-style supervisor counters — it does **not** itself touch the USART2
+  registers. The actual DR-drain + per-byte buffering + frame assembly is a
+  **multi-function software pipeline** reached from here (callees `0x0801ba20`,
+  `0x080164bc`, …) that is **not yet pinned**.
+- **⚠ Two traps that cost a session — avoid them.** (1) **Runtime PC capture is
+  unreliable under `enable_rtos()`**: a `reg_read(PC)` inside a `UC_HOOK_MEM_*`
+  callback can return a bogus address (the engine's manual exception dispatch).
+  An earlier note here claimed "DR read at `0x080369fa`" and "`0x8019fb0` =
+  frame-ready probe" — **both wrong**: `0x080369fa` is a zero-filled gap in the
+  image, and `0x8019fb0(GPIOC, 0x100)` just tests **GPIO PC8**, not a frame flag.
+  Use **static** disassembly (capstone, THUMB) from VTOR-derived addresses, not
+  hook-captured PCs. (2) **docs/33's function map does not match this image under
+  disassembly:** `sub_080259d8` (its claimed "driver/validate") is a tag/command
+  handler (`cmp #0x7f/#0x32/#0x3c` → exception code 3), with **no** CRC call in
+  its body. Re-derive the USART2 parse chain from `sub_0801bddc` forward; treat
+  docs/33's `sub_080259d8`/`sub_08024d74`/`sub_080241a8`/`sub_08014bec`
+  attributions as **unverified for ceaa-07xx_vE_260214** until re-proven.
+- **Continuation.** Disassemble `sub_0801bddc`'s callees (`0x0801ba20`,
+  `0x080164bc`) and the three functions that reference the USART2 base
+  `0x40004400` (literal pools at `0x8020dd0 / 0x8038620 / 0x803b954`) to find the
+  `ldr [base,#4]` DR-drain + the byte buffer + the length/CRC/complete test; that
+  is the frame-completion fact still missing. Once a frame reaches `BANK`
+  (`0x20009e54`), a running mode byte should flow classifier
+  (`sub_0801b480`)→`IR_STATE`→relay→**PC6**, giving the T02b demo too.
 - **Relay/PC6 (the T02 state→PC6 demo) is gated on the same root cause.** The
   relay task's PC6 output **evolves on its own** over emulated time and is
   multi-input (state + DSP/fault + debounce + config), so injecting a lone

@@ -170,13 +170,16 @@ Turned out bigger than one card, so **split** (keep the ID for references):
   (SR/DR + pended NVIC line, vector 16+38); `test_usart2_rx_receives_wire_bytes`
   proves every fed byte is received. This is the byte-reception half + the T05
   harness foundation.
-- **Open (continuation):** the consumer in `0x0801b6xx` drains the bytes
-  (queue `0x2000df7c`) but a fed EG4 type-1 frame does not yet reliably assemble
-  to staging `0x20008084` / fire `sub_080259d8` / update `BANK 0x20009e54`.
-  **Done when:** a fed frame changes the served IRs (replacing the bank-seed in
-  `test_safety_cpu_telemetry_reaches_modbus`). The single remaining unknown — the
-  consumer's frame-completion condition (`0x8019fb0` "frame ready?") — is in
-  docs/19; single-step the consumer from a `0x2000df7c` read.
+- **Open (continuation):** the real ISR is confirmed (`vector[54]` =
+  `sub_0801bddc`) and runs per fed byte, but the DR-drain + frame assembly is a
+  **multi-function software pipeline not yet pinned**, and docs/33's parse-chain
+  attributions (`sub_080259d8` etc.) **do not match this image** under
+  disassembly. **Done when:** a fed frame changes the served IRs (replacing the
+  bank-seed in `test_safety_cpu_telemetry_reaches_modbus`). Re-derive the chain
+  from `sub_0801bddc` forward (its callees + the functions touching the USART2
+  base `0x40004400`) — full notes, the verified ISR, and **two RE traps to avoid**
+  (unreliable hook-captured PCs under `enable_rtos()`; stale docs/33 addresses) in
+  docs/19 §"T02 in progress".
 
 #### T02b — Change operating state → PC6 moves (via the running relay task)
 **Status:** `[ ]` · **Layer:** sim (factory) · **Depends:** T02a (natural state via the USART2 mode byte)
