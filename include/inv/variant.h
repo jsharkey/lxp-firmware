@@ -6,7 +6,9 @@
  * the factory ARM images proves this directly (see docs/10-18kpv-vs-12000xp.md
  * and docs/12-6000xp.md):
  *
- *   - EG4 12000XP  (image "..._ceaa-05xx_com_vE_250325.hex")
+ *   - EG4 12000XP  (05-series "..._ceaa-05xx_com_vE_250325.hex"; the current
+ *                   reference is the 07-series "..._ceaa-07xx_vE_260214...hex" --
+ *                   see docs/11-12000xp-revisions.md for the 05->07 delta)
  *   - EG4 18kPV    (image "..._FAAB-1Bxx_20240528_App.hex")
  *   - EG4 6000XP   (image "..._ccaa-xx15xx_260519.hex")
  *

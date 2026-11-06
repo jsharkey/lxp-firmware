@@ -5,6 +5,16 @@ MCU (the file named `..._com_vE_250325.bin`). Everything here was derived
 directly from the shipped binary; nothing is guessed from a datasheet alone.
 Where a fact is an inference rather than a direct read, it is marked *(inferred)*.
 
+> **Image version.** This is the original analysis of the **05-series** 12000XP
+> image (`..._com_vE_250325.bin`, 244,080 bytes, monolithic, vectors
+> `@0x08000000`). The project's **current working reference is the 07-series**
+> `ceaa-07xx_vE_260214` (App over a bootloader, vectors `@0x08005000`), whose app
+> addresses do **not** match this image's. Treat the specific addresses below as
+> 05-series; for the current IO map / links / registers see
+> [`docs/16`](16-arm-io-map.md), [`docs/wiring/`](wiring/README.md) and
+> [`docs/modbus-dongle/`](modbus-dongle/README.md), and
+> [`docs/11`](11-12000xp-revisions.md) for the 05→07 delta.
+
 ## Image facts (direct reads)
 
 | Property | Value | How we know |
