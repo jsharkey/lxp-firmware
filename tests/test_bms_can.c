@@ -86,6 +86,92 @@ int main(void)
         CHECK(!bms_can_on_frame(&p, BMS_CAN_ID_ALARM_B, d, sizeof d), "0x35A not consumed");
     }
 
+    /* ===================================================================== *
+     * Field sweep: every decoded field, its edges, and the DLC guards and    *
+     * frame independence that feed the IR 81-106 BMS block (docs/20,         *
+     * docs/modbus-dongle/IR081_106-BMS.md).                                  *
+     * ===================================================================== */
+
+    /* 0x355 SOC/SOH endpoints, on a fresh pack (minimum DLC 4, no hi-res). */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t lo[4] = { 0, 0, 0, 0 };
+        CHECK(bms_can_on_frame(&q, BMS_CAN_ID_SOC_SOH, lo, sizeof lo), "0x355 DLC4 accepted");
+        CHECK(q.soc == 0 && q.soh == 0, "0x355 SOC/SOH = 0 decodes");
+        uint8_t hi[4] = { 100, 0, 100, 0 };
+        bms_can_on_frame(&q, BMS_CAN_ID_SOC_SOH, hi, sizeof hi);
+        CHECK(q.soc == 100 && q.soh == 100, "0x355 SOC/SOH = 100 decodes");
+        uint8_t d3[3] = { 50, 0, 50 };
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_SOC_SOH, d3, sizeof d3), "0x355 DLC3 -> ignored");
+    }
+
+    /* 0x356 signedness across all three fields: + current = charge, - current
+     * = discharge; temperature below zero; a large positive voltage. (The raw
+     * s16 is what reaches IR 98/103; the physical current unit is noted as a
+     * doc discrepancy in docs/31 -- the register passes the value 1:1.) */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t chg[6] = { 0x10, 0x27,          /* 10000 = 0x2710  (100.00 V) */
+                           0xFA, 0x00,          /* +250  (charge)             */
+                           0xCE, 0xFF };        /* -50   (sub-zero temp)      */
+        CHECK(bms_can_on_frame(&q, BMS_CAN_ID_VIT, chg, sizeof chg), "0x356 DLC6 accepted");
+        CHECK(q.voltage_cv == 10000, "0x356 large positive voltage");
+        CHECK(q.current_ca == 250,   "0x356 positive current (charge)");
+        CHECK(q.temp_dc   == -50,    "0x356 sub-zero temperature");
+        uint8_t d5[5] = { 1, 0, 2, 0, 3 };
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_VIT, d5, sizeof d5), "0x356 DLC5 -> ignored");
+    }
+
+    /* 0x351: charge voltage limit endpoints, and the DLC-<2 guard. (The map's
+     * current/discharge-limit fields are not consumed yet -- see the map.) */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t z[8] = { 0 };
+        bms_can_on_frame(&q, BMS_CAN_ID_LIMITS, z, sizeof z);
+        CHECK(q.charge_volt_dv == 0, "0x351 charge Vlim = 0 decodes");
+        uint8_t big[8] = { 0xFF, 0xFF, 0,0, 0,0, 0,0 };
+        bms_can_on_frame(&q, BMS_CAN_ID_LIMITS, big, sizeof big);
+        CHECK(q.charge_volt_dv == 0xFFFF, "0x351 charge Vlim = 0xFFFF decodes");
+        uint8_t d1[1] = { 7 };
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_LIMITS, d1, sizeof d1), "0x351 DLC1 -> ignored");
+    }
+
+    /* 0x359: DLC4 sets fault/warn but NOT module_count; DLC5+ sets it too;
+     * DLC3 is rejected. */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t d4[4] = { 0x34, 0x12, 0x78, 0x56 };   /* 0x1234, 0x5678 */
+        CHECK(bms_can_on_frame(&q, BMS_CAN_ID_ALARM_A, d4, sizeof d4), "0x359 DLC4 accepted");
+        CHECK(q.fault_bits == 0x1234 && q.warn_bits == 0x5678, "0x359 DLC4 fault/warn");
+        CHECK(q.module_count == 0, "0x359 DLC4 leaves module_count unset");
+        uint8_t d5[5] = { 0,0, 0,0, 7 };
+        bms_can_on_frame(&q, BMS_CAN_ID_ALARM_A, d5, sizeof d5);
+        CHECK(q.module_count == 7, "0x359 DLC5 sets module_count");
+        uint8_t d3[3] = { 1, 2, 3 };
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_ALARM_A, d3, sizeof d3), "0x359 DLC3 -> ignored");
+    }
+
+    /* Frame independence: one frame sets only its own *_valid flag. */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t d[8] = { 0x30, 0x02, 0,0, 0,0, 0,0 };
+        bms_can_on_frame(&q, BMS_CAN_ID_LIMITS, d, sizeof d);
+        CHECK(q.limits_valid, "0x351 sets limits_valid");
+        CHECK(!q.soc_soh_valid && !q.measured_valid && !q.alarms_valid,
+              "0x351 does not set unrelated valid flags");
+    }
+
+    /* Unknown / control IDs are never consumed and set no state. */
+    {
+        bms_pack_t q; bms_can_init(&q);
+        uint8_t d[8] = { 1,2,3,4,5,6,7,8 };
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_EXT_STATUS, d, sizeof d), "0x35B not consumed");
+        CHECK(!bms_can_on_frame(&q, BMS_CAN_ID_INV_300,    d, sizeof d), "0x300 not consumed");
+        CHECK(!bms_can_on_frame(&q, 0x123,                 d, sizeof d), "arbitrary ID not consumed");
+        CHECK(!q.soc_soh_valid && !q.measured_valid && !q.limits_valid && !q.alarms_valid,
+              "unknown frames leave the pack untouched");
+    }
+
     printf("test_bms_can: %d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;
 }

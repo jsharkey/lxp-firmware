@@ -379,6 +379,76 @@ def test_modbus_time_set_reads_back():
         % (rd, (yr, mon, day, hr, mn, sec)))
 
 
+def test_bms_telemetry_block_tracks_updates():
+    """BMS CAN -> the IR 81-106 block, swept and proven LIVE (docs/20).
+
+    The point of `test_can_battery_telemetry_reaches_modbus` is that each frame
+    lands on the right register with the right scaling. This companion proves the
+    block is a live mirror, not a one-shot cache: inject a full telemetry set A,
+    read the whole IR 83-103 block (one group), then inject a DIFFERENT set B and
+    read again -- every register our firmware drives must move to the B value.
+
+    The registers our publish path drives (src/main.c on_can_frame): IR 4 (Vbat),
+    IR 5 (SOC/SOH), IR 83 (ChargeVoltRef), IR 96 (BatParallelNum), IR 98
+    (BatCurrent), IR 99/100 (BMS fault/warn), IR 103 (MaxCellTemp). The remaining
+    superset entries (IR 81/82/84/101/102/104/106) are not decoded from CAN yet
+    (bms_can.c), so they are deliberately NOT asserted here -- see
+    docs/modbus-dongle/IR081_106-BMS.md.
+
+    Black box over two buses (CAN1 + the dongle UART), no symbols, so the same
+    spec holds for both images."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_can import CanBattery
+
+    # (voltage_cv, current_ca, temp_dc, soc, soh, chg_v_dv, fault, warn, modules)
+    SET_A = dict(v=5325, i=250,  t=231,  soc=77, soh=96, chg=560, flt=0x0102, wrn=0x0408, mod=3)
+    SET_B = dict(v=5000, i=-100, t=-50,  soc=42, soh=88, chg=575, flt=0x0000, wrn=0x0010, mod=4)
+
+    def expected(s):
+        return {
+            4:   (s["v"] + 5) // 10,       # 0.01 V -> 0.1 V, rounded
+            5:   (s["soh"] << 8) | s["soc"],
+            83:  s["chg"],
+            96:  s["mod"],
+            98:  s["i"] & 0xFFFF,          # signed -> wire u16
+            99:  s["flt"],
+            100: s["wrn"],
+            103: s["t"] & 0xFFFF,          # signed -> wire u16
+        }
+
+    sim = _sim()
+    battery = CanBattery(sim)
+    mb = ModbusDongle(sim)
+
+    def push_and_read(s):
+        battery.send_soc_soh(s["soc"], s["soh"])
+        battery.send_measurements(s["v"], s["i"], s["t"])
+        battery.send_limits(s["chg"])
+        battery.send_alarms(s["flt"], s["wrn"], pack_count=s["mod"])
+        battery.settle()
+        vbat, soc_soh = mb.read_input(4, 2) or [None, None]
+        blk = mb.read_input(83, 21) or [None] * 21     # IR 83..103 (one group)
+        # map register number -> value
+        got = {4: vbat, 5: soc_soh}
+        for reg in (83, 96, 98, 99, 100, 103):
+            got[reg] = blk[reg - 83]
+        return got
+
+    got_a = push_and_read(SET_A)
+    for reg, want in expected(SET_A).items():
+        assert got_a[reg] == want, \
+            "set A: IR %d = %r, expected %r" % (reg, got_a[reg], want)
+
+    got_b = push_and_read(SET_B)
+    for reg, want in expected(SET_B).items():
+        assert got_b[reg] == want, \
+            "set B: IR %d = %r, expected %r" % (reg, got_b[reg], want)
+
+    # and the block actually moved (live mirror, not a stuck cache)
+    moved = [reg for reg in expected(SET_A) if got_a[reg] != got_b[reg]]
+    assert moved, "no BMS register changed between set A and set B -- image is not live"
+
+
 # --- zero-dependency runner (so `make test-sim` needs only unicorn) ---------
 def _main(argv):
     # Optional single positional arg: the image to test. (argparse would reject

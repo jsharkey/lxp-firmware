@@ -86,6 +86,31 @@ read back what it produced — see each entry's *How found*.
   Confirmed the bytes *are* in RAM (staging), so it is received, not dropped.
 - **Status:** confirmed (for this image / `P07-LUX` preset).
 
+## Q4 — `0x356` battery current may reach IR 98 with a 10× unit mismatch
+
+- **Area:** battery CAN → Modbus (`docs/20`, `docs/modbus-dongle/IR081_106-BMS.md`)
+- **Observed:** the dongle Modbus spec calls IR 98 `BatCurrent_BMS` **0.01 A**
+  (and IR 81/82 max charge/discharge current likewise 0.01 A), but the
+  battery-firmware frame map ([`include/inv/bms_can_map.h`](../include/inv/bms_can_map.h),
+  a byte-exact read of the pack's `0x356` builder) records the current field as
+  **0.1 A**. Both firmwares forward the raw `0x356` value to IR 98 **1:1** (ours
+  in `src/main.c`; the factory, per the `test_can_battery_telemetry_reaches_modbus`
+  assertion that `IR 98 == raw`). If the map's 0.1 A unit is right, every current
+  the dongle reads is then **10× low** against the register's declared 0.01 A.
+- **Expected:** one consistent unit end to end — the pack's wire unit and the
+  register's declared unit agree, or the inverter rescales between them.
+- **Unresolved:** we have not confirmed which label is right. The two dongle-side
+  sources (the EG4 Modbus PDF and the IR doc) agree on 0.01 A; the lone 0.1 A is
+  the RE-derived battery-map note, which could itself be mislabeled. Resolving it
+  needs a live-bus reading (a known pack current vs the register) or a deeper read
+  of the pack's current getter. Until then neither physical unit is asserted in
+  tests — the BMS tests check the integer passes through 1:1, not its scale.
+- **Our firmware:** matches the factory (1:1 forward); no rescale added pending
+  the resolution above.
+- **How found:** cross-checking the Modbus PDF (IR 98 = 0.01 A) against
+  `bms_can_map.h` (0x356 current = 0.1 A) while sweeping the BMS block.
+- **Status:** suspected.
+
 ---
 
 ## Not quirks (recorded so we don't re-flag them)
