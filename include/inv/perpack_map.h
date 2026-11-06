@@ -2,12 +2,14 @@
  * Per-pack battery telemetry — undocumented Modbus input registers 5000-5126.
  * (docs/34 §2b; factory getter sub_08020cc0, CAN parser sub_080205d4.)
  *
- * NOTE — fed by CAN 0x4xx; DORMANT with the EG4-LL pack. This bank is served from a
- * per-pack array filled ONLY by CAN 0x4xx frames (sub_080205d4). The attached
+ * NOTE — fed by CAN 0x4xx; LIVE on a 0x4xx pack, dormant on EG4-LL. This bank is
+ * served from a per-pack array filled ONLY by CAN 0x4xx frames (sub_080205d4). The
  * EG4-LL battery emits per-pack/extended telemetry on 0x3xx (0x311-0x321, 0x370-0x381),
  * which the ARM parses to internal scalars NOT read by the Modbus getter -- so this
- * bank stays empty with that pack (docs/34 §2b). It is a real feature for a battery
- * that streams per-pack telemetry on CAN 0x4xx.
+ * bank stays empty with that pack (docs/34 §2b). A pack that natively speaks the
+ * 0x4xx per-pack (Pylontech-family) protocol DOES populate it: a production-12000XP
+ * capture shows two such packs decoded live (docs/34 §2d), which also pins the field
+ * semantics annotated in the enum below.
  *
  * Beyond the aggregate BMS block (IR 81-106), the factory serves PER-PACK battery
  * telemetry on a separate high register range that no public EG4 map lists. The
@@ -25,11 +27,11 @@
  * provenance (subtype + frame bytes), recovered from the firmware and verified in
  * the harness (tests/test_arm_sim_factory_only.py::test_per_pack_telemetry_reaches_modbus).
  *
- * WHAT IS NOT YET CONFIRMED: the physical MEANING of each field. The parser is a
- * straight byte copy, so semantics live in the battery's frame definitions, which
- * need the battery image or a live CAN capture to pin (not available here). Field
- * names below are therefore STRUCTURAL (subtype + word index), not semantic. See
- * docs/34 §2b for the inference method and the candidate quantity set.
+ * FIELD MEANING: now pinned by a production-12000XP capture (docs/34 §2d), which
+ * carries the live register values. The structural PP_S<sub>_W<word> names stay as
+ * the stable index; each field's confirmed meaning is in the trailing comment.
+ * Meanings tagged [xref IRnn] are cross-checked against a known-scale aggregate
+ * register in the same capture; others are the best read from magnitude ("prob.").
  */
 #ifndef INV_PERPACK_MAP_H
 #define INV_PERPACK_MAP_H
@@ -58,33 +60,33 @@
  * the pack at base 5000.
  */
 enum pp_field {
-    PP_S0_W0 =  0,   /* CAN 0x400 subtype0 bytes[0:1] */
-    PP_S0_W1 =  1,   /* CAN 0x400 subtype0 bytes[2:3] */
-    PP_S0_W2 =  2,   /* CAN 0x400 subtype0 lo=byte4, hi=byte7 (split pair) */
-    PP_S0_W3 =  3,   /* CAN 0x400 subtype0 bytes[5:6] */
-    PP_S1_W0 =  4,   /* CAN 0x420 subtype1 bytes[0:1] */
-    PP_S1_W1 =  5,   /* CAN 0x420 subtype1 bytes[2:3] */
-    PP_S1_W2 =  6,   /* CAN 0x420 subtype1 bytes[4:5] */
-    PP_S1_W3 =  7,   /* CAN 0x420 subtype1 bytes[6:7] */
-    PP_S2_W0 =  8,   /* CAN 0x440 subtype2 bytes[0:1] */
-    PP_S2_W1 =  9,   /* CAN 0x440 subtype2 bytes[2:3] */
-    PP_S2_W2 = 10,   /* CAN 0x440 subtype2 bytes[4:5] */
-    PP_S2_W3 = 11,   /* CAN 0x440 subtype2 bytes[6:7] */
-    PP_S3_W0 = 12,   /* CAN 0x460 subtype3 bytes[0:1] */
-    PP_S3_W1 = 13,   /* CAN 0x460 subtype3 bytes[2:3] */
-    PP_S3_W2 = 14,   /* CAN 0x460 subtype3 bytes[4:5] */
-    PP_S3_W3 = 15,   /* CAN 0x460 subtype3 bytes[6:7] */
-    PP_S4_W0 = 16,   /* CAN 0x480 subtype4 bytes[0:1] */
-    PP_S4_W1 = 17,   /* CAN 0x480 subtype4 bytes[2:3] */
-    PP_S4_W2 = 18,   /* CAN 0x480 subtype4 bytes[4:5] */
-    PP_S5_W0 = 19,   /* CAN 0x4A0 subtype5 bytes[0:1] */
-    PP_S5_W1 = 20,   /* CAN 0x4A0 subtype5 bytes[2:3] */
-    PP_S5_W2 = 21,   /* CAN 0x4A0 subtype5 bytes[4:5] */
-    PP_S5_W3 = 22,   /* CAN 0x4A0 subtype5 bytes[6:7] */
-    PP_S6_W0 = 23,   /* CAN 0x4C0 subtype6 bytes[0:1] */
-    PP_S6_W1 = 24,   /* CAN 0x4C0 subtype6 bytes[2:3] */
-    PP_S6_W2 = 25,   /* CAN 0x4C0 subtype6 bytes[4:5] */
-    PP_S6_W3 = 26    /* CAN 0x4C0 subtype6 byte[6]   (u8; high byte 0) */
+    PP_S0_W0 =  0,   /* 0x400 s0 b[0:1]  -- (zero in capture) */
+    PP_S0_W1 =  1,   /* 0x400 s0 b[2:3]  -- (zero in capture) */
+    PP_S0_W2 =  2,   /* 0x400 s0 lo=b4,hi=b7 (split) -- status/flags (0xc002) */
+    PP_S0_W3 =  3,   /* 0x400 s0 b[5:6]  -- charge-current limit, prob. (0.1 A) */
+    PP_S1_W0 =  4,   /* 0x420 s1 b[0:1]  -- charge-voltage ref, 0.1 V [xref IR83] */
+    PP_S1_W1 =  5,   /* 0x420 s1 b[2:3]  -- discharge-current limit, prob. (0.1 A) */
+    PP_S1_W2 =  6,   /* 0x420 s1 b[4:5]  -- limit, prob. */
+    PP_S1_W3 =  7,   /* 0x420 s1 b[6:7]  -- limit, prob. */
+    PP_S2_W0 =  8,   /* 0x440 s2 b[0:1]  -- pack voltage, 0.01 V [xref IR4@0.1V] */
+    PP_S2_W1 =  9,   /* 0x440 s2 b[2:3]  -- pack current, signed 0.1 A */
+    PP_S2_W2 = 10,   /* 0x440 s2 b[4:5]  -- SOC(lo)|SOH(hi), % [xref IR5] */
+    PP_S2_W3 = 11,   /* 0x440 s2 b[6:7]  -- cycle count, prob. */
+    PP_S3_W0 = 12,   /* 0x460 s3 b[0:1]  -- max cell temp [xref IR103] */
+    PP_S3_W1 = 13,   /* 0x460 s3 b[2:3]  -- min cell temp [xref IR104] */
+    PP_S3_W2 = 14,   /* 0x460 s3 b[4:5]  -- max cell voltage, mV [xref IR101] */
+    PP_S3_W3 = 15,   /* 0x460 s3 b[6:7]  -- min cell voltage, mV [xref IR102] */
+    PP_S4_W0 = 16,   /* 0x480 s4 b[0:1]  -- status/flags (differs per pack) */
+    PP_S4_W1 = 17,   /* 0x480 s4 b[2:3]  -- firmware/version (0x0101) */
+    PP_S4_W2 = 18,   /* 0x480 s4 b[4:5]  -- version/protocol (0x0203) */
+    PP_S5_W0 = 19,   /* 0x4A0 s5 b[0:1]  -- ASCII pack id "Battery_ID_0N" (from CAN) */
+    PP_S5_W1 = 20,   /* 0x4A0 s5 b[2:3]  -- ASCII pack id (cont.) */
+    PP_S5_W2 = 21,   /* 0x4A0 s5 b[4:5]  -- ASCII pack id (cont.) */
+    PP_S5_W3 = 22,   /* 0x4A0 s5 b[6:7]  -- ASCII pack id (cont.) */
+    PP_S6_W0 = 23,   /* 0x4C0 s6 b[0:1]  -- ASCII pack id (cont.) */
+    PP_S6_W1 = 24,   /* 0x4C0 s6 b[2:3]  -- ASCII pack id (cont.) */
+    PP_S6_W2 = 25,   /* 0x4C0 s6 b[4:5]  -- ASCII pack id (tail) */
+    PP_S6_W3 = 26    /* 0x4C0 s6 b[6]    -- u8; string tail / zero */
 };
 
 /* One pack's served record. Index with enum pp_field; all native u16 as served. */
