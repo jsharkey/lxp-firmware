@@ -511,6 +511,46 @@ So §2b's structural map and the field semantics here **stand**; the earlier hea
 "live on a `0x4xx` pack — proven by capture" is **withdrawn** in favour of "populated
 on a live 2-pack stack; the `0x4xx` source is inferred, not yet observed on the bus."
 
+### Battery-side search for the master-mode `0x4xx` emitter — not found (narrows the resolution)
+
+The "runtime master-mode emitter" branch above predicts the EG4-LL battery, when it
+is the stack master, builds per-member CAN ids `0x400|sub<<5|pack` in a loop. A
+targeted search of the battery App images (recovered function map via
+`tools/recurse.py --base 0x20000`, then per-function Thumb disassembly from each
+boundary — reliable, unlike a linear sweep) finds **no such emitter** in any EG4
+image:
+
+- **No CAN-TX function constructs a `0x400`-based id.** Across all 550 functions the
+  only `#0x400` immediates are (a) `cmp #0x400` in the RX dispatcher (`sub_0002314c`,
+  the inbound `0x400` *command*, §3), (b) status-word bit-10 flag ops
+  (`orr/and/bic #0x400`), and (c) CAN-peripheral register-config masks in the CAN
+  init (`sub_00027548`: `mov.w #0x400` / `#0x4000` written to CAN control registers,
+  not a frame id). None sits in a CAN-id build.
+- **No `subtype<<5`.** The whole image has exactly **3 `lsl #5` sites, all inside
+  byte-data misdecoded as code** (the giveaway cascade `lsls #1,#2,#4,#5,#8…`) — none
+  feeds a CAN transmit.
+- **No subtype-base table.** The 7 subtype bases `0x400,0x420,…,0x4C0` do not occur
+  as a table, and the **subtype-5 base `0x4a0` is entirely absent** (0 occurrences,
+  code or data) from both EG4-LL images — yet the live per-pack record *uses* subtype
+  5 (the `Battery_ID` string lands in the sub-5/6 slots, §2b). An image that never
+  contains `0x4a0` cannot emit that frame.
+- **The EG4 per-pack data rides `0x3xx`, not `0x4xx`.** The battery's per-pack
+  telemetry is the static `0x311–0x321` series (§1) — one id per pack slot, sent by
+  the periodic table sender — which the bench ARM routes to **unserved scalars**
+  (`sub_08021b68`), never to the 5000 bank (`sub_080205d4`, `0x4xx`-keyed, §2b/§2d).
+
+**So the battery-master-mode-`0x4xx` branch is disfavoured** (no EG4 image we have can
+produce those frames), which tips the balance to the other branch: **ARM-side
+firmware skew** — a deployed `com`-MCU build that routes the EG4 `0x311–0x321`
+per-pack frames into the 5000 bank, where our reference `ceaa-07xx_vE_260214` image
+feeds 5000 only from `0x4xx`. (The pcap's embedded `ceaa / V2.06` tag need not match
+our reference image's build.) Caveats that keep this short of proof: the battery
+**bootloader** partition `0x0–0x20000` is not in our App images (a telemetry emitter
+there is unlikely but unexcluded), and we still lack the *deployed* ARM/BMS build.
+**The decisive next artifact is a live CAN-bus capture from the 2-pack stack** (which
+ids actually carry the per-pack data — `0x3xx` or `0x4xx`) or the deployed `com`-MCU
+image; either settles it outright.
+
 ## 3. Firmware update over CAN (extra credit)
 
 The battery is a **two-stage** design: a bootloader occupies `0x0`–`0x20000`
