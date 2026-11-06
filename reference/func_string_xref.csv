@@ -1,26 +1,21 @@
 func_addr,proposed_name,n_strings,strings
-0x08000158,sub_08000158,1,SNECNOTBSNFC
-0x0800038e,sub_0800038e,2,SNECNOTBSNFC | SNEC
-0x08000896,sub_08000896,1,NOTB
-0x08000e44,sub_08000e44,4,SNECNOTBSNFC | SNEC | NOTB | SNEC
-0x08005938,sub_08005938,96, SN:  | FW:  | Model:  | Normal/Standby:  | Set Time:  | PV Input Mode:  | Battery Type:  | Lead-acid Capacity:  | Customized Capacity:  | Lithium Type:  | Green Function Enable:  | Battery ECO Enable:     | Buzzer Enable:  | ISO Enable:  | CT Power Offset:  | Battery Wake up:  | Fan1 Max Speed:  | Fan1 Slope:  | Fan2 Max Speed:  | Fan2 Slope:  | Fan3 Max Speed:  | Fan3 Slope:  | Fan4 Max Speed:  | Fan4 Slope:  | Fan5 Max Speed:  | Fan5 Slope:  | PV&AC Take Load Jointly:  | Export to Grid:  | Export Power Percent:  | Grid CT Connection:  | CT Sample Ratio:  | CT Direction Reversed:  | EPS Voltage Set:  | EPS Frequency Set:  | AC Input Range:  | PV Grid Off:  | N-PE Connect (Inner):  | PV Arc:  | PV Arc Fault Clear:  | RSD Enable:  | Charge Current Limit:  | Lead-Acid Charge Voltage:    | Lead-Acid Floating Voltage:  | Discharge Control:  | Discharge Current Limit:  | Discharge Cut-off Volt:  | Discharge Cut-off SOC :  | On Grid EOD Volt:        | On Grid EOD SOC :        | Battery Warning Volt:    | Battery Warning SOC :    | Smart Load Enable:  | Start PV Power:  | Grid Always On:  | Smart Load Start Volt:  | Smart Load End   Volt:  | Smart Load Start SOC:  | Smart Load End   SOC:  | AC Couple Enable:  | AC Couple Start Volt:  | AC Couple End   Volt:  | AC Couple Start SOC:  | AC Couple End   SOC:  | AC Chg Based On:  | AC Charge Battery Current:  | AC Charge Time:  | P1 Start:  | End:  | P2 Start:  | P3 Start:  | AC Charge Battery Voltage:  | Start:  | AC Charge Battery SOC :  |  AC First  | Generator Charge Type:  | Gen Charge Bat Current:  | Gen Charge Start Bat Volt:  | Gen Charge End Bat Volt:  | Gen Charge Start Bat SOC :  | Gen Charge End Bat SOC :  | Max. Gen Input Power:  | Generator Boost Enable:  | Set System Type:  | Set Composed Phase:  | Battery Shared:  | LED CtrEn:  | LED Ctr:  | LED Timer:  | LED Mode:  | Soft Timer:  | Language:  | Dry Control:  | Measurement:  | LED Light Factor| | Error Record:  | Alarm Record: 
-0x08005bec,sub_08005bec,18,AC Charge Time:  | P1 Start:  | End:  | P2 Start:  | P3 Start:  | AC Charge Battery Voltage:  | Start:  | AC Charge Battery SOC :  | AC First:  | null:  | Hybrid | FeedIN  | FeedIN  | N_PE_Connect | AFCT | AFCT Clear:  | AC Charge | null: 
-0x080076ce,fn_ceaa,1,ceaa
-0x0800a244,sub_0800a244,1,YES?
-0x0800b5de,sub_0800b5de,3,     Error:   |      Warning: |                
-0x0800b884,fn_download,2,download |  update 
-0x0800c9a0,fn_Hybrid_Setting,1, Hybrid Setting 
-0x0800caa6,fn_Parallel_Setting,1, Parallel Setting 
-0x0800cf88,fn_Smart_Load,1, Smart Load 
-0x0800d0c8,fn_AC_Couple,1, AC Couple 
-0x0800e3f0,fn_NO_Fault,1,NO Fault
-0x0800e51c,fn_NO_Alarm,1,NO Alarm
-0x0800ea54,sub_0800ea54,11,Next  there will be four display | LCD Ageing Test | effects on LCD. | 1.Pure black | 2.Pure white | 3.black and white stripes | 4.corner pixel grid | Please Press "ENTER". | KEY Ageing Test | Please Press ESC UP DOWN ENTER. | KEY Ageing Test OK
-0x0801547c,sub_0801547c,1,NOTB
-0x08016078,sub_08016078,1,SNECSNEDEDSNDPOTLAA1SA22
-0x0801b6b2,fn_ceaa,1,ceaa
-0x0801f1a0,fn_FreedWON,1,FreedWON
-0x08020330,fn_eTower,2,FreedWON | eTower
-0x08032000,fn_ceaa,1,ceaa
-0x08036958,sub_08036958,3,SNEC | NOTB | SNEC
-0x0803cbf8,fn_Meter,2,Use Vol |  Meter
+0x08005830,sub_08005830,106,SN:  | FW:  | Model:  | Normal/Standby:  | Set Time:  | PV Input Mode:  | Battery Type:  | Lead-acid Capacity:  | Customized Capacity:  | Lithium Type:  | Green Function Enable:  | Battery ECO Enable:     | Buzzer Enable:  | Buzzer On ExCfg Enable:  | ISO Enable:  | Max Grid In Power:  | CT Power Offset:  | Battery Wake up:  | Fan1 Max Speed:  | Fan1 Slope:  | Fan2 Max Speed:  | Fan2 Slope:  | Fan3 Max Speed:  | Fan3 Slope:  | Fan4 Max Speed:  | Fan4 Slope:  | Fan5 Max Speed:  | Fan5 Slope:  | Hybrid Mode:  | Export to Grid:  | Export Power Percent:  | Grid CT Connection:  | CT Sample Ratio:  | CT Direction Reversed:  | EPS Voltage Set:  | EPS Frequency Set:  | AC Input Range:  | PV Grid Off:  | N-PE Connect (Inner):  | PV Arc:  | PV Arc Fault Clear:  | RSD Enable:  | Charge Current Limit:  | Lead-Acid Charge Voltage:    | Lead-Acid Floating Voltage:  | System Charge Volt Limit:  | System Charge SOC Limit:  | PVChg First Stop Volt: | PVChg First Stop SOC: | Discharge Control:  | Discharge Current Limit:  | Discharge Cut-off Volt:  | Discharge Cut-off SOC :  | On Grid EOD Volt:        | On Grid EOD SOC :        | Battery Warning Volt:    | Battery Warning SOC :    | Smart Load Enable:  | Start PV Power:  | Grid Always On:  | Smart Load Start Volt:  | Smart Load End   Volt:  | Smart Load Start SOC:  | Smart Load End   SOC:  | AC Couple Enable:  | AC Couple Start Volt:  | AC Couple End   Volt:  | AC Couple Start SOC:  | AC Couple End   SOC:  | Recovery Threshold SOC:  | Recovery Threshold Volt:  | AC Chg Based On:  | AC Charge Battery Current:  | AC Charge Time:  | P1 Start:  | End:  | P2 Start:  | P3 Start:  | AC Charge Battery Voltage:  | Start:  | AC Charge Battery SOC :  |  AC First  | Generator Charge Type:  | Gen Charge Bat Current:  | Gen Charge Start Bat Volt:  | Gen Charge End Bat Volt:  | Gen Charge Start Bat SOC :  | Gen Charge End Bat SOC :  | Max. Gen Input Power:  | Generator Boost Enable:  | Gen Cool Time:  | Gen Charge Time:  | Gen Quick Charge Start:  | Set System Type:  | Set Composed Phase:  | Battery Shared:  | LED CtrEn:  | LED Ctr:  | LED Timer:  | LED Mode:  | Soft Timer:  | Dry Control:  | Measurement:  | LED Light Factor:  | Error Record:  | Alarm Record: 
+0x08007458,fn_pGceaa,1, pGceaa
+0x0800a414,sub_0800a414,1,YES?
+0x0800b77a,sub_0800b77a,3,     Error:   |      Warning: |                
+0x0800ba10,fn_download,2,download |  update 
+0x0800cbfe,fn_Hybrid_Setting,1, Hybrid Setting 
+0x0800cd08,fn_Parallel_Setting,1, Parallel Setting 
+0x0800d366,fn_Smart_Load,1, Smart Load 
+0x0800d494,fn_AC_Couple,1, AC Couple 
+0x0800e834,fn_NO_Fault,1,NO Fault
+0x0800e958,fn_NO_Alarm,1,NO Alarm
+0x0800ee90,sub_0800ee90,11,LCD Ageing Test | effects on LCD. | 1.Pure black | 2.Pure white | 3.black and white stripes | 4.corner pixel grid | Please Press "ENTER". | KEY Ageing Test | Please Press ESC UP DOWN ENTER. | KEY Ageing Test OK | Next  there will be four display
+0x0801a93a,fn_pGceaa,1, pGceaa
+0x0801d256,sub_0801d256,1,NOTB
+0x0801d48c,fn_pGceaa,1, pGceaa
+0x08022924,fn_eTower,2,FreedWON | eTower
+0x08027910,sub_08027910,1,NOTB
+0x08028690,sub_08028690,1,SNECSNEDEDSNDPOTatezLAA1SA22
+0x080359dc,fn_FreedWON,1,FreedWON
+0x080371ac,sub_080371ac,3,SNEC | NOTB | SNEC
