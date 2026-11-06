@@ -13,3 +13,7 @@ and pushed to the DSP in the config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)). Governs the AC-input acceptance
 window and transfer timing (and relates to generator handling, cf.
 [`IR077-ACInputType`](IR077-ACInputType.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `AC Input Range` = UPS (170-280) | **APL (90-280)** (**default APL**). APL/UPS map to the line-mode options; transfer is slower under APL.

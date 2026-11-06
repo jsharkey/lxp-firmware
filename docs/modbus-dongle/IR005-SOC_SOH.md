@@ -18,3 +18,7 @@ which the ARM's CAN parser `sub_0802a760` decodes and maps to IR 5
 ([`docs/20`](../20-battery-bms-firmware.md) CAN→IR map,
 [`docs/wiring/ARM-CAN1`](../wiring/ARM-CAN1.md)). This is first-hand data — the
 ARM reads the battery directly, not via the DSP or safety CPU.
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Battery tab**: `SOC` = battery remaining power, `SOH` = battery health.

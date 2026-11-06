@@ -17,3 +17,7 @@ vs by SOC). Persisted to config flash and pushed to the DSP in the config snapsh
 over USART3 ([`docs/08`](../08-arm-dsp-config-protocol.md)). Relate to
 [`IR077-ACInputType`](IR077-ACInputType.md) and
 [`HR146-LineMode`](HR146-LineMode.md) (GEN mode).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Charge tab → Generator Setting**: `Generator Charge Type` (Use Vol | **Use SOC**, HR 120 bit), `Gen Charge Start Bat Volt` (**default 46.4V**, HR 194), `Gen Charge End Bat Volt` (~48V, HR 195), `Gen Charge Start Bat SOC` (**default 20%**, HR 196), `Gen Charge End Bat SOC` (**default 100%**, HR 197), gen charge current (**default 30A**, HR 198). The manual also shows `Max. Gen Input Power` (**default 15000W**) — a separate register, not in this 194-198 set.

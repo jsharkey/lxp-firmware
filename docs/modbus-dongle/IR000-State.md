@@ -46,3 +46,7 @@ relay-gating draft misread `== 2` as AC-First output-priority; corrected in
 [`docs/18`](../18-power-path-relays.md)/[`docs/16`](../16-arm-io-map.md).
 Output-priority is a *holding* register —
 [`HR145-OutputPrioConfig`](HR145-OutputPrioConfig.md).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Other tab**: `Status` = current status, `NextStatus` = next status. The manual's status-code table (§17.3) is the same code set as IR 0 but adds two the Modbus operating-mode table omits: `0x11` **Bypass** and `0x19` **PV Charge + Bypass**.

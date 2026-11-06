@@ -11,3 +11,7 @@
 
 **ARM-computed** power values (part of the derived `P*` telemetry,
 [`docs/22`](../22-arm-dsp-core-split.md)), not verbatim bank fields.
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Grid tab**: `Pinv` = inverted power, `Prec` = rectified power.

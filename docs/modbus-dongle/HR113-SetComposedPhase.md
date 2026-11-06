@@ -11,3 +11,7 @@
 **Assigns this unit's phase** in a 3-phase parallel system. Persisted to config
 flash. **Do not confuse with IR 113** (ParallelInfo status) — different register
 space, unrelated meaning (the "space split", [index](README.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `Set Composed Phase` = **Phase U** | Phase V | Phase W (three-phase parallel).

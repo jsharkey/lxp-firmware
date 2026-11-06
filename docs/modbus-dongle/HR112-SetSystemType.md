@@ -14,3 +14,7 @@ parallel-operation behaviour (reported back on the input side at
 between inverters uses a CAN bus; a mismatch raises E008/E009/E010
 ([`IR060_063-FaultCode_WarningCode`](IR060_063-FaultCode_WarningCode.md)).
 **Note space split:** HR 112/113 (settings) vs IR 113 (status).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `Set System Type` = **Not Parallel** | Single Phase Parallel | Three Phase Parallel (configurable only in standby or fault).

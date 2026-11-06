@@ -22,3 +22,7 @@ black-box test: [`docs/25`](../25-modbus-register-spaces.md) §3.
 
 This controls *when* AC-first applies; the *priority mode itself* is
 [`HR145-OutputPrioConfig`](HR145-OutputPrioConfig.md) (value 2).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `AC First` — P1/P2/P3 `Start`/`End` (**factory default 00:00 / 00:00**, range 00:00-23:59). Manual: the time windows during which the inverter uses **only AC** to power loads and uses all PV to charge the battery.

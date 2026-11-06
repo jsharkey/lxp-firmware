@@ -17,3 +17,7 @@ written on the holding side ([`HR112-SetSystemType`](HR112-SetSystemType.md),
 [`HR113-SetComposedPhase`](HR113-SetComposedPhase.md)). **Note the
 space split:** IR 113 (this status) ≠ HR 113 (SetComposedPhase). **Open:** getter
 source not individually traced.
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Parallel tab**: `Parallel Role` (master/slave), `Parallel Type` (single/three phase), `Parallel Phase` (U/V/W), `Parallel Num`, `Parallel Addr`.

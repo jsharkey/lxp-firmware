@@ -15,3 +15,7 @@ the BMS pack voltage over CAN1 ([`docs/20`](../20-battery-bms-firmware.md)). The
 register-getter sweep in [`docs/33`](../33-usart2-telemetry-bank.md) did **not**
 map IR 4 to a bank offset, so it is likely assembled/selected in ARM logic.
 **Open:** trace the IR 4 getter.
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Battery tab**: `Vbat` = battery voltage. Distinct from `Vbat_Inv` (inverter-sampled, IR 107).

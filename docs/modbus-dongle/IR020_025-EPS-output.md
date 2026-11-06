@@ -17,3 +17,7 @@
 ([`docs/33`](../33-usart2-telemetry-bank.md)). **Powers (IR 24/25) and frequency
 (IR 23): ARM-computed/derived.** Split-phase L1N/L2N detail of the same EPS output
 is at [`IR127_138-EPS-split-phase`](IR127_138-EPS-split-phase.md).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **UPS tab**: `Veps` = load voltage, `Feps` = load frequency, `VepsL1N`/`VepsL2N` = L1-N/L2-N load voltage, `Peps` = active power of load, `Seps` = apparent power of load.

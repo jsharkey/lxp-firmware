@@ -15,3 +15,7 @@ the DSP as part of the full config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)/[`docs/10`](../10-dsp-config-field-map.md),
 [`docs/wiring/ARM-USART3`](../wiring/ARM-USART3.md)). Tells the power stage how the
 PV inputs are wired. **Open:** its exact offset in the DSP config block.
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Common tab**: `PV Input Mode` = `DC source input` | `Two MPPT connect to different strings` — **factory default: Two MPPT to different strings**. ('Same string' parallels both strings into one MPPT at the inverter.)

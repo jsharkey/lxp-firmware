@@ -17,3 +17,7 @@
 ([`docs/33`](../33-usart2-telemetry-bank.md)). **Powers/energies: ARM-computed /
 accumulated.** This is the per-leg detail of the aggregate EPS output at
 [`IR020_025-EPS-output`](IR020_025-EPS-output.md).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **UPS tab**: `VepsL1N`/`VepsL2N` (L1-N/L2-N load voltage), `PepsL1N`/`PepsL2N` (active power), `SepsL1N`/`SepsL2N` (apparent power), `EepsL1N_day`/`EepsL1N_all`, `EepsL2N_day`/`EepsL2N_all`.

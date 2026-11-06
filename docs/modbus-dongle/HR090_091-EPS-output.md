@@ -12,3 +12,7 @@
 **Off-grid (EPS) output voltage/frequency targets** — persisted to config flash
 and pushed to the DSP (which generates the EPS output) in the config snapshot over
 USART3 ([`docs/08`](../08-arm-dsp-config-protocol.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `EPS Voltage Set` (**default 110/220**; options 120/240, 127/220 three-phase, 100/200 split-phase, 120/208, 115/230) and `EPS Frequency Set` (**default 60Hz** | 50Hz).

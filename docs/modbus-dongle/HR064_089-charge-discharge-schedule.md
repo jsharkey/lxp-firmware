@@ -40,3 +40,7 @@ parallel **AC-First** windows (HR 152–157) reach **block 5 `0x17…0x21`** the
 "Unresolved" means the static method cannot see it (register-indexed storage outside
 the canonical struct) — **not** that it is confirmed absent; a live USART3 capture
 would settle it.
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Charge tab**: `AC Chg Based On` selects the AC-charge mode (**default Disable**; options: According to Time / Bat Voltage / Bat SOC / Battery Volt and Time / Battery SOC and Time), exposing up to **3 AC-charge windows** (P1-P3 Start/End, 00:00-23:59) plus `AC Charge Battery Current` (**default 30A**) and voltage/SOC start-end thresholds. (The charge-priority / forced-discharge blocks are the schedule analogues.)

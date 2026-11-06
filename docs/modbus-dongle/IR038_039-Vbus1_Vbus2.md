@@ -12,3 +12,7 @@
 **The USART2 bank** at the offsets above, relayed over USART2
 ([`docs/33`](../33-usart2-telemetry-bank.md)). Half-bus voltage is a separate
 register — [`IR120-VBusP`](IR120-VBusP.md).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Other tab**: `Vbus1` = voltage of BUS1, `Vbus2` = voltage of BUS2.

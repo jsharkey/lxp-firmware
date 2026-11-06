@@ -10,3 +10,7 @@
 
 **The USART2 bank** (`BANK+0x12`), relayed over USART2
 ([`docs/33`](../33-usart2-telemetry-bank.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Other tab**: `VbusP` = positive BUS voltage (`VbusN` = negative BUS voltage).

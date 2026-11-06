@@ -23,3 +23,7 @@ word+byte-swapped encoding ([index](README.md)).
 > Signedness/accumulation reset: the daily counters roll at day boundary; the
 > cumulative counters can be cleared via `HR 11` ResetSetting.EnergyRecordClr
 > ([`HR011-ResetSetting`](HR011-ResetSetting.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU exposes these across the Solar/Battery/Grid/UPS tabs as `E*_day` (one day) and `E*_all` (total): e.g. `Epv1_day`/`Epv1_all` (MPPT1 generation), `Echg_day`/`Echg_all` (charge), `Edischg_day`/`Edischg_all` (discharge), `Einv_day` (inverted) / `Erec_day` (rectified), `Eeps_day`/`Eeps_all` (load).

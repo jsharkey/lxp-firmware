@@ -18,3 +18,7 @@
 persisted to config flash and pushed to the DSP in the config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)). The CT ratios affect how metering
 currents are scaled. (A further `uFunctionEn2` word is HR 179, index-only.)
+
+## On the LCD (EG4 12000XP manual)
+
+SETTINGS → **Application tab**: `PV Grid Off` (**default Disable**) = `ubPVGridOffEn` (bit 0). `Battery Shared` (**default Disabled**) is the parallel battery-sharing enable.

@@ -13,3 +13,7 @@
 battery voltage × current inside the ARM's telemetry computation, alongside the
 other `P*` powers ([`docs/22`](../22-arm-dsp-core-split.md)); not a verbatim bank
 field. **Open:** pin the exact current source (BMS CAN vs bank sample).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Battery tab**: `Pchg` = battery charge power, `Pdischg` = battery discharge power.

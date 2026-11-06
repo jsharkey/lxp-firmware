@@ -92,3 +92,7 @@ The internal DTC (IR 6) and the BMS fault/warn words (IR 99/100) are separate �
 see [`IR006-InternalFault`](IR006-InternalFault.md) and
 [`IR081_106-BMS`](IR081_106-BMS.md). The firmware's own enum lives in
 [`include/inv/faults.h`](../../include/inv/faults.h).
+
+## On the LCD (EG4 12000XP manual)
+
+Surfaces on the **Notice menu** (Fault Status / Alarm Status tabs) and the DATA MENU **Other tab** (`FaultCode` / `AlarmCode`). The manual's error (§17.1) and warning (§17.2) descriptions match the E000-E031 / W000-W031 tables above.

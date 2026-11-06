@@ -17,3 +17,7 @@ and generator-charge decide their thresholds). Persisted to config flash and
 pushed to the DSP in the config snapshot over USART3
 ([`docs/08`](../08-arm-dsp-config-protocol.md)). These select *which* of the
 threshold registers (voltage vs SOC) are active.
+
+## On the LCD (EG4 12000XP manual)
+
+Mode-selector bits exposed on the LCD: `Discharge Control` = Use Vol | **Use SOC** (Discharge tab, DischgCtrlType); `Generator Charge Type` = Use Vol | **Use SOC** (Charge tab, GenChargeType); the AC-charge method selector `AC Chg Based On` (ACChargeType).

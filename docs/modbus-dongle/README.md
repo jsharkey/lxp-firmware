@@ -185,3 +185,26 @@ RE-traced; `rsvd` = reserved/unused.
 - **Operating modes** (State, IR 0): [`IR000-State.md`](IR000-State.md).
 - **Fault codes E000-E031 / Warning codes W000-W031**:
   [`IR060_063-FaultCode_WarningCode.md`](IR060_063-FaultCode_WarningCode.md).
+
+## LCD gloss (EG4 12000XP manual)
+
+Where the register maps 1:1 onto a field the inverter shows on its own LCD, the
+per-register file carries an **"On the LCD (EG4 12000XP manual)"** section that
+gives the HMI menu/tab, the on-screen label, a plain-language definition, and —
+for settings — the **factory default**. These are interoperability facts taken
+from the published EG4 12000XP user manual (HMI `DATA MENU` field names map to
+`IR*` files; `SETTINGS` labels and defaults map to `HR*` files); they are a
+user-facing gloss, not a change to the register semantics established elsewhere
+in this tree.
+
+Two LCD features have defaults worth recording here because they live in `idx`
+ranges with no dedicated file yet:
+
+- **Smart Load** (Discharge tab; `idx` HR 158-169 area) — default **Disable**;
+  Start PV 0.5 kW, Start Volt 54 V / End 48 V, Start SOC 90 % / End 60 %.
+- **AC Couple** (Discharge tab; `idx` HR 158-169 area) — default **Disable**;
+  Start SOC 50 % / End 90 %, Start Volt 50.0 V / End 54.0 V.
+
+Other manual defaults not otherwise captured above: CT Power Offset 0 W, Fan
+Slope / Max Speed 70 %, Buzzer Enable **Enable**, Green Function **Disable**,
+ISO (insulation) **Disable**, RSD Enable **Enable**.

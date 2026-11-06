@@ -18,3 +18,7 @@ accumulated.** Note IR 126 doubles as a status word in ceaa-07xx (bit 8 = AC-Fir
 window active) — a space/usage nuance flagged in
 [`docs/25`](../25-modbus-register-spaces.md); do not assume IR 126 is purely
 generator energy for this image.
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Grid tab**: `Vgen` = generator voltage, `Fgen` = generator frequency.

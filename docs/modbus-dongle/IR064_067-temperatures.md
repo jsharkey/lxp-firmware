@@ -16,3 +16,7 @@
 temperature — most likely from the BMS over CAN1
 ([`docs/20`](../20-battery-bms-firmware.md)); **Tinner (IR 64)** is not yet mapped
 to a getter source. All are signed (`s16`).
+
+## On the LCD (EG4 12000XP manual)
+
+The manual's DATA MENU **Other tab** also reports two inverter temperatures with thresholds: `T1` = I/O-board temp, highest (Normal <87 °C, Warning >87 °C, Fault ≥95 °C); `T2` = motherboard temp (Normal <90 °C, Warning >90 °C, Fault ≥105 °C). Their exact correspondence to Tinner/Tradiator1/2 here is not pinned. (Cell temps `Tcellmax`/`Tcellmin` are the BMS's, IR 103/104.)

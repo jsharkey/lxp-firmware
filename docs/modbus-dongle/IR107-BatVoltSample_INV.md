@@ -12,3 +12,7 @@
 relayed over USART2 ([`docs/33`](../33-usart2-telemetry-bank.md)). This is the
 inverter's *own* measurement of pack voltage, distinct from the BMS-reported pack
 voltage and from IR 4 Vbat ([`IR004-Vbat`](IR004-Vbat.md)).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Battery tab**: `Vbat_Inv` = inverter sampling battery voltage (the inverter's own measurement, vs the BMS-reported pack voltage).

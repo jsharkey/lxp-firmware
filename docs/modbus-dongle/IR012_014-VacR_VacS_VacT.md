@@ -16,3 +16,7 @@ the ARM over USART2 at the offsets above
 [`docs/wiring/ARM-USART2`](../wiring/ARM-USART2.md)). Not DSP-relayed; the safety
 CPU samples the grid independently ([`docs/29`](../29-safety-cpu.md)). IR 13's
 offset `BANK+0x28` is also read for generator voltage (IR 121).
+
+## On the LCD (EG4 12000XP manual)
+
+DATA MENU **Grid tab**: `Vgrid` = grid voltage; `VgridL1N`/`VgridL2N` = split-phase L1-N / L2-N voltage.
