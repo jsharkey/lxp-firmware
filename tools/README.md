@@ -33,6 +33,8 @@ deps with `pip install capstone pyelftools`.
 | `tft.py` | **factory LCD model**: decodes the factory image's bit-banged 4-wire TFT stream (GPIOB PB12–15) unpacking 8 px/byte into the 240×160 monochrome panel image (`docs/28`) |
 | `factory_hmi.py` | boot the **factory** image through its RTOS until the display task paints, read the screen, press the real keys to navigate its menus (`docs/28`) |
 | `factory_hmi_app.py` | **the factory graphic HMI on screen**, driven by the real image executing in the emulator (`make factory-hmi`, `docs/28`) |
+| `dongle_fw.py` | **dongle firmware analyzer** (ESP32-C3 / RISC-V): ESP-IDF image header, segments, app descriptor, RV32 disasm, baud + string xrefs (`docs/26`) |
+| `lxp_pcap.py` | **dongle↔cloud capture dissector** (pure stdlib): pcap → Luxpower frames → EG4 device frames; shows which register windows the dongle polls, CRC-checked; `--per-pack` slices the IR 5000 per-battery bank (`docs/34` §2d) |
 
 Dynamic analysis example (validate + call a function):
 

@@ -544,9 +544,16 @@ python3 tools/batt_canmap.py reference/BATT_IN280-Z03T13.bin --builders   # TX f
 # ARM-side: inject extended frames, sweep registers (see the probe in this note's history)
 ```
 
-For §2d, dissect a dongle↔cloud pcap with a pure-stdlib reader (Ethernet→IPv4→TCP
-reassembly, then the `A1 1A … 0xC2/0x0005` outer frame → Luxpower device frame):
-pick out the `dev_func=0x04` windows and read the `reg_start=5000` payload as 127
-little-endian u16 registers, then slice packs at a 30-register stride. The pcaps are
-device captures (not firmware) and stay out of the tree; serials are redacted in
-this doc.
+For §2d, dissect a dongle↔cloud pcap with [`tools/lxp_pcap.py`](../tools/lxp_pcap.py)
+(pure stdlib — Ethernet/VLAN→IPv4→TCP reassembly, then the `A1 1A … 0xC2/0x0005`
+outer frame → Luxpower device frame):
+
+```bash
+python3 tools/lxp_pcap.py <capture>.pcap                    # which register windows the dongle polls (CRC-checked)
+python3 tools/lxp_pcap.py <capture>.pcap --reg 5000 --per-pack   # slice the IR 5000 bank, 30 regs/pack
+```
+
+It confirms the four `dev_func=0x04` windows (`reg_start` 0, 127, 254, 5000, each
+127 regs) and that **every inner device frame passes CRC-16/MODBUS** — i.e. genuine
+inverter responses the dongle relays verbatim. The pcaps are device captures (not
+firmware) and stay out of the tree; serials are redacted in this doc.
