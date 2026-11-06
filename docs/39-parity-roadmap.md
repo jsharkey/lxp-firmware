@@ -307,7 +307,7 @@ fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
   over Modbus on both images.
 
 ### T07 — ARM-computed telemetry registers
-**Status:** `[ ]` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
+**Status:** `[~] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
 
 These are the registers the ARM **computes** rather than relays
 ([`docs/22`](22-arm-dsp-core-split.md) "PV power is ARM-computed",
