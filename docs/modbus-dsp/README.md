@@ -1,0 +1,84 @@
+# The ARM↔DSP link surface — authoritative field map
+
+**This directory is the source of truth for the fields exchanged on the internal
+ARM↔Control-DSP link** (ARM **USART3** ↔ DSP **SCI-B**). It mirrors
+[`docs/modbus-dongle/`](../modbus-dongle/README.md), but this link is **not**
+register-addressed Modbus — it is EG4's **type-1 block protocol**: the ARM pushes
+the whole configuration as **nine block-tagged frames** (block ids 0–8), each a
+fixed header + a positionally-packed, **big-endian** payload. So the "one file per
+register" of the dongle tree becomes **one file per block** here. When a numbered
+analysis doc (`docs/NN`) and a file here disagree, **the file here wins**.
+
+Transport + endpoints: [`docs/wiring/ARM-USART3`](../wiring/ARM-USART3.md). Research
+trail: [`docs/05`](../05-dsp-link.md) (link id + bootloader),
+[`docs/08`](../08-arm-dsp-config-protocol.md) (envelope + direction),
+[`docs/10`](../10-dsp-config-field-map.md) (byte-exact map),
+[`docs/07`](../07-dsp-ac-first-mode.md) (what block 0 drives).
+
+## Scope — this is ONLY the ARM↔DSP wire
+
+There are **four** EG4-Modbus-*family* links in this system; they share the frame
+shape (`… CRC-16/0xA001`) but are **different wires with different framing**. Only
+the first is in scope here:
+
+| link | wire | framing | documented in |
+|---|---|---|---|
+| **ARM↔DSP** ← *this tree* | ARM **USART3**, internal TTL 19200 | **big-endian, SN-less, block-tagged** (`SOF`, `type=1`, header, **block id @ `0x14`**, BE payload @ `0x15`) + `0x21/22/23` bootloader | [`ARM-USART3`](../wiring/ARM-USART3.md) |
+| Dongle Modbus | ARM **UART5**, external RS-485 | little-endian, 10-byte **SN**, func `03/04/06/10`; ARM = slave | [`docs/modbus-dongle/`](../modbus-dongle/README.md) |
+| safety CPU→ARM | ARM **USART2**, internal RS-485 | big-endian type-1 telemetry bank | [`ARM-USART2`](../wiring/ARM-USART2.md) |
+| MPPT→DSP | MPPT **USART1**, internal | big-endian, `0x42` SOF | [`MPPT-USART1`](../wiring/MPPT-USART1.md) |
+
+This is the **internal control contract**, not something an external tool polls:
+the dongle cannot read these fields. The ARM **bridges** — it ingests dongle-Modbus
+holding-register writes, stores them in its settings struct, and re-emits them here
+as block fields (`holding reg → ARM struct → type-1 block → DSP RAM`). So a block
+field's "source" is usually a dongle holding register; its "target" is a DSP RAM
+word.
+
+## Framing & encoding
+
+- **TTL, 19200 8N1**, not RS-485. CRC-16/MODBUS (`0xA001`, init `0xFFFF`).
+- **Two SOFs, one wire** (direction-asymmetric):
+  - **ARM → DSP** config push: **SOF `0x41` ('A')**, builder `FUN_080273b4`/`FUN_08026830`.
+  - **DSP → ARM** telemetry: **SOF `0x49` ('I')**, builder `FUN_00096EE8`, ARM RX `FUN_0801bb0e`.
+- Plus the **firmware-update bootloader** (`0x21/0x22/0x23`, a *separate* RX state
+  machine `FUN_0801bbe0`) and an unsolicited **clock** frame.
+- **All payload multi-byte fields are big-endian** (`FUN_0009E7C2` = u16 BE,
+  `FUN_0009E6BA` = u32 BE on the DSP; single bytes = one wire byte). The dongle
+  path is little-endian — do not mix.
+- **One block per frame**; the block id at `0x14` selects the layout. The ARM
+  rotates the id to push the full set (~one block / 20 ms → full snapshot ~6×/s),
+  continuously; the DSP diffs each field and acts only on changes.
+- **Completeness mask:** each block ORs its bit into DSP `DAT_0000b300`
+  (`0x001…0x100`, +`0x200` from block 3); the DSP treats the config as complete
+  once all bits are set.
+
+## Index — config blocks (ARM → DSP, SOF `0x41`, block id @ `0x14`)
+
+| block | `b300` bit | role | doc |
+|---|---|---|---|
+| 0 | `0x001` | **output priority / AC-First + grid-charge core** | [→](block-00-output-priority.md) |
+| 1 | `0x002` | config group (targets `0xB23x`) | [→](block-01.md) |
+| 2 | `0x004` | config group (targets `0xABxx`) | [→](block-02.md) |
+| 3–6 | `0x008`–`0x040` | **grid-charge "slot" parameters** (change-detect triplets) | [→](block-03_06-gridcharge-slots.md) |
+| 7 | `0x080` | config group (targets `0xABFx`/`0xACxx`) | [→](block-07.md) |
+| 8 | `0x100` | config group (targets `0xABDx`/`0xABEx`) | [→](block-08.md) |
+
+## Index — other frames on this wire
+
+| frame | direction | purpose | doc |
+|---|---|---|---|
+| 20-byte header (`0x00`–`0x13`) | both | SOF/type/len + id/serial + status, precedes every block | [→](frame-header.md) |
+| clock (`0xA5 0xA5` + y/m/d h:m:s) | ARM → DSP | stream the RTC (the DSP has no power-off clock) | [→](clock.md) |
+| telemetry (`SOF 0x49`) | DSP → ARM | working-state + PV/grid/freq mirror | [→](telemetry-0x49.md) |
+| bootloader `0x21/0x22/0x23` | ARM → DSP | firmware update (session/erase/program/verify) | [→](bootloader-21_23.md) |
+
+## Confidence (from docs/10)
+
+- **High:** field order, offsets, widths, endianness, and DSP RAM targets for all
+  nine blocks (cross-validated: DSP decompiler vs an independent disassembly
+  emulator; block 0 + readers checked against the raw listing).
+- **Named vs opaque:** **block 0** fields are interpreted ([`docs/07`](../07-dsp-ac-first-mode.md)).
+  Blocks 1–8 targets are *located* (exact DSP RAM word) but most are **not yet
+  named** as product settings — the open leg is correlating each against the
+  dongle holding-register that feeds it (`holding reg → ARM struct field`).

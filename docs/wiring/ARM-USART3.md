@@ -12,6 +12,11 @@ the DSP and streams it the clock; the DSP runs the real-time power FSM and sends
 telemetry back. One wire carries two framings plus the firmware-update
 bootloader.
 
+> **Per-field surface:** [`docs/modbus-dsp/`](../modbus-dsp/README.md) documents the
+> individual block fields (one file per config block 0–8, plus the frame header,
+> clock, `0x49` telemetry and `0x21/22/23` bootloader), mirroring the
+> `docs/modbus-dongle/` tree. This wiring doc stays the transport/overview.
+
 ## Endpoints
 
 | end | port | confidence |

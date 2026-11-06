@@ -1,6 +1,10 @@
 # FUN_00092EE2 field map — the ARM→DSP config block layout
 
 > **Authoritative wiring:** for the ARM↔DSP link overview see [`docs/wiring/ARM-USART3.md`](wiring/ARM-USART3.md). This doc remains the byte-exact per-block field map.
+>
+> **Per-block field surface:** [`docs/modbus-dsp/`](modbus-dsp/README.md) mirrors
+> the `docs/modbus-dongle/` layout with one file per block (plus the header, clock,
+> telemetry and bootloader frames) — the field-reference view of this map.
 
 Byte-exact layout of the config-push payload that the DSP's `FUN_00092EE2`
 (word `0x92EE2`) unpacks into DSP RAM, for the ARM-side packer. This is the
