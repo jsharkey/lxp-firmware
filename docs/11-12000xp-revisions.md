@@ -54,7 +54,7 @@ codebase and toolchain, just re-partitioned and a year of features heavier.
 > **This is exactly the axis the variant descriptor already models.** The 05 vs
 > 07 difference is the same `layout` / `vector_addr` / `bootloader_size` delta
 > that distinguishes the 12000XP from the 18kPV (see
-> [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md) and
+> [`docs/10-18kpv-vs-12000xp.md`](10-18kpv-vs-12000xp.md) and
 > `include/inv/variant.h`). A 07-series 12000XP target is a variant with
 > `layout = INV_IMAGE_APP_OVER_BL`, `vector_addr = 0x08005000`,
 > `bootloader_size = 0x5000` — so *firmware revision*, not just *model*, is a
