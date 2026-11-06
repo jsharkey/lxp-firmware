@@ -13,3 +13,9 @@
 `HR 11` ResetSetting.EnergyRecordClr ("power and running time reset",
 [`HR011-ResetSetting`](HR011-ResetSetting.md)). 32-bit value uses the
 dongle's word+byte-swapped encoding.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

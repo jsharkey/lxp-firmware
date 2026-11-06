@@ -21,3 +21,9 @@ accumulated.** This is the per-leg detail of the aggregate EPS output at
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **UPS tab**: `VepsL1N`/`VepsL2N` (L1-N/L2-N load voltage), `PepsL1N`/`PepsL2N` (active power), `SepsL1N`/`SepsL2N` (apparent power), `EepsL1N_day`/`EepsL1N_all`, `EepsL2N_day`/`EepsL2N_all`.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

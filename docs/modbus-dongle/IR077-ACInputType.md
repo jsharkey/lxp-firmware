@@ -11,3 +11,9 @@
 Reports whether the AC input is treated as grid or generator. **Open:** getter
 source not yet pinned (candidate: derived from the generator-related settings /
 line mode, [`HR146-LineMode`](HR146-LineMode.md)).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

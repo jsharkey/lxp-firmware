@@ -26,3 +26,12 @@ This controls *when* AC-first applies; the *priority mode itself* is
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Application tab**: `AC First` — P1/P2/P3 `Start`/`End` (**factory default 00:00 / 00:00**, range 00:00-23:59). Manual: the time windows during which the inverter uses **only AC** to power loads and uses all PV to charge the battery.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **Evaluated vs RTC (HR 152-157):** [`test_timewindow.py`](../../tests/test_timewindow.py) / [`timewindow_contract.py`](../../tests/timewindow_contract.py) `acfirst` (all three slots, midnight wrap, start-incl/end-excl edges).
+- **DSP push (HR 152-157 → config block 5):** [`test_dsp_push.py`](../../tests/test_dsp_push.py) / [`dsppush_contract.py`](../../tests/dsppush_contract.py) `DSP_PUSH`.
+- **End-to-end over the wire (HR 152/153 → IR 126 bit 8):** [`test_arm_sim.py`](../../tests/test_arm_sim.py) `test_modbus_acfirst_window_tracks_rtc`.
+- **Pure predicate:** [`test_acfirst.c`](../../tests/test_acfirst.c).

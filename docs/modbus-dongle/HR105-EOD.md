@@ -16,3 +16,9 @@ SOCLowLimitForEPSDischg (index-only).
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Discharge tab**: `On Grid EOD Volt` (**default 42.0V**). Related Discharge-tab settings: `Discharge Cut-off Volt` (**default 42.0V**, HR 100), `Battery Warning Volt` (**default 44.0V**).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **HR 105 (EOD):** [`test_dsp_config.c`](../../tests/test_dsp_config.c) sets `HR_EOD` and confirms it is carried in the config push.

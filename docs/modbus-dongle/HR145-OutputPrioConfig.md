@@ -21,3 +21,9 @@ The value `2` here = **AC-first output priority**. Unrelated to `State == 2`
 (Programming) — an earlier relay-gating draft confused the two; corrected in
 [`docs/18`](../18-power-path-relays.md). The AC-First *time windows* (when AC-first
 applies) are separate — [`HR152_157-ACFirst-windows`](HR152_157-ACFirst-windows.md).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **HR 145 (OutputPrioConfig):** [`test_dsp_config.c`](../../tests/test_dsp_config.c) sets `HR_OUTPUT_PRIO_CFG` (AC-First=2 / PV-First=1) and checks it lands in the config payload.

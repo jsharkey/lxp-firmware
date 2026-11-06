@@ -21,3 +21,9 @@ threshold registers (voltage vs SOC) are active.
 ## On the LCD (EG4 12000XP manual)
 
 Mode-selector bits exposed on the LCD: `Discharge Control` = Use Vol | **Use SOC** (Discharge tab, DischgCtrlType); `Generator Charge Type` = Use Vol | **Use SOC** (Charge tab, GenChargeType); the AC-charge method selector `AC Chg Based On` (ACChargeType).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **HR 120 (stSysEnable):** [`test_dsp_config.c`](../../tests/test_dsp_config.c) sets `HR_SYS_ENABLE` into the config push. Its **ACChargeType** field is exercised as the AC-charge gate (config +0x33) by [`test_timewindow.py`](../../tests/test_timewindow.py) / [`timewindow_contract.py`](../../tests/timewindow_contract.py) `acchg`.

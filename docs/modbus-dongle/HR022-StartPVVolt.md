@@ -13,3 +13,9 @@ working. Persisted to config flash and pushed to the DSP in the config snapshot
 over USART3 ([`docs/08`](../08-arm-dsp-config-protocol.md)/[`docs/10`](../10-dsp-config-field-map.md),
 [`docs/wiring/ARM-USART3`](../wiring/ARM-USART3.md)); the ARM does not act on it
 itself. **Open:** exact byte offset in the DSP config block.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

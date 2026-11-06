@@ -13,3 +13,9 @@
 config flash and used by the charge/discharge control (pushed to the DSP in the
 config snapshot). For BMS packs these come from the pack over CAN1 instead
 ([`IR081_106-BMS`](IR081_106-BMS.md)).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

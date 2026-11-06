@@ -23,3 +23,9 @@ Notably: bit 0 clears the energy/runtime counters
 5/6 drive the **battery charge/discharge switches** which propagate to the BMS over
 CAN1 ([`docs/wiring/ARM-CAN1`](../wiring/ARM-CAN1.md)). Settings changes (bit 1)
 are persisted to config flash. **Open:** confirm the exact handler per bit.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

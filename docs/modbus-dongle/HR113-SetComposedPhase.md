@@ -15,3 +15,9 @@ space, unrelated meaning (the "space split", [index](README.md)).
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Application tab**: `Set Composed Phase` = **Phase U** | Phase V | Phase W (three-phase parallel).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

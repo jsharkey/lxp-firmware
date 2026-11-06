@@ -19,3 +19,9 @@ map IR 4 to a bank offset, so it is likely assembled/selected in ARM logic.
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Battery tab**: `Vbat` = battery voltage. Distinct from `Vbat_Inv` (inverter-sampled, IR 107).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 4 (Vbat):** battery CAN — [`test_arm_sim.py`](../../tests/test_arm_sim.py) `test_can_battery_telemetry_reaches_modbus` (0x356 voltage, 0.01 V → 0.1 V); decoder unit test [`test_bms_can.c`](../../tests/test_bms_can.c) (0x356 voltage).

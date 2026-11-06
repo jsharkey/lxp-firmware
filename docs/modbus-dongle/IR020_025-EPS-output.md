@@ -21,3 +21,10 @@ is at [`IR127_138-EPS-split-phase`](IR127_138-EPS-split-phase.md).
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **UPS tab**: `Veps` = load voltage, `Feps` = load frequency, `VepsL1N`/`VepsL2N` = L1-N/L2-N load voltage, `Peps` = active power of load, `Seps` = apparent power of load.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 20 (VepsR) / IR 23 (Feps):** safety-CPU telemetry — [`arm_sim_contract.py`](../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY` (`veps_r`, `feps`), asserted by `test_safety_cpu_telemetry_reaches_modbus`.
+- **IR 21 / 22 / 24 / 25:** _No automated test exercises this register yet — a focused test is welcome._

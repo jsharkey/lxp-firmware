@@ -16,3 +16,9 @@ register — [`IR120-VBusP`](IR120-VBusP.md).
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Other tab**: `Vbus1` = voltage of BUS1, `Vbus2` = voltage of BUS2.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 38 / 39 (Vbus1/Vbus2):** safety-CPU telemetry — [`arm_sim_contract.py`](../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY` (`vbus1`/`vbus2`), asserted by `test_safety_cpu_telemetry_reaches_modbus`. The engine group-boundary test in [`test_modbus.c`](../../tests/test_modbus.c) also starts at 38.

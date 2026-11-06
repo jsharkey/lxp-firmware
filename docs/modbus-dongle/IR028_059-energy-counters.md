@@ -27,3 +27,10 @@ word+byte-swapped encoding ([index](README.md)).
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU exposes these across the Solar/Battery/Grid/UPS tabs as `E*_day` (one day) and `E*_all` (total): e.g. `Epv1_day`/`Epv1_all` (MPPT1 generation), `Echg_day`/`Echg_all` (charge), `Edischg_day`/`Edischg_all` (discharge), `Einv_day` (inverted) / `Erec_day` (rectified), `Eeps_day`/`Eeps_all` (load).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 30 / 44 / 45 (EPV3 day/all):** [`test_variant.c`](../../tests/test_variant.c) asserts these PV3 energy slots are gated off on the 12000XP.
+- **All other day/all counters:** _No automated test exercises this register yet — a focused test is welcome._

@@ -16,3 +16,9 @@ voltage and from IR 4 Vbat ([`IR004-Vbat`](IR004-Vbat.md)).
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Battery tab**: `Vbat_Inv` = inverter sampling battery voltage (the inverter's own measurement, vs the BMS-reported pack voltage).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

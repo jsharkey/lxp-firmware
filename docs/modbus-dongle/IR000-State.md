@@ -50,3 +50,9 @@ Output-priority is a *holding* register —
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Other tab**: `Status` = current status, `NextStatus` = next status. The manual's status-code table (§17.3) is the same code set as IR 0 but adds two the Modbus operating-mode table omits: `0x11` **Bypass** and `0x19` **PV Charge + Bypass**.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 0 (State):** engine read path — [`test_modbus.c`](../../tests/test_modbus.c) reads `IR_STATE`. Also the run-enable relay contract: [`arm_sim_contract.py`](../../tests/arm_sim_contract.py) `RUN_STATES`/`NONRUN_STATES` drive PC6 from the State value, held by `test_relay_follows_working_mode` in [`test_arm_sim_self_only.py`](../../tests/test_arm_sim_self_only.py) / [`test_arm_sim_factory_only.py`](../../tests/test_arm_sim_factory_only.py).

@@ -44,3 +44,11 @@ would settle it.
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Charge tab**: `AC Chg Based On` selects the AC-charge mode (**default Disable**; options: According to Time / Bat Voltage / Bat SOC / Battery Volt and Time / Battery SOC and Time), exposing up to **3 AC-charge windows** (P1-P3 Start/End, 00:00-23:59) plus `AC Charge Battery Current` (**default 30A**) and voltage/SOC start-end thresholds. (The charge-priority / forced-discharge blocks are the schedule analogues.)
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **Writability + DSP push (HR 64-73):** [`test_dsp_push.py`](../../tests/test_dsp_push.py) / [`dsppush_contract.py`](../../tests/dsppush_contract.py) — `WRITABLE_64_89`/`INERT_64_89` pin which registers store, and `DSP_PUSH` pins that HR 68-73 (AC-charge windows) push to config block 4 while HR 66 (power) is stored but not pushed.
+- **AC-charge windows vs RTC (HR 68-73):** [`test_timewindow.py`](../../tests/test_timewindow.py) / [`timewindow_contract.py`](../../tests/timewindow_contract.py) `acchg`.
+- **HR 67 + HR 74-89:** contract-asserted **inert** in the factory image (a dongle write does not store) — see `INERT_64_89`.

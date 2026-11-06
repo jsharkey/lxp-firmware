@@ -13,3 +13,9 @@
 
 **The USART2 bank** (`BANK+0xaa`), relayed over USART2
 ([`docs/33`](../33-usart2-telemetry-bank.md)).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

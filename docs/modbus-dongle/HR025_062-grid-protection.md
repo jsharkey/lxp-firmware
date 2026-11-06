@@ -24,3 +24,9 @@ The ARM stores/forwards them; the DSP acts on them. Related reactive-curve
 lock-in/out params are HR 92-97 (index-only). **Open:** per-field offsets in the
 DSP config block (the field-level map in [`docs/10`](../10-dsp-config-field-map.md)
 is still being completed).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

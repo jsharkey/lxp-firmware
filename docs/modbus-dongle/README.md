@@ -208,3 +208,27 @@ ranges with no dedicated file yet:
 Other manual defaults not otherwise captured above: CT Power Offset 0 W, Fan
 Slope / Max Speed 70 %, Buzzer Enable **Enable**, Green Function **Disable**,
 ISO (insulation) **Disable**, RSD Enable **Enable**.
+
+## Test coverage
+
+Every per-register file ends with a **`## Test coverage`** section that names the
+tests exercising each register (and flags the registers with no test yet), so the
+coverage gaps are visible register-by-register. The tests live in
+[`../../tests/`](../../tests/); run them with `make test` (host unit tests) and
+`make test-sim` / `make test-window` (the Unicorn black-box and focused
+time-window suites). The key entry points the sections point at:
+
+- **`test_arm_sim.py`** — black-box dongle reads/writes over the emulated UART
+  (CAN telemetry → input regs, time, charge current, AC-First → IR 126).
+- **`arm_sim_contract.py`** — the shared `SAFETY_TELEMETRY` (safety-CPU → input
+  regs), `RTC_WALK`, and relay specs both images are held to.
+- **`timewindow_contract.py` / `test_timewindow.py`** — AC-First (HR 152-157) and
+  AC-charge (HR 68-73) window evaluators vs the RTC.
+- **`dsppush_contract.py` / `test_dsp_push.py`** — which holding writes are pushed
+  to the DSP config blocks.
+- **`test_bms_can.c`, `test_acfirst.c`, `test_rtc.c`, `test_modbus.c`,
+  `test_dsp_config.c`, `test_variant.c`, `test_hmi.c`** — pure host unit tests for
+  the decoders/evaluators behind the registers.
+
+**Keep each file's section current when you add or change a test** — see
+[`AGENTS.md`](../../AGENTS.md) ("Build & test").

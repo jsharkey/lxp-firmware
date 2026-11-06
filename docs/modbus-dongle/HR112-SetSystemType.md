@@ -18,3 +18,9 @@ between inverters uses a CAN bus; a mismatch raises E008/E009/E010
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Application tab**: `Set System Type` = **Not Parallel** | Single Phase Parallel | Three Phase Parallel (configurable only in standby or fault).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

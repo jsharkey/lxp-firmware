@@ -20,3 +20,10 @@ to a getter source. All are signed (`s16`).
 ## On the LCD (EG4 12000XP manual)
 
 The manual's DATA MENU **Other tab** also reports two inverter temperatures with thresholds: `T1` = I/O-board temp, highest (Normal <87 °C, Warning >87 °C, Fault ≥95 °C); `T2` = motherboard temp (Normal <90 °C, Warning >90 °C, Fault ≥105 °C). Their exact correspondence to Tinner/Tradiator1/2 here is not pinned. (Cell temps `Tcellmax`/`Tcellmin` are the BMS's, IR 103/104.)
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 65 / 66 (Tradiator1/2):** safety-CPU telemetry — [`arm_sim_contract.py`](../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY` (`t_rad1`/`t_rad2`, **served /10**), asserted by `test_safety_cpu_telemetry_reaches_modbus`.
+- **IR 64 (Tinner) / IR 67 (Tbat):** _No automated test exercises this register yet — a focused test is welcome._

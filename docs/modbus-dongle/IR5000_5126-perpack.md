@@ -109,3 +109,9 @@ the Modbus getters do not read.
 |---|---|---|
 | aggregate pack SOC/SOH, V/I/T, limits, faults, cell min/max | [IR 5](IR005-SOC_SOH.md), [IR 81-106](IR081_106-BMS.md) | ✔ yes, any pack (CAN `0x351/355/356/359`) |
 | **per-pack** V/SOC/cell detail, one block per stacked pack | **IR 5000-5126** (this doc) | ✔ populated on a live 2-pack stack (§2d); needs CAN `0x4xx`, whose source on that stack is not yet observed |
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 5000-5007, 5030-5037:** [`test_arm_sim_factory_only.py`](../../tests/test_arm_sim_factory_only.py) `test_per_pack_telemetry_reaches_modbus` (**factory image only** — these are dormant across the EG4 battery line, so there is no ours-side behaviour to hold to a shared contract).

@@ -103,6 +103,13 @@ make             # 12000XP build; add VARIANT=18kpv / VARIANT=6000xp if touched
   and emit analysis; they do not modify firmware. Keep them non-destructive.
 - If a test can't run because it needs a proprietary image you don't have, say
   so explicitly in your commit/notes rather than pretending it passed.
+- **When a test exercises a dongle Modbus register, record it in that register's
+  `## Test coverage` section** in [`docs/modbus-dongle/`](docs/modbus-dongle/README.md).
+  Every `IR*`/`HR*` file carries one, listing the tests that cover each register
+  and flagging the ones with no test yet. Keep it current as you add, rename, or
+  retarget a test — link the test file and name the test function. That list is
+  how we see, at a glance, where coverage is still thin; a test that isn't
+  recorded there is coverage the next agent can't find.
 
 ## Claims discipline (this project lives or dies on it)
 
@@ -146,6 +153,9 @@ the authoritative file is invisible to the next agent.
   Modbus surface. The internal links (ARM↔DSP, safety-CPU, MPPT) are different
   wires with different framing — document those in `docs/wiring/`, and keep the
   distinction (see that README's "four EG4-Modbus-family links" note).
+- Each `docs/modbus-dongle/` register file has a `## Test coverage` section; when
+  you write or change a test that touches a register, update that section (see
+  **Build & test** above).
 - Leave a breadcrumb: when you move a fact into one of these subdirs, point the
   old numbered doc at it (the existing "Authoritative wiring:" / "Dongle
   registers:" banners are the pattern).

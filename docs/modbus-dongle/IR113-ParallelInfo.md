@@ -21,3 +21,9 @@ source not individually traced.
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Parallel tab**: `Parallel Role` (master/slave), `Parallel Type` (single/three phase), `Parallel Phase` (U/V/W), `Parallel Num`, `Parallel Addr`.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

@@ -17,3 +17,9 @@ window and transfer timing (and relates to generator handling, cf.
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Application tab**: `AC Input Range` = UPS (170-280) | **APL (90-280)** (**default APL**). APL/UPS map to the line-mode options; transfer is slower under APL.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

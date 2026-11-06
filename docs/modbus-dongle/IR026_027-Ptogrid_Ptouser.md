@@ -17,3 +17,9 @@ ARM-side and surfaced separately (IR 126 bit 8) — it is **not** pushed to the 
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Grid tab**: `Pexport` = power output to grid (0 on this off-grid inverter), `Pimport` = power input from grid.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

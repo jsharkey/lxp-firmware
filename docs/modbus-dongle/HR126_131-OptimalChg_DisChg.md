@@ -24,3 +24,9 @@ status word** (generator energy / AC-First active bit) — different space, diff
 meaning ([`docs/25`](../25-modbus-register-spaces.md)). The ARM compares the
 current half-hour slot against the RTC it owns; like the other time windows it is
 not pushed to the DSP as a per-slot verdict.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_Not yet covered._ A good candidate for a focused evaluator test in the same shape as the AC-First one — see the header of [`timewindow_contract.py`](../../tests/timewindow_contract.py).

@@ -25,3 +25,9 @@ FW version byte. Traced in the factory image via the holding getter `fn_ceaa`
 
 A FW-version mismatch here is what surfaces as warning **W008** (ARM-computed; see
 [`IR060_063-FaultCode_WarningCode`](IR060_063-FaultCode_WarningCode.md)).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

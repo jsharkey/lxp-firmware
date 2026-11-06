@@ -12,3 +12,9 @@
 (`STATUS+0x91`) before it is served ([`docs/33`](../33-usart2-telemetry-bank.md)).
 A diagnostic/trouble code distinct from the main fault bitfield (IR 60/61 — see
 [`IR060_063-FaultCode_WarningCode`](IR060_063-FaultCode_WarningCode.md)).
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._

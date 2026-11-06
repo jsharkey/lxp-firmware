@@ -22,3 +22,11 @@ generator energy for this image.
 ## On the LCD (EG4 12000XP manual)
 
 DATA MENU **Grid tab**: `Vgen` = generator voltage, `Fgen` = generator frequency.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+- **IR 122 (Fgen):** safety-CPU telemetry — [`arm_sim_contract.py`](../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY` (`gen_freq`), asserted by `test_safety_cpu_telemetry_reaches_modbus`.
+- **IR 126 bit 8 (AC-First active):** [`test_arm_sim.py`](../../tests/test_arm_sim.py) `test_modbus_acfirst_window_tracks_rtc` — the only externally observable AC-First signal, swept across the window edges vs the RTC.
+- **IR 121 / 123 / 124 / 125 (Vgen, Egen day/all):** _No automated test exercises this register yet — a focused test is welcome._

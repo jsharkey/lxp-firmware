@@ -22,3 +22,9 @@ currents are scaled. (A further `uFunctionEn2` word is HR 179, index-only.)
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Application tab**: `PV Grid Off` (**default Disable**) = `ubPVGridOffEn` (bit 0). `Battery Shared` (**default Disabled**) is the parallel battery-sharing enable.
+
+## Test coverage
+
+_Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../AGENTS.md))._
+
+_No automated test exercises this register yet — a focused test is welcome._
