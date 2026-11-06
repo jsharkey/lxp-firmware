@@ -67,10 +67,35 @@ byte" and [`docs/16`](16-arm-io-map.md) establish for the relay gating. So:
 **the ring's colour is sourced from the operating state surfaced on
 [`IR 0` (State)](wiring/ARM-UART5-dongle/IR000-State.md)** — a *running* mode (≥3)
 selects the green pattern (mode 7), while a warning/status condition in the
-companion dwords selects the yellow/amber pattern (mode 4/5); Programming is its
-own mode (6). The user-facing knobs (**"LED CtrEn / LED Ctr / LED Timer / LED
+companion dwords selects the yellow/amber or red pattern (mode 4/5); Programming is
+its own mode (6). The user-facing knobs (**"LED CtrEn / LED Ctr / LED Timer / LED
 Mode / LED Light Factor / Green Function Enable"**, HMI strings) tune
 enable/brightness/animation on top.
+
+## Per-mode colours (traced)
+
+Modes 4/5/7 play precomputed colour-frame animations from a flash table at
+`0x0802ca7c` (`sub_08012598`, indexed `0x0802ca7c + 0x64·frame + 4·led`, mode 7 at
+`+0`, mode 5 at `+0x1f4`, mode 4 at `+0x3e8`); mode 1 computes a live hue wheel
+(`sub_08012708`); mode 6 is a separate writer (`sub_08012680`). Decoding the tables
+(colour words are **`0x00RRGGBB`**, 8-bit per channel) pins the colours:
+
+| LED mode | from state | colour words | **colour** | shape |
+|---|---|---|---|---|
+| **7** | IR_STATE ≥ 3 (running) | `0x00_nn_00` (G only) | **green** | rotating comet / gradient |
+| **4** | status dword `+0x9c` ≠ 0 | `0x00_nn_nn_00` (R=G) | **yellow / amber** | rotating comet |
+| **5** | status dword `+0x98` ≠ 0 | `0x00_nn_0000` (R only) | **red** | rotating comet |
+| **6** | IR_STATE == 2 (Programming) | `0x0000ff00` (G) | green, distinct pattern | FW-update indicator |
+| **1** | (not state-selected here) | live 6-phase wheel | **full rainbow** | rotating hue |
+| **0** | Standby / else | — | off / idle | — |
+
+So: **green = operating normally (mode 7), yellow/amber = warning (mode 4), red =
+fault-level status (mode 5)** — exactly the observed behaviour, and the firmware
+*already* contains a full rainbow cycler (mode 1). Each frame lights a brightness
+gradient that advances one LED per tick around the ring (`head` index at
+`0x2000050e`, wrapping at 25) → the **spinning comet**. Every colour is passed
+through `sub_0801243c`, the per-channel brightness/gamma scaler fed by **"LED Light
+Factor"** — the glow/throb.
 
 ```
 IR_STATE (IR 0) + ext-status  ->  mapper 0x08016fcc  ->  LED mode 0x2000050c
@@ -81,17 +106,77 @@ IR_STATE (IR 0) + ext-status  ->  mapper 0x08016fcc  ->  LED mode 0x2000050c
                                colour buffer 0x20009e50 -> DMA1-Ch7 -> TIM4-CCR4 -> PD15
 ```
 
+## What we could build with this ring
+
+The hardware is far more capable than the stock green/yellow/red comet. What the
+trace establishes about the canvas:
+
+- **25 individually-addressable LEDs** in a circle (the loop runs LED `0..0x18`;
+  the comet's `head` index wraps at 25). So any position-dependent pattern is
+  possible — it is a 25-pixel circular display.
+- **Full 24-bit RGB per LED** (`0x00RRGGBB`, 8-bit channels, 16.7 M colours). The
+  stock animations only ever drive R and G (blue is `0x00` everywhere), but the
+  data path is a true 3-byte-per-LED serial stream — so **blue is almost certainly
+  wired** (these parts are RGB WS2812/SK6812-class). *Worth one hardware check
+  before relying on blue, since no stock frame exercises it.*
+- **Per-LED brightness** via `sub_0801243c` (the "LED Light Factor" scaler) — free
+  global dimming and smooth fades/breathing.
+- **Cheap updates** — TIM4-PWM + DMA shifts the whole frame out without CPU
+  bit-banging, so re-colouring all 25 LEDs every animation tick is essentially free.
+
+### Colours
+Any RGB value. Beyond the stock green (`0x00ff00`) / amber (`0xffff00`) / red
+(`0xff0000`): **blue** (`0x0000ff`), **cyan/white** for idle or charging, **purple**
+for grid-export, etc. A per-state palette (e.g. blue = AC-charging, cyan = PV-only,
+white = standby) is a one-line table change in the mode→colour map.
+
+### Rainbow — already there
+Mode 1 is a working **6-phase hue wheel** (R→Y→G→C→B→M→R, step `0x11`). It is just
+not selected by the state mapper. Exposing it (e.g. a "party/boot" mode, or via the
+HMI "LED Mode") gives a rotating rainbow for free. A **static rainbow ring** (each
+of the 25 LEDs a different fixed hue, `hue = 360°·led/25`) is a trivial variant —
+compute the wheel per-position instead of per-time.
+
+### Patterns the 25-pixel ring enables
+- **Gauge / arc** — light `K = round(25·value)` LEDs to show a percentage as a
+  filled arc: **SOC gauge** (green arc = state-of-charge), **load/power meter**, or
+  charge progress. The most useful upgrade — turns the ring into a dial.
+- **Split / segments** — half green / half red, or N colour wedges, to encode two
+  quantities at once (e.g. PV vs battery).
+- **Multi-comet / dual-chase** — more than one lit head, or two colours chasing in
+  opposite directions; the single-head logic generalises directly.
+- **Breathe / pulse** — ramp the brightness scaler on all LEDs together (sine or
+  triangle) for a calm "idle" glow, distinct from the running spin.
+- **Blink / strobe** — attention patterns for faults (stock red comet → red
+  double-blink), using the same frame buffer.
+- **Spinner speed/direction by state** — faster spin under higher load, reverse on
+  discharge; just change the `head` step/sign per tick.
+- **Colour-temperature fade** — green→amber→red as a continuous function of a
+  warning severity, rather than three discrete modes.
+
+### For our open firmware
+A clean reimplementation is a small module: a 25×RGB framebuffer, a `led_set(i,
+rgb)` + `led_show()` (TIM4-CH4 PWM-DMA, 24 bits/LED, with the `0x69`/`0x2d` pulse
+widths as the `1`/`0` encodings), a brightness scale, and an animation task that
+picks colour+pattern from `IR_STATE`/faults — mirroring `sub_08012708`. The
+gauge/arc and per-state palette are the highest-value additions; the ring is
+otherwise a general RGB display we are free to drive however we like.
+
 ## Confidence
 
 - **Proven:** PD15 = TIM4-CH4 AF; TIM4 PWM + DMA1-Ch7 → CCR4 ← buffer `0x20009e50`;
   the bit-serialiser emits two pulse-width duties; `sub_08012708` dispatches on the
   mode byte; the mapper `0x08016fcc` derives the mode from `0x2000d0e4` `+0xa0`
   (IR_STATE) / `+0x98` / `+0x9c`.
+- **Proven (last mile):** 25 LEDs, 24-bit `0x00RRGGBB` per LED, and the per-mode
+  colours read straight from the flash frame table (`0x0802ca7c`) — green (mode 7),
+  amber (mode 4), red (mode 5), and the mode-1 rainbow wheel; the rotating comet is
+  the frame gradient advancing one LED/tick.
 - **Inferred:** that the LED part is specifically WS2812/SK6812 (the
   PWM+DMA+bit-serialise shape is unmistakably a serial-addressable-LED driver, but
-  the exact chip/line timing is not bit-verified); and the precise RGB each mode
-  writes (green vs amber) — the IR_STATE→mode mapping is proven, the per-mode
-  colour constants are the remaining detail to trace in the colour writers.
+  the exact chip/line timing is not bit-verified); and that **blue** is physically
+  present (the data path is full 24-bit RGB, but no stock frame drives the B
+  channel — a quick hardware check would confirm).
 
 ## Footnote — the `0x20009e50` buffer vs the "USART2 safety bank"
 
