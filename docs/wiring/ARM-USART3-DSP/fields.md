@@ -40,7 +40,11 @@ word.
 - **TTL, 19200 8N1**, not RS-485. CRC-16/MODBUS (`0xA001`, init `0xFFFF`).
 - **Two SOFs, one wire** (direction-asymmetric):
   - **ARM → DSP** config push: **SOF `0x41` ('A')**, builder `FUN_080273b4`/`FUN_08026830`.
-  - **DSP → ARM** telemetry: **SOF `0x49` ('I')**, builder `FUN_00096EE8`, ARM RX `FUN_0801bb0e`.
+  - **DSP → ARM** telemetry: **SOF `0x49` ('I')**, DSP builder `FUN_00096EE8` — but
+    the ARM's USART3 RX **rejects it** (Modbus + bootloader demux only); the ARM's
+    `0x49` telemetry comes from the safety CPU on **USART2** instead. See
+    [`telemetry-0x49`](telemetry-0x49.md) (T09 correction); `FUN_0801bb0e` is the
+    USART2 path, not USART3.
 - Plus the **firmware-update bootloader** (`0x21/0x22/0x23`, a *separate* RX state
   machine `FUN_0801bbe0`) and an unsolicited **clock** frame.
 - **All payload multi-byte fields are big-endian** (`FUN_0009E7C2` = u16 BE,
@@ -86,7 +90,8 @@ images, with confidence): [`hr-controlled-fields.md`](hr-controlled-fields.md).
 |---|---|---|---|
 | 20-byte header (`0x00`–`0x13`) | both | SOF/type/len + id/serial + status, precedes every block | [→](frame-header.md) |
 | clock (`0xA5 0xA5` + y/m/d h:m:s) | ARM-built | RTC stream — **the DSP does not consume it** (no parser / no time math) | [→](clock.md) |
-| telemetry (`SOF 0x49`) | DSP → ARM | working-state + PV/grid/freq mirror | [→](telemetry-0x49.md) |
+| telemetry (`SOF 0x49`) | DSP-built | **not received by the ARM on USART3** (demux rejects it; ARM's `0x49` is on USART2) | [→](telemetry-0x49.md) |
+| Modbus slave (`03/04/06/10`) | DSP → ARM | the DSP polls the ARM; register reads/writes (ARM as slave) | [→](telemetry-0x49.md) |
 | bootloader `0x21/0x22/0x23` | ARM → DSP | firmware update (session/erase/program/verify) | [→](bootloader-21_23.md) |
 
 ## Confidence (from docs/10)

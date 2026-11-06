@@ -97,8 +97,8 @@ call/wiring line or two to `main.c`. Rebase often.
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
 | State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | **`inv_classify()`** publishes IR 0 + IR 60-63 (`src/state/classify.c`, T06a) | factory oracle (T06b) blocked on 07 re-pin; mode byte source is USART2 (T05) |
-| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (needs T09 DSP RX); IR 19 PF, 77, 64/67 |
-| DSP link RX | `0x49` telemetry parsed by `FUN_08025ab8` ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **TX only** | parser + link-loss supervision |
+| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (source is the **USART2** safety-CPU bank, T05 — *not* a USART3 `0x49`; corrected by T09); IR 19 PF, 77, 64/67 |
+| DSP link RX (USART3) | **Modbus-slave + bootloader demux** (`sub_0801c3e6`); NOT a `0x49` parser — that's USART2 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **demux + Modbus-serve done** (`src/dsp/dsp_rx.c` + `dsp_rx_port.c`, T09) | **closed (T09)**; link-loss supervision is T08 |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
 | Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | HR 15 seeded once; `check_sn=false`; HR 11 inert | command semantics |
@@ -353,10 +353,12 @@ host [`tests/test_telemetry.c`](../tests/test_telemetry.c). Register coverage
 updated for IR 7-11, 16-17, 24-27, 69-70.
 
 **Deferred (the V·I / sign-split COMPUTE itself).** The getter only *serves* a
-pre-computed value; the upstream compute is filled by the DSP `0x49` telemetry
-parser (`sub_08025ab8`, a scheduler task that doesn't run in the harness) — so the
-internal quantities are **injected** here (as the card allows) and the real
-compute lands with **T09** (DSP RX). Also not yet covered: **IR 19 PF** (a bank
+pre-computed value; the upstream compute is filled by the **safety-CPU `0x49`
+telemetry parser on USART2** (`sub_08025ab8` over buffer `0x20009048`, a scheduler
+task that doesn't run in the harness) — so the internal quantities are
+**injected** here (as the card allows) and the real compute lands with the
+**USART2 ingest, T05** (*not* a USART3 `0x49` — the ARM's USART3 RX is a
+Modbus/bootloader demux, see **T09**). Also not yet covered: **IR 19 PF** (a bank
 field — relayed per docs/33, not ARM-computed), **IR 77 ACInputType**, **IR 64
 Tinner / 67 Tbat**, and RunningTime cross-boot persistence — left for a T07b.
 
@@ -394,19 +396,35 @@ state change and relay drop. **Prove it:**
 - **Ours:** a small `link_watchdog` module (pure: `last_rx_tick, now → ok/lost`)
   per peer, wired into T06's local-flags input.
 
-### T09 — DSP link RX: parse the `0x49` telemetry frame
-**Status:** `[~] claude 2026-11-06` · **Layer:** host + sim · **Independent** (factory RX path `FUN_0801bb0e`/`FUN_08025ab8`)
+### T09 — DSP link RX: what the ARM consumes on USART3 (finding corrects the premise)
+**Status:** `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**
 
-Our link is TX-only. The factory parses DSP `0x49` frames on USART3
-([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)). The authoritative
-state and faults come from USART2 (docs/22), so first **find out what the ARM
-actually consumes from `0x49`**: link-alive, DSP version, the block
-acknowledge/completeness mask?
-- **Oracle:** inject `0x49` frames into the factory over USART3 and diff the
-  RAM/IR changes (`tools/ramxref.py`, `tools/emu_regrange.py`).
-- **Ours:** an RX ring on USART3 (the ISR already exists in `src/uart/uart3.c`)
-  and a block parser that mirrors `dsp_build_config_frame`.
-- Record the findings in `docs/wiring/ARM-USART3-DSP/telemetry-0x49.md`.
+**Finding: the ARM does NOT parse a `0x49` telemetry frame on USART3.** The
+premise ("the factory parses DSP `0x49` on USART3", with RX path
+`FUN_0801bb0e`/`FUN_08025ab8`) was wrong — those are the **USART2** safety-CPU
+`0x49` path. The ARM's USART3 RX (ISR `sub_0801c774` → `sub_0801c6e0` → byte
+handler `sub_0801c3e6`, buffer `0x20007490`) is a **Modbus-slave (`03/04/06/10`)
++ DSP-bootloader (`21/22/23`) demux**, address-gated; a `0x49`/type-1 frame is
+rejected. Proven static (App vector table + `tools/disres.py`: the func dispatch,
+and the `cmp #0x49` living in the USART2 handler `sub_0801c808` reading buffer
+`0x20009048`) **and** dynamic (the real byte handler drops a `0x49` SOF while
+assembling Modbus/bootloader).
+- **Oracle (done):** drive the real `sub_0801c3e6` with each frame's first two
+  bytes and check whether the assembler advances (accept) or resets (drop) —
+  [`tests/dsprx_contract.py`](../tests/dsprx_contract.py)`::FactoryBackend`.
+- **Ours (done):** [`inv_dsp_rx_classify`](../src/dsp/dsp_rx.c) mirrors the demux
+  decision (pure, host-tested [`test_dsp_rx.c`](../tests/test_dsp_rx.c)); the
+  USART3 RX service [`src/dsp/dsp_rx_port.c`](../src/dsp/dsp_rx_port.c) drains the
+  wire, serves Modbus as a slave (the DSP polls the ARM here), recognises
+  bootloader frames (→ T18), and drops the rest. Wired into `src/main.c`.
+- **Recorded** in [`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)
+  (rewritten), the USART3-DSP [`README`](wiring/ARM-USART3-DSP/README.md) /
+  [`fields`](wiring/ARM-USART3-DSP/fields.md) (corrections folded in) and
+  [`docs/31`](31-factory-quirks.md) Q10. Common sim test wired into `make test-sim`.
+- **Consequence for telemetry compute (T07 follow-ons):** the upstream V·I /
+  sign-split compute does **not** arrive via a USART3 `0x49` — its source is the
+  **USART2** safety-CPU telemetry bank (docs/33). Re-point IR 19/64/67/77 work at
+  T05 (USART2 ingest), not at this task.
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
 **Status:** `[ ]` · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
@@ -588,8 +606,8 @@ RS-485 DE, CAN bitrate. Also cover how to recover a unit that bricks.
 
 ```
 T01 UART5 ─────────────┐
-T02 RTOS tasks in sim ─┼─> T05 USART2 RX ─┐
-                       │   T09 DSP RX ────┼─> T08 link supervision ─┐
+T02 RTOS tasks in sim ─┼─> T05 USART2 RX ─┼─> T08 link supervision ─┐
+                       │   T09 USART3 RX demux ✓ (Modbus/bootloader; no 0x49) │
                        │                  │                         ├─> T13 dashboard (real data)
 T06 classifier ────────┼──────────────────┴─────────────────────────┤
                        └─> T14 relays (needs T02 + T06) ─> T16 gen  │
@@ -601,5 +619,5 @@ T15 schedules, T17 07-series features   (independent)
 ```
 
 Tasks that start **today with no dependency**: T01, T02, T03, T04, T06 (micro
-half), T07, T09, T10 (blocks 2/3/6/7/8), T11, T13 (with injected values), T15,
-T17.
+half), T07, T10 (blocks 2/3/6/7/8), T11, T13 (with injected values), T15,
+T17. (T09 is complete.)

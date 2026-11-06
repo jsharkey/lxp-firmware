@@ -225,6 +225,38 @@ read back what it produced — see each entry's *How found*.
 
 ---
 
+## Q10 — the DSP's `0x49` telemetry is built but not received by the ARM on USART3
+
+- **Area:** ARM↔DSP link (`docs/wiring/ARM-USART3-DSP/telemetry-0x49.md`, T09)
+- **Observed:** the DSP builds a `0x49` ('I') type-1 telemetry frame and writes it
+  to its SCI-B TXBUF (builder `FUN_0009DD14` → `FUN_0009D358`), the return wire of
+  the ARM→DSP config push. But the ARM's **USART3 RX** (ISR `sub_0801c774` → drain
+  `sub_0801c6e0` → byte handler `sub_0801c3e6`, buffer `0x20007490`) is a
+  Modbus-slave + bootloader **demux**: it accepts only func `03/04/06/10` and
+  `21/22/23` after an address match, and **resets the assembler on anything else**,
+  so a `0x49`/type-1 frame never assembles. The ARM's own `0x49` telemetry is the
+  **safety CPU's** frame on **USART2** (`cmp #0x49` in `sub_0801c808`, parser over
+  buffer `0x20009048`), a different ISR entirely.
+- **Expectation:** the symmetric "config out / telemetry back on the same wire"
+  reading (earlier `telemetry-0x49.md`) implied the ARM parses the DSP's `0x49`
+  on USART3. It does not.
+- **Evidence:** App vector table + `tools/disres.py` on `com_flat.bin`
+  (`sub_0801c3e6` dispatch; `sub_0801c808` SOF test); dynamic oracle
+  `tests/test_dsp_rx.py` (the real byte handler drops a `0x49` SOF, assembles
+  Modbus/bootloader). Static + dynamic.
+- **Interpretation:** either the DSP's SCI-B `0x49` is not wired to USART3 RX in
+  hardware, or it is delivered and silently dropped. Either way it is not an ARM
+  telemetry source; the ARM relies on the USART2 safety-CPU telemetry.
+- **Our firmware:** faithfully reimplements the USART3 RX as the demux
+  (`inv_dsp_rx_classify`, `src/dsp/dsp_rx.c`); it does not attempt to parse a
+  `0x49` on USART3. No behavioural change needed — this is a corrected
+  understanding, not a bug to fix.
+- **Verdict:** replicate (the demux is the real behaviour); the "DSP 0x49 on
+  SCI-B goes nowhere on the ARM" leg is **still-to-decide** pending a hardware
+  schematic / capture of the SCI-B return line.
+
+---
+
 ## Not quirks (recorded so we don't re-flag them)
 
 These surprised us at first but are defensible factory behaviour; our firmware

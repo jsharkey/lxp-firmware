@@ -28,6 +28,7 @@
 #include "inv/energy.h"
 #include "inv/telemetry.h"
 #include "inv/settings_validate.h"
+#include "inv/dsp_rx.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map,
  * table in include/inv/settings_map.h). The wire value is scaled to the on-flash
@@ -294,6 +295,12 @@ int main(void) {
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
         mb_port_poll(g_ticks);
+
+        /* Service the ARM<->DSP link's receive side on USART3: the DSP polls the
+         * ARM as a Modbus slave here (func 03/04/06/10) and sends firmware-update
+         * frames (21/22/23); a 0x49 telemetry SOF is rejected -- the ARM does not
+         * consume DSP telemetry on this wire (docs/wiring/ARM-USART3-DSP, T09). */
+        inv_dsp_rx_poll(&g_mb, g_ticks);
 
         can_port_poll(on_can_frame);  /* drain battery BMS telemetry -> register image */
         if ((uint32_t)(g_ticks - last_bms) >= 1000) {   /* ~1 Hz keep-alive/request to the pack */

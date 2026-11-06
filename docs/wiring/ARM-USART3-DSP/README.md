@@ -45,10 +45,12 @@ All frames are EG4/Luxpower Modbus-family with **CRC-16/MODBUS** (poly `0xA001`,
 init `0xFFFF`); the DSP's CRC `FUN_00081034` is the mechanical twin of the ARM's
 `sub_08000d98`. Two framings share the wire:
 
-**1. Type-1 block config/telemetry** (the config push and its telemetry mirror):
+**1. Type-1 block config** (the ARM→DSP config push; the DSP builds a `0x49`
+telemetry mirror but the ARM does **not** consume it on USART3 — see
+[`telemetry-0x49`](telemetry-0x49.md), corrected in T09):
 
 ```
-off 0x00  SOF   : 0x41 ('A')  ARM->DSP        (DSP->ARM telemetry uses 0x49 'I')
+off 0x00  SOF   : 0x41 ('A')  ARM->DSP        (DSP's 0x49 'I' mirror: not RX'd here)
 off 0x01  type  : 0x01
 off 0x02  0x00
 off 0x03  len   : 0x36 (54)
@@ -73,27 +75,37 @@ each (`FUN_000810C5`). Lengths match the ARM's extended table exactly.
 
 ## Direction & roles
 
-- **ARM pushes, DSP is a reactive slave.** Config is sent ARM→DSP as a **full
-  snapshot** (all blocks, continuously, scheduler-driven — not deltas, not
+- **ARM pushes config, DSP is a reactive slave.** Config is sent ARM→DSP as a
+  **full snapshot** (all blocks, continuously, scheduler-driven — not deltas, not
   edit-triggered). The DSP never polls the ARM for configuration.
-- **Telemetry flows DSP→ARM** as the `0x49` frame (builder `FUN_0009DD14` →
-  `FUN_0009D358`, ~60-word frame at `0x00ADC2` + CRC) on this same SCI-B wire.
+- **The DSP polls the ARM as a Modbus slave on this wire.** The ARM's USART3 RX
+  is a Modbus-slave (func `03/04/06/10`) + DSP-bootloader (`21/22/23`) demux
+  (`sub_0801c6e0` → byte handler `sub_0801c3e6`, frame buffer `0x20007490`); it
+  answers register reads/writes here. The harness uses this (`ModbusDsp`) as the
+  factory register oracle.
+- **The DSP's own `0x49` telemetry is NOT received by the ARM on USART3.** The
+  demux rejects it; the ARM's telemetry comes from the **safety CPU** `0x49` on
+  **USART2** instead. The DSP-side builder `FUN_0009DD14` → `FUN_0009D358` writes
+  SCI-B TXBUF, but nothing on the ARM consumes it here. See
+  [`telemetry-0x49`](telemetry-0x49.md) (T09 correction) and
+  [`ARM-USART2`](../ARM-USART2-safety.md).
 - Firmware update is ARM→DSP (`0x21/22/23`), DSP ACKs. The ARM also gateways MPPT
   updates through to the DSP — see [`MPPT-USART1.md`](../MPPT-USART1-DSP.md).
-
-> **Note on "DSP telemetry to the ARM".** The DSP's *own* `0x49` frame arrives
-> here on USART3. But the ARM's **classified operating state, core input
-> registers and fault word** are built from the **safety CPU** on USART2, not
-> from this frame — see [`ARM-USART2.md`](../ARM-USART2-safety.md).
 
 ## Key functions
 
 **ARM** (260214 App, base `0x08005000`): build wrapper `FUN_080273b4` (rotates
 block id) → per-block builder `FUN_08026830` (`buf[0x14]=blockId`, BE @ `0x15`);
-telemetry parser `FUN_08025ab8(0x14)`; type-1 RX SM `FUN_0801bb0e`; bootloader RX
-SM `FUN_0801bbe0`; dual-mode serializer `sub_0803373c` (flag `0x2000aa0b` bit 0:
-0=dongle LE+SN, 1=DSP BE block-tagged); send/drain/RX `sub_0801c370` /
-`sub_0801c672` / `sub_0801c6e0`.
+dual-mode serializer `sub_0803373c` (flag `0x2000aa0b` bit 0: 0=dongle LE+SN,
+1=DSP BE block-tagged). **USART3 RX** (IRQ39 `sub_0801c774`): drain `sub_0801c6e0`
+→ byte handler **`sub_0801c3e6`** (frame buffer `0x20007490`) — a Modbus-slave +
+bootloader demux, **not** a `0x49` parser.
+  - ⚠ `telemetry parser FUN_08025ab8(0x14)` and `type-1 RX SM FUN_0801bb0e` were
+    previously listed here as USART3 — **they are the USART2 (safety-CPU) `0x49`
+    path**, not USART3 (`FUN_08025ab8` reads the USART2 buffer `0x20009048`; the
+    `0x49` SOF test is in the USART2 handler `sub_0801c808`). Corrected in T09 —
+    see [`telemetry-0x49`](telemetry-0x49.md) and [`ARM-USART2`](../ARM-USART2-safety.md).
+  - bootloader RX SM `FUN_0801bbe0` ([`bootloader-21_23`](bootloader-21_23.md)).
 
 **DSP** (C28x, Ghidra + `ghidra-tms320c28x`): comms task `FUN_00098F72` (RX into
 `0xAC80`, CRC, dispatch type 1) → `FUN_0009E309` → settings deserialiser
@@ -104,8 +116,13 @@ SM `FUN_0801bbe0`; dual-mode serializer `sub_0803373c` (flag `0x2000aa0b` bit 0:
 [`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c),
 [`src/dsp/dsp_link_port.c`](../../../src/dsp/dsp_link_port.c) (polled USART3 TX);
 [`src/uart/uart3.c`](../../../src/uart/uart3.c) @ 19200 8N1. One block pushed per
-~20 ms; full snapshot ~6×/s ([`src/main.c`](../../../src/main.c)). Tests:
-[`tests/test_dsp_config.c`](../../../tests/test_dsp_config.c).
+~20 ms; full snapshot ~6×/s ([`src/main.c`](../../../src/main.c)). RX demux
+(T09): [`src/dsp/dsp_rx.c`](../../../src/dsp/dsp_rx.c) +
+[`src/dsp/dsp_rx_port.c`](../../../src/dsp/dsp_rx_port.c) — see
+[`telemetry-0x49`](telemetry-0x49.md). Tests:
+[`tests/test_dsp_config.c`](../../../tests/test_dsp_config.c),
+[`tests/test_dsp_rx.c`](../../../tests/test_dsp_rx.c) +
+[`tests/test_dsp_rx.py`](../../../tests/test_dsp_rx.py).
 
 ## Corrections folded in
 
@@ -116,6 +133,11 @@ SM `FUN_0801bbe0`; dual-mode serializer `sub_0803373c` (flag `0x2000aa0b` bit 0:
 - Dongle-vs-DSP UART ambiguity resolved: **DSP = USART3, dongle = UART5**.
 - `0x21/22/23` identified as the DSP bootloader/update subset (was "undocumented
   / time-or-SN set?").
+- **T09:** retracted "the ARM parses the DSP `0x49` telemetry on USART3". The
+  USART3 RX is a Modbus-slave + bootloader **demux** (`sub_0801c3e6`, buffer
+  `0x20007490`) that rejects `0x49`; the `0x49` parse (`FUN_08025ab8`, buffer
+  `0x20009048`, SOF test `sub_0801c808`) is the **USART2** safety-CPU path. See
+  [`telemetry-0x49`](telemetry-0x49.md).
 
 ## Open
 
