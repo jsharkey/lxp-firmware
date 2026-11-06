@@ -22,7 +22,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
-from energy_contract import ENERGY_VECTORS, FactoryBackend, OursBackend  # noqa: E402
+from energy_contract import (ENERGY_VECTORS, ROLLOVER_VECTORS, SEED_DAILY,
+                             SEED_ALL, FactoryBackend, OursBackend)  # noqa: E402
 
 
 def _parse(argv):
@@ -93,14 +94,28 @@ def test_ours_epv1_accumulates():
     _check(_ours_or_skip())
 
 
+def _check_rollover(backend):
+    fails = []
+    for label, prev_day, new_day, should_reset in ROLLOVER_VECTORS:
+        day, allv = backend.rollover(prev_day, new_day)
+        exp_day = 0 if should_reset else SEED_DAILY
+        if (day, allv) != (exp_day, SEED_ALL):
+            fails.append("%-20s %d->%d -> Epv1_day=%d Epv1_all=%d, expected day=%d all=%d"
+                         % (label, prev_day, new_day, day, allv, exp_day, SEED_ALL))
+    assert not fails, "%s\n        " % backend.name + "\n        ".join(fails)
+
+
+def test_factory_epv1_day_resets_at_midnight():
+    """Factory: the calendar-date reset detector (0x08037cb2) zeroes the daily
+    counter (IR 28) when the RTC day-of-month changes, while the cumulative
+    counter (IR 40) persists; same day keeps both -- the shared rollover spec."""
+    _check_rollover(_factory_or_skip())
+
+
 def test_ours_epv1_day_resets_at_midnight():
-    """Extra credit: after accumulating, crossing an RTC day boundary zeroes the
-    daily counter (IR 28) while the cumulative counter (IR 40) persists."""
-    ob = _ours_or_skip()
-    # accumulate 5 counts on day 15, then roll to day 16
-    day, allv = ob.rollover(7_200_002, 5, 0x40, day1=15, day2=16)
-    assert allv == 5, "cumulative Epv1_all should persist across midnight, got %d" % allv
-    assert day == 0, "daily Epv1_day should reset to 0 across midnight, got %d" % day
+    """Our energy_rollover() zeroes the daily counters on a day change and leaves
+    the cumulative counters -- same spec as the factory oracle."""
+    _check_rollover(_ours_or_skip())
 
 
 if __name__ == "__main__":

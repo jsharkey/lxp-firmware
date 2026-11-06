@@ -3,10 +3,13 @@
 Resolves the open items from [`docs/36 §3`](36-rtc-calendar-and-energy-rollover.md):
 the energy-counter **RAM struct is now located**, the **accumulator is found and
 validated**, and the **daily-rollover trigger is characterised** (located as a
-mechanism; not observable cold in the harness — see §4).
+mechanism, now driven in isolation and asserted against both images — see §4).
 
-> **Image:** 07-series `reference/com_flat.bin`. Addresses are from this image;
-> symbol-map regenerations relabel functions, so code is cited by address.
+> **Image:** `reference/com_flat.bin` — the **05-series** (`ceaa-05xx`) build:
+> settings `0x20009854`, telemetry bank `0x20009e54`, RTC calendar `0x2000a718`
+> (the `ceaa05` profile in `tests/timewindow_contract.py`; *not* the 07-series
+> `0x2000d850`). Addresses are from this image; symbol-map regenerations relabel
+> functions, so code is cited by address.
 
 ## 1. The energy struct (base `0x20009954`)
 
@@ -65,17 +68,29 @@ The FC04 input-register getter docs/36 could not find **is** `sub_0803289c` (the
 same getter that serves IR 0 etc.). Its energy cases read the struct above; the
 32-bit cumulative pairs are served as reg → low u16 / reg+1 → high u16.
 
-## 4. Daily rollover — mechanism vs. harness
+## 4. Daily rollover — the calendar-date reset (located + tested)
 
-A supervisor compares the RTC day (calendar `0x2000d850+3`, advanced by the 1 s
-tick `sub_08018bc0`, docs/36) against the last-seen day and zeroes the daily block
-on a change, leaving the cumulative counters. The calendar is reached through a
-**pointer held in a register** (no constant-base or `movw/movt` literal), so it is
-invisible to `ramxref` / literal scans, and the reset runs from a **scheduler task
-the harness does not run** — poking the calendar day forward across midnight in a
-booted-but-idle run does **not** fire it (same class as the config push and the
-slot committers). So the factory daily reset is **not observable** in `arm_sim`;
-this is a harness limitation, not evidence it is absent.
+> **Correction of an earlier draft of this section.** `reference/com_flat.bin` is
+> the **05-series** image: its RTC calendar is at **`0x2000a718`** (day@`+3`), *not*
+> the 07-series `0x2000d850`, and the day byte is a **constant-base literal**, not a
+> register-held pointer. My first rollover attempt poked `0x2000d850` (the wrong
+> image's calendar) and so saw nothing — that was the mistake, not a harness limit.
+
+The daily-reset detector is **`sub_08037cb2`**. Gated on flag `0x2000a758` bit 7
+(and bit 12 clear), it compares the RTC calendar date `0x2000a718` (day`+3` /
+month`+4` / year`+5`) against a **stored last-reset date `0x2000a720`**; on any
+day/month/year change it `memset()`s the 24-byte daily block (`0x20009976` =
+energy-base `+0x22`, i.e. IR 28-37) to 0 and copies the new date into the stored
+slot — leaving the cumulative counters (IR 40-59) untouched. (A second, separately
+dated reset path follows at `0x08037d2a`, driven by `sub_080379b8` writing the gate
+`0x2000a7b0`; the test exercises just the calendar-date block by stopping at
+`0x08037d2a`.)
+
+Because the calendar is constant-base, the detector is **driveable in isolation**
+(exactly like the accumulator): set the flag, set `0x2000a718`/`0x2000a720`, seed
+the daily block, and call `0x08037cb2` — a day change zeroes the daily counters, a
+same-day call keeps them. This is now a **common test asserted against both
+images** (§5), not a harness gap.
 
 ## 5. Our reimplementation + tests
 
@@ -89,13 +104,15 @@ serves HR 11 `EnergyRecordClr`. Wired into the 1 Hz path in
 [`src/main.c`](../src/main.c), fed by the instantaneous power input registers.
 
 Tests:
-- **Common (factory + ours)** [`tests/test_energy.py`](../tests/test_energy.py) +
-  [`energy_contract.py`](../tests/energy_contract.py): the SAME `ENERGY_VECTORS`
+- **Common accumulation (factory + ours)** [`tests/test_energy.py`](../tests/test_energy.py)
+  + [`energy_contract.py`](../tests/energy_contract.py): the SAME `ENERGY_VECTORS`
   (counts/tick, sub-threshold cadence, gating) drive the factory accumulator
   `0x0801fbc4` and our `energy_tick()`; both agree.
-- **Midnight reset (ours, extra credit):** after accumulating, crossing an RTC day
-  boundary zeroes Epv1_day (IR 28) while Epv1_all (IR 40) persists. The factory
-  side is not asserted (§4).
+- **Common daily rollover (factory + ours):** the SAME `ROLLOVER_VECTORS`
+  (new day / same day / month boundary) drive the factory calendar-date detector
+  `0x08037cb2` and our `energy_rollover()`; both zero the daily counter (IR 28) on
+  a day change and keep the cumulative counter (IR 40), and both keep the daily
+  counter when the day is unchanged.
 - **Host** [`tests/test_energy.c`](../tests/test_energy.c) (`make test`): the
   accumulation, publish, rollover and reset in isolation, toolchain-free.
 
@@ -103,8 +120,14 @@ Tests:
 
 - **Proven:** struct base + register offsets (marker probe); the accumulator
   mechanism, the Epv1 path (fn `0x0801fbc4`, power `STATUS+0x28`, sub `+0xaa`,
-  threshold/step), and the state gate — validated dynamically.
+  threshold/step), and the state gate — validated dynamically. The **daily
+  calendar-date reset** (fn `0x08037cb2`, calendar `0x2000a718` vs stored
+  `0x2000a720`, daily block `0x20009976`) — validated dynamically and asserted
+  against both images.
 - **Not calibrated:** the physical units (power scale, real tick rate) behind the
   `>>1` and `3.6M` constants — reproduced from the factory arithmetic, not derived
   from first principles.
-- **Located but not harness-observable:** the daily-rollover trigger (§4).
+- **Not separately modelled:** the factory's *second* daily-reset path
+  (`0x08037d2a`, gate `0x2000a7b0` via `sub_080379b8`) — a belt-and-suspenders
+  reset with its own date source; our firmware's single `energy_rollover()` covers
+  the behaviour the registers expose.

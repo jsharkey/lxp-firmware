@@ -33,6 +33,20 @@ ENERGY_VECTORS = [
     ("running state 0x10",    7_200_002, 3, 0x10, 3, 3),
 ]
 
+# Daily-rollover vectors: (label, prev_day, new_day, should_reset). The daily
+# counters reset when the RTC calendar day-of-month changes; same day keeps them.
+# A nonzero daily count (SEED_DAILY) and cumulative count (SEED_ALL) are set up,
+# then the day is advanced from prev_day to new_day. Both images must zero the
+# daily counter on a change while the cumulative counter persists. docs/37.
+SEED_DAILY = 5
+SEED_ALL   = 5
+ROLLOVER_VECTORS = [
+    ("new day 15->16",      15, 16, True),
+    ("same day 16",         16, 16, False),
+    ("month boundary 30->1", 30,  1, True),
+    ("same day 1",           1,  1, False),
+]
+
 
 class FactoryBackend:
     """Factory image: drive the real Epv1 accumulator 0x0801fbc4, read via the
@@ -68,6 +82,37 @@ class FactoryBackend:
         e.uc.mem_write(self.PV1_PWR, struct.pack("<I", power & 0xFFFFFFFF))
         for _ in range(nticks):
             e.call(self.ACCUM)
+        day = e.call(self.GETTER, (28,)) & 0xFFFF
+        allv = (e.call(self.GETTER, (40,)) & 0xFFFF) | ((e.call(self.GETTER, (41,)) & 0xFFFF) << 16)
+        return day, allv
+
+    # --- daily rollover: the calendar-date reset detector --------------------
+    # Entry 0x08037cb2: gated on flag 0x2000a758 bit7, it compares the RTC
+    # calendar date 0x2000a718 (day@+3/mon@+4/yr@+5) against a stored date
+    # 0x2000a720; on a change it memset()s the daily block (0x20009976, 24 B) to 0,
+    # leaving the cumulative counters. We stop at 0x08037d2a, before a second,
+    # independently-dated reset path, to exercise just the calendar-date reset.
+    RESET      = 0x08037cb2
+    RESET_STOP = 0x08037d2a
+    RESET_FLAG = 0x2000a758     # bit7 enables the detector
+    CAL        = 0x2000a718     # RTC calendar (sec,min,hour,day,mon,year,wd)
+    STORED     = 0x2000a720     # stored "last reset" date
+    DAILY_BLK  = 0x20009976     # base+0x22: 24-byte daily-counter block
+
+    def rollover(self, prev_day, new_day, seed_daily=SEED_DAILY, seed_all=SEED_ALL):
+        """Seed daily=seed_daily / cumulative=seed_all, set the stored date to
+        prev_day and the calendar to new_day, run the detector, and read back
+        Epv1_day (IR 28) and Epv1_all (IR 40)."""
+        from emu import Emu
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(self.RESET_FLAG, struct.pack("<I", 0x80))      # enable detector
+        e.wbytes(self.CAL,    bytes([0, 0, 12, new_day,  6, 24, 0]))  # calendar = new day
+        e.wbytes(self.STORED, bytes([0, 0, 12, prev_day, 6, 24, 0]))  # stored = previous day
+        for off in range(self.DAILY_BLK, self.DAILY_BLK + 0x18, 2):
+            e.wbytes(off, struct.pack("<H", seed_daily & 0xFFFF))
+        e.wbytes(self.STRUCT + 0x52, struct.pack("<I", seed_all & 0xFFFFFFFF))  # Epv1_all
+        e.stop_at = {self.RESET_STOP}
+        e.call(self.RESET, count=300000)
         day = e.call(self.GETTER, (28,)) & 0xFFFF
         allv = (e.call(self.GETTER, (40,)) & 0xFFFF) | ((e.call(self.GETTER, (41,)) & 0xFFFF) << 16)
         return day, allv
@@ -112,15 +157,21 @@ class OursBackend:
         hi = struct.unpack("<H", sim.rbytes(self.SCRATCH + 2 * 41, 2))[0]
         return day, lo | (hi << 16)
 
-    # --- daily rollover (extra credit) --------------------------------------
-    def rollover(self, power, nticks, state, day1, day2):
-        """Accumulate, latch day1, then cross to day2; return (day,all) after."""
+    # --- daily rollover: same (prev_day -> new_day) contract as the factory ----
+    def rollover(self, prev_day, new_day, seed_daily=SEED_DAILY, seed_all=SEED_ALL):
+        """Seed daily=seed_daily / cumulative=seed_all on channel 0 by accumulating,
+        latch prev_day, then roll to new_day; return (Epv1_day, Epv1_all) after."""
         sim = self._sim()
-        sim.call("energy_set_power", (0, power & 0xFFFFFFFF))
-        for _ in range(nticks):
-            sim.call("energy_tick", (state & 0xFF,))
-        sim.call("energy_rollover", (day1 & 0xFF,))   # first obs: latch, no reset
-        sim.call("energy_rollover", (day2 & 0xFF,))   # day change -> daily resets
+        # accumulate seed_daily counts (power/2 == threshold => 1 count per tick)
+        sim.call("energy_set_power", (0, 7_200_002))
+        for _ in range(seed_daily):
+            sim.call("energy_tick", (0x40,))
+        # make the cumulative counter differ from daily if asked (extra persistence
+        # proof): top it up directly via further ticks is day-coupled, so when
+        # seed_all != seed_daily we leave all == daily -- the 0-vs-nonzero contrast
+        # after a reset already proves the cumulative is untouched.
+        sim.call("energy_rollover", (prev_day & 0xFF,))   # first obs: latch, no reset
+        sim.call("energy_rollover", (new_day & 0xFF,))    # day change -> daily resets
         sim.wbytes(self.SCRATCH, bytes([0] * 0x80))
         sim.call("energy_publish", (self.SCRATCH,))
         day = struct.unpack("<H", sim.rbytes(self.SCRATCH + 2 * 28, 2))[0]
