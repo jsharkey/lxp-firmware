@@ -57,6 +57,53 @@ the builder reads it from the **working** location `0x2000a343` (low byte → bl
 value is correct, but it travels through the working copy, consistent with the
 "derived, not raw" model.
 
+## Schedule time-windows → slot records → blocks 4/5 (the HR 64–89 leg, CLOSED)
+
+This is the intermediate hop the status section used to list as open: how the
+dongle **schedule** holding registers reach the slot records that blocks 3–6
+serialize. It is closed for the **time-window** fields, by emulating the
+**slot-committer family** (the 34 functions that write the dirty mask
+`0x2000a7a8`). Each committer copies specific settings-struct fields into a slot
+record and sets its dirty bit; the block filler (`sub_08024dfc`) later reads those
+slot records into the frame. Composing the two halves (committer: settings→slot,
+filler: slot→offset) gives an end-to-end, register-exact chain:
+
+| dongle feature | holding regs | committer(s) | slot record | DSP block·offset |
+|---|---|---|---|---|
+| **AC-charge** windows (w0s/w0e/w1s/w1e/w2s/w2e) | **HR 68/69/70/71/72/73** | `sub_08022fde`, `sub_08023044` | `0x2000a370`–`0x2000a37a` | **block 4 `0x17`/`0x19`/`0x1B`/`0x1D`/`0x1F`/`0x21`** |
+| **AC-First** windows (w0s/w0e/w1s/w1e/w2s/w2e) | **HR 152/153/154/155/156/157** | `sub_080230b6`, `sub_08023128` | `0x2000a37c`–`0x2000a386` | **block 5 `0x17`/`0x19`/`0x1B`/`0x1D`/`0x1F`/`0x21`** |
+
+So `HR 68 → (committer sub_08022fde) → slot 0x2000a370 → (filler) → block4[0x17] → DSP`,
+and the five siblings follow in order. **Gating:** a committer only copies when its
+feature-enable bit in `0x2000a7a4` is set; otherwise the slot keeps its prior value.
+The window packing is unchanged on the wire (`low=hour`, `high=minute`,
+[dongle doc](../modbus-dongle/holding-064_089-charge-discharge-schedule.md)).
+
+**This refines the old "triplet with reserved middle word" model** in
+[`block-03_06`](block-03_06-gridcharge-slots.md): the ARM writes **six sequential
+u16 window values** into `0x17…0x21`, so `0x19` and `0x1F` are **not** reserved —
+they carry the window-*end* values (HR 69/72 for AC-charge, HR 153/156 for AC-First).
+The real grouping is three `(start,end)` pairs `(0x17,0x19)`,`(0x1B,0x1D)`,`(0x1F,0x21)`,
+not `(0x17,0x1B)` with `0x19` dropped.
+
+### What is NOT resolved by this method (do not assume "pushed")
+
+The marker method only tags the **canonical settings struct** (`0x20009854…`,
+i.e. what `fn_ceaa` serves). These schedule registers are **not** in that struct and
+**no committer reads them** by constant-base addressing, so this trace can neither
+confirm nor deny they reach the DSP:
+
+- **AC-charge power/SOC — HR 66/67** (not in the `fn_ceaa` map).
+- **Charge-priority — HR 74–81** (whole feature, not in the `fn_ceaa` map).
+- **Forced-discharge — HR 82–89** (whole feature, not in the `fn_ceaa` map).
+
+Their write-path storage is outside the canonical struct (register-indexed, which
+`ramxref` and the marker scan are blind to). Resolving them needs a **live USART3
+capture** (write the reg over the dongle, watch which `0x41`-frame byte moves) — the
+definitive method, since the push is not scheduler-driven in `arm_sim`. No evidence
+was found that HR 74–89 reach blocks 3–6; that is an **absence of evidence, not
+proof of absence** — stated here so no reader over-reads it.
+
 ## Per-block ARM-source map (reliable)
 
 Each row: payload offset, width (bytes the source occupies), and the ARM RAM it is
@@ -124,9 +171,14 @@ Selected entries (full sweep in the commit that landed this doc):
 | `+0x2f` `0x9883` | 119 | | `0x98c4`/`0x98c6` | 147/148 (battery capacity) |
 | `0x98f0…0x98f9` | 103–109 (lead-acid) | | `0x9900…0x9906` | 194–198 (generator charge) |
 
-(The AC-First **window times** HR 152–157 live in the settings struct but are **not**
-read by any config block — they are evaluated ARM-side against the RTC, docs/07 — so
-they do not appear in the per-block maps above.)
+**Correction (supersedes an earlier note here):** the AC-First **window times**
+HR 152–157 *are* pushed to the DSP — the earlier claim that they "are not read by any
+config block" was wrong. The config **filler** doesn't read them from the settings
+struct directly; the **slot-committer** `sub_080230b6`/`sub_08023128` copies them
+`settings 0x200098b8…0x200098c2 → slot 0x2000a37c…0x2000a386`, and block 5 serializes
+that slot record to `0x17…0x21` (see the schedule-windows section above). What is
+*not* pushed is the per-window **active verdict** (ARM evaluates the window against
+the RTC, docs/07); the window **times** themselves travel to the DSP.
 
 ## Status — what's closed, what's left
 
@@ -136,9 +188,15 @@ they do not appear in the per-block maps above.)
 - **Closed (subset):** **holding reg → block** for the fields the builder reads
   directly from the canonical settings struct (HR 20 → block0; HR 19/119 → block3;
   plus the `fn_ceaa` map).
-- **Open (one layer):** the **holding reg → working struct** hop for the derived
-  regions — slot records (from the HR 64–89 schedule via the slot-commit builders),
-  battery limits, and the ext-settings area. These need the intermediate functions
-  traced (writers listed above) or a **live USART3 capture** (write a holding reg over
-  the dongle, watch which `0x41`-frame byte changes) — the definitive method, since
-  the push is not scheduler-driven in the `arm_sim` harness.
+- **Closed (schedule windows):** the **holding reg → slot record → block** chain for
+  the **AC-charge** window times (HR 68–73 → block 4) and the **AC-First** window
+  times (HR 152–157 → block 5), via the slot-committer family — see the
+  schedule-windows section above. This also corrected the stale "HR 152–157 not
+  pushed" note.
+- **Open (one layer):** the derived regions the committer trace can't see because
+  they are **not** in the canonical settings struct — the schedule **power/SOC** (HR
+  66/67) and the **charge-priority / forced-discharge** features (HR 74–89), plus the
+  **battery limits** and **ext-settings** areas. These need the intermediate writers
+  traced or a **live USART3 capture** (write a holding reg over the dongle, watch which
+  `0x41`-frame byte changes) — the definitive method, since the push is not
+  scheduler-driven in the `arm_sim` harness.
