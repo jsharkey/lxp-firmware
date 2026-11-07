@@ -109,6 +109,8 @@ test:
 	@./$(BUILD)/test_dsp_rx
 	$(HOSTCC) $(HOSTFLAGS) src/safety/safety_rx.c src/modbus/modbus.c tests/test_safety_rx.c -o $(BUILD)/test_safety_rx
 	@./$(BUILD)/test_safety_rx
+	$(HOSTCC) $(HOSTFLAGS) src/sched/dischg_gate.c tests/test_dischg_gate.c -o $(BUILD)/test_dischg_gate
+	@./$(BUILD)/test_dischg_gate
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
@@ -169,6 +171,9 @@ SIM_WRSEM       = python3 tests/test_settings_validate.py $(if $(HAVE_FACTORY),$
 SIM_TELEM       = python3 tests/test_telemetry.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
 # USART3 RX demux: Modbus (03/04/06/10) + DSP bootloader (21/22/23); 0x49 rejected.
 SIM_DSPRX       = python3 tests/test_dsp_rx.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
+# Discharge-by-voltage hysteresis gate: factory oracle (sub_0801ed28) vs the T15
+# spec; ours' pure reimplementation is covered by the host test test_dischg_gate.c.
+SIM_DGATE       = python3 tests/test_dischg_gate.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
 # inverter->battery CAN keep-alive TX capture (T11b): 0x305 DLC8 all-zero, both images.
 SIM_CANTX       = python3 tests/test_can_tx.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
 
@@ -177,7 +182,7 @@ SIM_CANTX       = python3 tests/test_can_tx.py $(if $(HAVE_FACTORY),$(FACTORY_BI
 # never hides the blocks after it. Each file @-prints its own banner header,
 # which stays the sole block delimiter (the recipes are @-silent).
 test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; $(SIM_ENERGY) || rc=1; $(SIM_WRSEM) || rc=1; $(SIM_TELEM) || rc=1; $(SIM_DSPRX) || rc=1; $(SIM_CANTX) || rc=1; exit $$rc
+	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; $(SIM_ENERGY) || rc=1; $(SIM_WRSEM) || rc=1; $(SIM_TELEM) || rc=1; $(SIM_DSPRX) || rc=1; $(SIM_CANTX) || rc=1; $(SIM_DGATE) || rc=1; exit $$rc
 
 test-sim-factory: $(FACTORY_BIN)
 	@rc=0; $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; exit $$rc
@@ -208,6 +213,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_TELEM) || rc=1; \
 	$(SIM_DSPRX) || rc=1; \
 	$(SIM_CANTX) || rc=1; \
+	$(SIM_DGATE) || rc=1; \
 	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc
 

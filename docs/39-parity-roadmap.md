@@ -665,7 +665,25 @@ missing:
   within tolerance.
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
-**Status:** `[~] claude 2026-11-07` — evaluator + landscape pinned ([`docs/41`](41-charge-discharge-schedule-gates.md)); most of it is inert/DSP-gated on our image, rest handed off · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+**Status:** `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+
+**Done (voltage gate, 2026-11-07).** The discharge-control gate (`sub_0801ed28`,
+HR 120 **DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
+voltage — `active = active ? (V >= stop) : (V >= start)`, V = safety-bank V `/10`,
+start/stop at `settings+0x46/+0x48`. Reproduced as the pure
+[`inv_dischg_volt_gate()`](../src/sched/dischg_gate.c) (host test
+[`test_dischg_gate.c`](../tests/test_dischg_gate.c)) and **verified byte-for-byte
+against the factory evaluator** driven in isolation
+([`test_dischg_gate.py`](../tests/test_dischg_gate.py) +
+[`dischg_gate_contract.py`](../tests/dischg_gate_contract.py), wired into
+`make test-sim`). The verdict `0x2000aa5f` is consumed by the main control function
+`sub_0801f438` (literal-pool xref — so not dead). Details + the correction of the
+earlier draft in [`docs/41`](41-charge-discharge-schedule-gates.md).
+
+**Remaining (handed off):** discharge-by-**SOC** (DischgCtrlType mode 1) reads the
+battery-limit struct → **T11**; wiring the gate into a discharge controller (none
+yet in ours); the HR 64-89 **time-window** schedules (charge-priority/forced-
+discharge/AC-charge-SOC inert on `com_flat.bin`; need a ceaa-07xx image).
 
 **Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
 schedule features' "active now" verdicts are computed by one combined ARM
