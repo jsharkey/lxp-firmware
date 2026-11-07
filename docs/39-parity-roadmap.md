@@ -567,7 +567,28 @@ the inert/DSP-gated paths.
   implement it beyond the existing round-trip unless that verdict changes.
 
 ### T16 — Generator: charge start/stop, quick start, warm-up/cool-down (HR 194-198 + 07-series)
-**Status:** ⬜ `[ ]` · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
+**Status:** 🚧 `[~] claude 2026-11-07` — **gen-charge-by-voltage start/stop gate cracked + reimplemented + factory-verified**; SOC path, quick-start / warm-up-cool-down timers, time scheduling and the other 07-series gen features remain · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
+
+**Done (gen-charge-by-voltage gate, 2026-11-07).** The generator charge
+**start/stop decision is ARM-evaluated** (not purely DSP-gated, contra the initial
+hypothesis): factory evaluator `sub_08035050`, voltage block `0x08035086…0x080350dc`,
+verdict byte `0x2000dbc0`. Decoded as a charge-direction voltage hysteresis — start
+when `v < start_v` (HR 194 / settings `+0xac`), stop when `v >= end_v` (HR 195 /
+`+0xae`) **and** `stop_ok` (two DSP-confirm bits: `bank+0xb6` bit 11 AND `bank+0xbc`
+bit 15); battery voltage is `bank+0x0a` zero-extended then signed-divided by 10. Mode
+select is HR 120 bit 7 GenChargeType (`+0x33` bit 7): 0 = by voltage (done), 1 = by
+SOC (verdict `0x2000dbc1`, hand-off). Reimplemented as the pure
+[`inv_gen_charge_volt_gate()`](../include/inv/gen_charge.h)
+([`src/sched/gen_charge.c`](../src/sched/gen_charge.c)); factory oracle
+[`tests/test_gen_charge.py`](../tests/test_gen_charge.py) (block driven in isolation
+on the canonical 07 image) + host test [`tests/test_gen_charge.c`](../tests/test_gen_charge.c)
+hold both sides to one shared spec ([`gen_charge_contract.py`](../tests/gen_charge_contract.py)),
+wired into `make test` / `make test-sim`. Settings provenance pinned dynamically
+(HR 194→`+0xac`, HR 195→`+0xae`, HR 196/197→`+0xb0`). Write-up in
+[`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md).
+
+**Remaining.** SOC-path gate (GenChargeType=1, verdict `0x2000dbc1`, HR 196/197);
+the 07-series additions below.
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions
