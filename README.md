@@ -1,195 +1,196 @@
-# inverter-com-fw — open-source firmware for the inverter's ARM "com" MCU
+# inverter-com-fw — open-source firmware for EG4 / Luxpower inverters
 
-An open, C-language reimplementation of the **communications / HMI / supervisor**
-firmware (the ARM Cortex-M "com" processor) of EG4 all-in-one solar off-grid
-inverters. The goal is a codebase the community can read, build, flash, and
-extend with new features.
+**Open-source firmware for EG4 / Luxpower all-in-one solar inverters**, focused on
+the ARM **"com" MCU** — the communications / HMI / supervisor processor. It is a
+clean-room, C-language reimplementation built from reverse-engineering the factory
+images, with the original binary used as a behavioural **oracle** (never copied).
 
-**Supported variants: EG4 12000XP, EG4 18kPV, and EG4 6000XP.**
-Reverse-engineering the factory ARM images proves they are the **same codebase**
-on the **same MCU** (STM32F1-compatible, M4-class core — see below), differing only in a
-short, enumerable set of ways — flash/boot layout, MPPT count (2 vs 3), and
-hybrid grid-tie features. Those deltas are captured as a **variant descriptor**
-(`include/inv/variant.h`), so the firmware is written once and branched on data,
-not `#ifdef`s. See [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md)
-and [`docs/12-6000xp.md`](docs/12-6000xp.md).
+Effort is concentrated on the **EG4 12000XP** today, with the near-term goal of
+extending to the related inverters that run the *same* com-MCU codebase — the
+**EG4 18kPV** and **EG4 6000XP** (they differ only in a short, enumerable set of
+ways, captured as a build-time **variant descriptor**, `include/inv/variant.h`).
 
-> The Modbus spec on hand is the **18kPV-12LV** map, which the 12000XP shares as
-> a **subset**: the 12000XP is non-hybrid with 2 MPPTs, so the 3rd-tracker
-> registers (`Vpv3/Ppv3/Epv3*`) and hybrid-only items are inactive on it. The
-> active variant is selected at build time (and keyed in the factory image by a
-> 4-char `Model` code: `ceaa`=12000XP, `FAAB`=18kPV).
+> ## ⚠️ EXPERIMENTAL — DO NOT FLASH ONTO HARDWARE ⚠️
+>
+> This project is **early-stage and experimental**. It is a research /
+> reverse-engineering effort, **not** a finished firmware. **Do not flash it onto
+> a physical inverter** — it is not feature-complete, not safety-reviewed, and not
+> hardware-tested. Running it on real power-conversion hardware could destroy the
+> unit and is dangerous. For now it lives entirely in the emulator and host tests.
+> See the [disclaimer of all warranties](#license) below. 🧪🔬
 
-The device has **multiple processors**: a TI C2000 **Control DSP**, this STM32
-**Communication/HMI MCU** (what this project reimplements), a **redundant
-safety CPU**, and a dedicated **`mppt` power-stage controller** (a separate,
-smaller STM32G0-class Cortex-M0+, newly characterized — see
-[`docs/13-mppt-controller.md`](docs/13-mppt-controller.md)). The vendor splits
-its firmware by role (`com` / `dsp` / `mppt`). We reimplement only the
-Communication MCU.
+## See it run: the real HMI, in the emulator
 
-> **Scope:** this project reimplements only the **ARM "com" MCU**. The TI C2000
-> DSP that runs the real-time power electronics is intentionally left untouched;
-> our firmware talks *to* it over the existing link.
+Both images below are the firmware's **own display code** executing under our
+Unicorn harness (`tools/arm_sim.py`) — every pixel is drawn by the firmware, and
+the four buttons press the real front-panel key GPIOs. Try it yourself with
+`make factory-hmi` / `make hmi-sim`.
 
-## Status: bootstrapping (reverse-engineering the spec)
+| Factory firmware (the real EG4 image) | Our open-source firmware |
+|:---:|:---:|
+| ![Factory HMI overview screen](docs/images/hmi-factory.png) | ![Our firmware's HMI](docs/images/hmi-ours.png) |
+| **Actual EG4 inverter code**, booted in the emulator, painting its live overview screen (PV / battery / grid / EPS). | **Our firmware** booting its own HMI — the recovered menu engine rendering on the same panel. |
 
-> **Parity work queue:** the prioritised, parallelisable task list toward factory-behaviour parity (oracle-first TDD, micro vs simulator tests, claim protocol) is [`docs/39-parity-roadmap.md`](docs/39-parity-roadmap.md). Claim a task there before starting.
+## What this is (and isn't)
 
-This is an early-stage effort. There is a verified understanding of the target
-and a recovered data model — but **not yet** a buildable replacement firmware.
-Honest picture of where things stand:
+An EG4 all-in-one inverter contains **several processors**, and the vendor ships
+separate firmware for each role (`com` / `dsp` / `mppt`):
 
-- [x] ✅ Confirm target MCU and memory map → **STM32F1-compatible, M4-class core** (ARMv7E-M: the factory runs `smlabb`/`sdiv`, undefined on M3 — most likely a **GD32F303-style F1 clone**; first read as "STM32F103/M3", corrected via dynamic RE), flash `0x08000000`, RAM `0x20000000` (see [`docs/01-firmware-analysis.md`](docs/01-firmware-analysis.md), [`docs/19`](docs/19-gpio-test-harness.md))
-- [x] ✅ Confirm the image is **not encrypted/compressed** (reimplementation is feasible)
-- [x] ✅ Identify the product → **EG4 12000XP** (Modbus spec shared with the 18kPV-12LV superset)
-- [x] ✅ **Add a second variant → EG4 18kPV** (3 MPPT, hybrid): proved same MCU + codebase from the factory `App.hex`; captured the deltas as a build-selectable variant descriptor (see [`docs/10-18kpv-vs-12000xp.md`](docs/10-18kpv-vs-12000xp.md), `include/inv/variant.h`, `make VARIANT=18kpv`)
-- [x] ✅ **Track 12000XP revisions over time** → `ceaa-05xx` (2025-03) vs `ceaa-07xx` (2026-02): the 07 series moved to a **bootloader + App** layout (vectors relocated `0x08000000`→`0x08005000`), and added generator scheduling / quick-charge / smart-load / resume-SOC / buzzer menus — mapped to the vendor changelog (see [`docs/11-12000xp-revisions.md`](docs/11-12000xp-revisions.md))
-- [x] ✅ **Add a third variant → EG4 6000XP** (`ccaa`): same MCU + codebase (07-era), same bootloader + App layout as the 12000XP 07-series (vectors @`0x08005000`, 20 KB bootloader); added as a build target `make VARIANT=6000xp` (see [`docs/12-6000xp.md`](docs/12-6000xp.md))
-- [x] ✅ **Identify a distinct `mppt` power-stage controller image** (`CBAA`): *not* a com-MCU variant — a smaller **STM32G0-class Cortex-M0+ (128 KB)** running a bare-metal **TIM1-PWM + DMA-sampled-ADC** control loop (zero HMI strings; only DMA1 + USART1 interrupts), that publishes telemetry to another chip over a **Modbus-family UART link** (standard Modbus RTU CRC-16 tables, big-endian registers). A separate peer processor for the solar DC-DC stage (see [`docs/13-mppt-controller.md`](docs/13-mppt-controller.md))
-- [x] ✅ Recover the data model with **authoritative** values — states, faults, warnings, telemetry (see `include/inv/` and [`docs/02-recovered-model.md`](docs/02-recovered-model.md))
-- [x] ✅ **External Modbus-RTU map fully specified** → [`include/inv/modbus_map.h`](include/inv/modbus_map.h) (the comms layer is now a known interface)
-- [x] ✅ Static function map — **1211 functions, ~72% of image is code** (see [`docs/03-function-map.md`](docs/03-function-map.md))
-- [x] ✅ Reverse-engineering tooling (`tools/`)
-- [ ] ⬜ Confirm exact part number / flash+RAM size (from the schematic you're providing)
-- [x] ✅ Recover the HMI **menu tree** → `include/inv/hmi_menu.h` (95-item ordered enum) + `reference/string_catalog.txt` (442 strings). Finding: text is packed NUL-separated blobs indexed by ordinal, not `char*` tables
-- [ ] ⬜ Bind menu items → handler functions (needs TBB/TBH switch-table decoding)
-- [ ] ⬜ Document the **ARM↔DSP internal protocol** (the remaining hard interface)
-- [x] ✅ **Buildable skeleton** → `make` produces a valid flashable `build/firmware.bin` (correct vector table, 72 MHz clock init, boots at `0x08000000`)
-- [x] ✅ Seed recovered symbol names (`reference/symbols_named.csv`, `reference/ghidra_rename.py`)
-- [x] ✅ **Modbus-RTU slave** — engine + UART port + host tests (`make test`, see [`docs/04-modbus.md`](docs/04-modbus.md)). *Port note:* the slave is now on **UART5** (RS-485 DE on PA15), matching the factory's external-dongle port; **USART3** is left to the ARM↔DSP link (T01 — [`docs/wiring/ARM-UART5-dongle`](docs/wiring/ARM-UART5-dongle/README.md), [`docs/26-dongle-firmware.md`](docs/26-dongle-firmware.md), [`docs/39`](docs/39-parity-roadmap.md))
-- [x] ✅ **Interrupt-driven UART** — RX/TX ring buffers serviced from the USART3 ISR, mirroring the factory's interrupt-driven UART mechanism (USART3 is its only vectored UART — the DSP link); lock-free SPSC ring (`inv/ringbuf.h`, host-tested). CAN1 (battery bus) stays **polled**, as the factory does. See [`docs/21-firmware-architecture.md`](docs/21-firmware-architecture.md)
-- [x] ✅ **HMI menu system** — data-driven menu engine + model + host-tested navigation (see [`docs/06-hmi.md`](docs/06-hmi.md))
-- [x] ✅ **Factory graphic HMI runs in the emulator** — reverse-engineered the factory LCD (a **240×160 monochrome MIPI-DCS LCD bit-banged 4-wire on GPIOB** (1bpp, 8 px/byte): PB12 SCLK / PB13 SDA / PB14 DC / PB15 /CS — *not* SPI1, which is the config flash; corrects the `docs/16` "status-LED" guess) and modelled it, so the factory image's **own display code** paints its real **overview** and **Common settings** screens under the harness, navigated by the real front-panel keys. On-screen app (`make factory-hmi`), ~18 s boot / ~6 s per key after a harness speed-up. The simulator is **firmware-agnostic** (`make hmi-sim [FIRMWARE=App.hex]`): with no image it runs the open-source build, and our firmware now drives the **same** panel in the same wire format (`src/hmi/lcd_tft.c`), posting a "Hello World!" as the first milestone toward a drop-in replacement. See [`docs/28-factory-hmi.md`](docs/28-factory-hmi.md)
-- [x] ✅ **Menu renders + navigates on the graphic LCD** — the recovered menu engine draws on the real monochrome panel (`src/hmi/hmi_tft.c` → `src/hmi/lcd_tft.c`, 8×8 font) and the four front-panel keys (PA8/PA11/PC8/PC9, `src/hmi/keypad.c`) navigate and edit it, verified on-screen (`make hmi-sim`). The repaint is spread one row per loop pass so the bit-banged panel never stalls Modbus/CAN/DSP. An earlier 20×4 HD44780-over-PCF8574 I²C character-LCD stand-in (and its on-screen app) was **removed** once the real panel was decoded — there is **no** character LCD on this hardware. Remaining: full menu population + partial redraw for live INFO values (`docs/06`)
-- [ ] ⬜ Reimplement remaining modules (settings store/persistence, metering, mode state machine, faults)
-- [x] ✅ Decode the inter-processor link framing → same EG4 Modbus family, with undocumented commands `0x21/0x22/0x23` (see [`docs/05-dsp-link.md`](docs/05-dsp-link.md))
-- [~] 🚧 Map UARTs→peers (DSP/BMS/meter/MPPT/dongle) — **dongle=UART5, DSP=USART3 (SCI-B), USART2=redundant/safety CPU, BMS=CAN1 confirmed**; meter/MPPT/console (USART1/UART4) still open. The external dongle's own firmware (ESP32-C3 RS-485 **master** datalogger) pins the dongle to **UART5** and rules out USART3 ([`docs/26`](docs/26-dongle-firmware.md)). **USART2's peer is the safety CPU** (the ARM reports E027 straight out of its frame; [`docs/30`](docs/30-safety-cpu-arm-handoff.md)); its telemetry bank format + dongle exposure are mapped in [`docs/33`](docs/33-usart2-telemetry-bank.md), and the FW-version registers (which chip each is) in [`docs/32`](docs/32-firmware-version-registers.md)
-- [ ] ⬜ Decode the `0x21/0x22/0x23` payloads (the DSP firmware-update bootloader; T18)
-- [x] ✅ **ARM↔DSP USART3 RX demystified (T09)** → the ARM does **not** parse a DSP `0x49` telemetry frame on USART3. The USART3 RX (ISR `sub_0801c774` → `sub_0801c6e0` → byte handler `sub_0801c3e6`, buffer `0x20007490`) is a **Modbus-slave (`03/04/06/10`) + DSP-bootloader (`21/22/23`) demux**; a `0x49`/type-1 frame is rejected. The `0x49` parse (`FUN_08025ab8` over buffer `0x20009048`, SOF test `sub_0801c808`) is the **USART2** safety-CPU path — so "live telemetry from the DSP" reaches the ARM via **USART2** (docs/33), not USART3. Proven static (vector table + `tools/disres.py`) + dynamic (`tests/test_dsp_rx.py`); reimplemented in `src/dsp/dsp_rx.c` + `dsp_rx_port.c`. Corrects [`docs/wiring/ARM-USART3-DSP/telemetry-0x49`](docs/wiring/ARM-USART3-DSP/telemetry-0x49.md); quirk [`docs/31`](docs/31-factory-quirks.md) Q10
-- [x] ✅ **Disassemble the TI C28x control DSP** → Ghidra 12.1.2 + `ghidra-tms320c28x` SLEIGH module; F2837x-class, image byte-swapped, ~650 functions recovered. First decode: the **"AC First" output-priority logic** (see [`docs/07-dsp-ac-first-mode.md`](docs/07-dsp-ac-first-mode.md))
-- [x] ✅ **ARM→DSP config protocol** → direction + framing resolved from the DSP side: ARM **pushes all settings** as 9 positionally-packed blocks (not Modbus register writes, not deltas); DSP is the reactive slave (see [`docs/08-arm-dsp-config-protocol.md`](docs/08-arm-dsp-config-protocol.md))
-- [x] ✅ **DSP config field map** → byte-exact layout `FUN_00092EE2` unpacks (per-block offsets, widths, big-endian order, DSP RAM targets) for the ARM packer; output priority = byte at frame offset `0x1E` (see [`docs/10-dsp-config-field-map.md`](docs/10-dsp-config-field-map.md))
-- [x] ✅ **ARM↔DSP link = type-1 block protocol (both ends proven)** → on the ARM 260214 image, `FUN_080273b4`/`FUN_08026830` build the frame (`[0]=0x41`,`[1]=1`,`[3]=0x36`, block-id @ `0x14`, big-endian values @ `0x15`, block-id rotated to push the full set) — the exact mirror of the DSP's `FUN_00092EE2`. Not a func-3/SN Modbus response (that's a separate channel). Resolves [`docs/17`](docs/17-dsp-frame-probe-handoff.md); details in [`docs/10`](docs/10-dsp-config-field-map.md). (The return parse `FUN_08025ab8(0x14)` reads the **USART2** buffer `0x20009048` — it is the safety-CPU telemetry path, **not** the USART3 RX, which is a Modbus/bootloader demux; corrected by **T09**, see [`telemetry-0x49`](docs/wiring/ARM-USART3-DSP/telemetry-0x49.md))
-- [x] ✅ **AC-First GPIO-relay theory tested** → the ARM does **not** toggle a relay from the AC-First window decision; its window-active signal ends in telemetry (two static enumerations agree) and the actual power routing is DSP-side. Dynamic GPIO-capture probe committed (`tools/emu_gpio_acfirst.py`), pending the ARM image (see [`docs/14-arm-gpio-relay-acfirst.md`](docs/14-arm-gpio-relay-acfirst.md))
-- [x] ✅ **ARM GPIO / IO map recovered** → all 54 configured pins on the `ceaa-07xx` image mapped to direction/mode (proven) + driver; peripherals (5 UARTs, CAN1/BMS, SPI1, TIM1 fan PWM), keys, comms-direction pins and power-path relays identified; tooling auto-detects the StdPeriph GPIO helpers (see [`docs/16-arm-io-map.md`](docs/16-arm-io-map.md), `tools/gpio_map.py`, `tools/periph_map.py`)
-- [x] ✅ **Power-path relays analysed** → the 6 relay pins driven by 4 logic functions, gated chiefly by the live operating mode **IR_STATE (reg 0)** (value-matched to `states.h`) + DSP grid/EPS status, with an AutoTest/manual override; named functionally (grid/EPS transfer pair, run-enable/bypass, slow gen/AC-couple, EPS/dry-contact) with influencing registers (see [`docs/18-power-path-relays.md`](docs/18-power-path-relays.md), `tools/disres.py`)
-- [x] ✅ **GPIO behaviour-test harness + first parity test** → one Unicorn emulator (`tools/arm_sim.py`) runs **both** our firmware and the factory image, instrumenting the docs/16 GPIOs. The first test (`test_pb7_input_drives_output`) is a **black box**: it injects a GPIO input, lets each firmware's *own event loop* run (`run_reset`, vector base auto-detected), and asserts the GPIO output — no entry point named, so factory and ours are indistinguishable to the test. PB7 held high → PB7 driven high, identically on both; our `pb7_sample_poll()` was TDD'd against the factory `sub_0802e452`. `make test-sim`, see [`docs/19-gpio-test-harness.md`](docs/19-gpio-test-harness.md)
-- [x] ✅ **Relay parity tests + harness depth** → the harness now boots the factory through its full init (M4-core model, oscillator/RTC ready-flags, a modelled SPI NOR config flash, SysTick injection). Discovered the factory runs a **preemptive RTOS** (PendSV context switch). Two relay **parity tests** validate the factory's real relay-drive code against our `src/relay.c` (TDD'd to match): the **run-enable relay PC6 follows the operating mode** (`IR_STATE`: closed when running, open in standby/fault/programming), and the **manual/AutoTest override** drives the transfer relays (PA12←bit1, PB3←bit0). A **Cortex-M exception engine** (`arm_sim.enable_rtos()`) now models exception entry/return + SysTick + PendSV on top of Unicorn's MSP/PSP banking and context-switches to real PSP tasks — the remaining blocker to running the relay *task* through the scheduler is firmware init creating that task (config-flash contents / DSP link), not the engine (see [`docs/19`](docs/19-gpio-test-harness.md))
-- [x] ✅ **ARM→DSP config push implemented** → frame builder + CRC + 9-block full-snapshot scheduler, bound to the register model; trigger confirmed as a periodic scheduler tick (continuous, not edit-driven). Host-tested (`src/dsp/`, `make test`). Frame is fixed-length (`0x36`, payload `0x15..0x33`, CRC at the tail). Block payloads: 0 best-effort, 4/5 schedule windows (slot-committer), **2/7/8 calibration gains byte-identical to the factory (T10)**; 1/3/6 and the rest of 0 still pending field decode / T11 / the grid-charge slot-record derivation ([`docs/39`](docs/39-parity-roadmap.md) T10, [`wiring/ARM-USART3-DSP/field-provenance`](docs/wiring/ARM-USART3-DSP/field-provenance.md))
-- [x] ✅ **Settings persistence + clock ownership** → the DSP has **no** NV settings storage (no SPI flash / I2C EEPROM / EMIF; internal flash is update-only) and **no** power-off-surviving RTC; the ARM persists settings + owns the clock and re-provisions the DSP each boot (see [`docs/09-dsp-persistence-and-clock.md`](docs/09-dsp-persistence-and-clock.md))
-- [x] ✅ **DSP 12000XP vs 18kPV** → DSP-side comparison of the two control-DSP images: same C28x/F2837x family, byte-swap, sector-0 `0x21/0x22/0x23` handler, SCI-B link and AC-First `==2`+enable-bit gating; the 18kPV is ~1.9× larger, uses 3 SCI ports, and has an entirely different RAM map (only 4.9% same-address identity) — separate builds, addresses don't transfer (see [`docs/15-dsp-12000xp-vs-18kpv.md`](docs/15-dsp-12000xp-vs-18kpv.md))
-- [x] ✅ **Battery BMS image characterized (far end of CAN1)** → the attached `BATT_IN280-Z03T13.bin` is the pack's BMS, on a **Huada HC32F460-class** MCU (not STM32), flat **App @ `0x20000`** over a bootloader; BMS task set (`BmsTimer`, `DSGMosSwitchTimer`, CAN + RS485 links), model `EG4-LL`. Recovered the **CAN link contract**: 8 selectable inverter-brand presets incl. **`P07-LUX`** (Luxpower = our inverter), and the standard-11-bit TX frame table (`0x351/0x355/0x356/0x359/0x35x`) at `0x31a20`. **Per-frame byte layout recovered** from the builder `FUN_0002a0bc` — 16-byte descriptor records, byte-exact `0x351`/`0x355`/`0x356` fields (charge/discharge limits, SOC/SOH, V/I/T) in the standard little-endian preset (a second preset path packs big-endian), plus the RX IDs `0x300/0x301/0x305/0x400`; captured in [`include/inv/bms_can_map.h`](include/inv/bms_can_map.h). Baud (expect 500k) + alarm-bit map pending (see [`docs/20-battery-bms-firmware.md`](docs/20-battery-bms-firmware.md), `tools/batt_canmap.py --builders`)
-- [~] 🚧 **Per-pack multi-battery bank seen live (IR 5000–5126), feed unexplained** → a production-12000XP dongle↔cloud capture shows the dongle polling **input registers 5000–5126 every cycle** and uploading two **populated** packs (`Battery_ID_01/02`, bases 5000 & 5030, 30-reg stride, valid Modbus CRC), which **pins the field semantics** (per-pack V / I / SOC+SOH / max&min cell V / max&min cell temp / limits / version / ASCII id, bolded fields cross-checked vs aggregate registers). **Open contradiction:** the inverter fills this bank **only** from CAN `0x4xx` (harness-reconfirmed; aggregate and the EG4-LL `0x3xx`/`0x37x` leave it zero), the dongle is a dumb relay, and `Battery_ID` is in **no** firmware image — yet the operator's packs are EG4-LL (`BATT_IN280-Z03T13`), whose bench image emits no `0x4xx`. So how the live stack produces the `0x4xx` is unresolved (likely a master-mode per-pack emitter; needs a CAN-bus capture). See [`docs/34-multi-battery-can.md` §2d](docs/34-multi-battery-can.md), [`docs/wiring/ARM-UART5-dongle/IR5000_5126-perpack.md`](docs/wiring/ARM-UART5-dongle/IR5000_5126-perpack.md)
-- [ ] ⬜ Verify on hardware
+- an ARM **"com" MCU** (STM32F103VE-class) — comms, HMI, supervisor, relays — **this is what we reimplement**;
+- a TI C2000 **control DSP** — the real-time power electronics (measures PV/grid, runs the inverter FSM);
+- a **redundant / "safety" CPU** that cross-checks the DSP and gates the inverter;
+- a dedicated **`mppt` power-stage controller** (a smaller STM32G0-class part).
 
-## The honest scope
+**We reimplement only the ARM "com" MCU.** The DSP that runs the real-time power
+electronics is intentionally left untouched — our firmware talks *to* it over the
+existing link, reproducing that protocol exactly.
 
-Reimplementing shipped firmware from a binary is a substantial,
-multi-contributor effort — expect it measured in months, not days. The binary
-is readable (good), but the *meaning* of its numbers (enum values, scaling,
-storage layout, and especially the DSP protocol) must be recovered piece by
-piece. This repo is structured so that work parallelizes and accumulates.
+## System block diagram
 
-## Strategy
+Six processors have been identified: four on the inverter main/power boards, the
+BMS in the battery pack, and the external datalogger dongle. (Per-link detail —
+ports, pins, framing — lives in [`docs/wiring/`](docs/wiring/README.md).)
 
-We treat the original binary as a **specification oracle**, not source to copy:
+```
+                             +------------------------------+
+                             |  EG4 datalogger / cloud      |
+                             |  "dongle"  ESP32-C3 (ext.)   |   master of the
+                             +---------------+--------------+   external RS-485 bus
+                                             | UART5  PC12/PD2            [✔]
+                                             | 9600 RS-485 (DE PA15)
+   battery pack(s)                           | EG4 Modbus (LE + 10-byte SN)
+  +---------------------+  CAN1  PB8/PB9      | ARM = slave
+  | BMS  HC32F460       |<------------------->|
+  | (ARM-CAN1)          |  classic 11-bit CAN |
+  +--------+------------+  0x3xx up / 0x30x dn |
+           | RS-485 pack-to-pack              |
+           : (daisy chain)                    v
+  meter? ----- UART4 PC10/PC11 ------>+--------------------------------------------+
+  (open [?])   2400 RS-485 (DE PA15)  |   ARM "com" MCU  (STM32F103VE-class)       |
+  console? --- USART1 PA9/PA10 ------>|   comms . HMI . supervisor . relays        |
+  (off this boot [?])                 |   << THIS PROJECT >>  no analog metering   |
+                                      +--+-----------------------------------+--+--+
+                 USART3 PB10/PB11        |                                   |  |
+                 19200 TTL   [✔]         |                       SPI1 PA5/6/7|  | GPIOB PB12-15
+                 ARM->DSP config (0x41)  |                       +CS PA4  [✔]|  | bit-banged [✔]
+                 +bootloader 21/22/23    |                            |      |  |
+                 DSP->ARM telem (0x49)   | (= DSP SCI-B)              v      |  v
+                                         v                     +-----------+ | +------------------+
+                                  +--------------------------+  | config    | | | graphic LCD      |
+                                  |  TI C2000 Control DSP    |  | NOR flash | | | 240x160 mono     |
+                                  |  (F2837x) real-time FSM  |  | (ARM-SPI1)| | | MIPI-DCS, 1bpp   |
+                                  |  measures PV & grid      |  +-----------+ | | (ARM-LCD)        |
+                                  +--+-------------------+---+                | +------------------+
+                MPPT USART1 0x42      | DSP = master  [~]|  SCI-C 9600 TTL     |
+                big-endian Modbus [✔] v  of both links   |  'T'/'D'   [✔ DSP]  v
+                (peer=DSP, [~])    +------------------+   |  cross-check  +------------------------+
+                                   | MPPT controller  |   |               | redundant / safety CPU |
+                                   | CBAA, STM32G0    |   +-------------->| (part unknown)         |
+                                   | (MPPT-USART1)    |      SCI-A 9600   | votes + gates inverter |
+                                   | PV V/I/P telem   |      bulk dump    | (DSP-SCI-C)            |
+                                   +------------------+      (DSP-SCI-A)  +-----------+------------+
+                                                                                     | USART2 PA2/PA3
+                                                                                     | 19200 RS-485
+                                                                                     | (DE PC2), RX-only [✔]
+                                                                                     | safety CPU -> ARM:
+                                                                                     | mode + its own grid/PV
+                                                                                     | measurements + fault (E027)
+                                                                                     v  (ARM-USART2)
+                                                                            (to ARM USART2, above)
+```
 
-1. **Build for the real chip first.** An `arm-none-eabi-gcc` + CMSIS skeleton
-   with our own linker script (STM32F103, boot at `0x08000000`) that compiles
-   to a flashable `.bin`. First milestone: it boots and drives the LCD/keys.
-2. **Reimplement behavior module by module**, using the original binary and a
-   live unit to define correct behavior. Start with the safe, observable parts
-   (HMI, menus, telemetry display), then the mode state machine, then comms.
-3. **The DSP link is the contract.** Reproduce the ARM↔DSP protocol exactly;
-   everything else can be rewritten freely as long as that interface holds.
+## Goals & approach
 
-Output is **functionally** equivalent, not byte-identical (the original was
-built with Keil armcc + scatter-loading; we use GCC). Byte-matching is an
-explicit non-goal.
+We treat the factory binary as a **specification oracle**, not source to copy, and
+work in two phases:
 
-## Building
+1. **Be a faithful drop-in replacement first.** Match the factory firmware's
+   observable behaviour exactly, proven by an **oracle-first** test harness: one
+   Unicorn emulator runs *both* the factory image and ours against the **same**
+   black-box tests (GPIO, relays, HMI, Modbus, the ARM↔DSP config push), so "ours
+   agrees with the factory" is a passing test, not a hope. Output is
+   *functionally* equivalent, not byte-identical (they built with Keil armcc; we
+   use GCC) — byte-matching is an explicit non-goal.
+2. **Then go beyond the factory.** Once parity holds, add the things an open
+   firmware can do better — richer Home-Assistant telemetry, standard-Modbus
+   framing, lease-based remote controls, and more. Those ideas are collected in
+   [`docs/38-oss-feature-ideas.md`](docs/38-oss-feature-ideas.md).
+
+Anything the factory does that looks wrong or surprising is written down — with a
+verdict on whether we replicate or fix it — in the factory-quirks log
+[`docs/31-factory-quirks.md`](docs/31-factory-quirks.md).
+
+**Active work is tracked as specific, claimable tasks on the parity roadmap
+[`docs/39-parity-roadmap.md`](docs/39-parity-roadmap.md)** — start there. The
+historical bootstrapping milestone log is archived in
+[`docs/progress-archive.md`](docs/progress-archive.md).
+
+This is a substantial, multi-contributor effort — expect it measured in months,
+not days. The binary is readable, but the *meaning* of its numbers (enum values,
+scaling, storage layout, and especially the DSP protocol) must be recovered piece
+by piece. The repo is structured so that work parallelizes and accumulates.
+
+## Building & running
 
 ```bash
 make                 # EG4 12000XP (monolithic image, vectors @0x08000000)
-make VARIANT=18kpv   # EG4 18kPV   (App over ~50 KB bootloader, vectors @0x0800C800)
-make VARIANT=6000xp  # EG4 6000XP  (App over ~20 KB bootloader, vectors @0x08005000)
+make VARIANT=18kpv   # EG4 18kPV   (App over a bootloader, vectors @0x0800C800)
+make VARIANT=6000xp  # EG4 6000XP  (App over a bootloader, vectors @0x08005000)
 make test            # host-side unit tests (no hardware)
-make test-sim        # GPIO/HMI behaviour tests on the Unicorn harness
-make hmi-sim         # graphic-HMI simulator (open build; FIRMWARE=App.hex for a vendor image)
+make test-sim        # GPIO / HMI behaviour tests on the Unicorn harness
+make hmi-sim         # graphic-HMI simulator for our build (FIRMWARE=App.hex for a vendor image)
 make factory-hmi     # the simulator on the factory image specifically (docs/28)
 ```
 
-`make hmi-sim` boots the firmware in the emulator and serves its graphic LCD plus
-the four front-panel keys at `http://localhost:8090/` (`HMI_PORT=…` to change).
-Every keypress drives the real key GPIOs; the firmware draws to the same panel the
-factory image drives (`src/hmi/lcd_tft.c`). See
-[`docs/28-factory-hmi.md`](docs/28-factory-hmi.md). Needs `pip install unicorn`.
+`make hmi-sim` / `make factory-hmi` boot the firmware in the emulator and serve its
+graphic LCD plus the four front-panel keys at `http://localhost:8090/`
+(`HMI_PORT=…` to change) — this is how the screenshots above were produced. Needs
+`pip install unicorn` (+ `numpy`, `pillow` for the HMI app). Building needs
+`gcc-arm-none-eabi`; host tests need a host `cc`.
 
-`VARIANT` selects the linker script (`ldscripts/stm32f103ve.ld` vs
-`ldscripts/stm32f103_18kpv_app.ld`) and defines the active variant; both model
-descriptors are always linked in. Flash to the variant's base: `0x08000000`
-(12000XP) or `0x0800C800` (18kPV App — the bootloader below is not ours).
-
-Requires `gcc-arm-none-eabi` (build) and a host `cc` (tests). The firmware boots,
-runs the 72 MHz clock init, starts a 1 ms SysTick, and services a Modbus-RTU
-slave against a shared register model — the foundation the remaining
-subsystems grow into, not yet a functional replacement. (The slave is on
-**UART5** — the factory's external-dongle port — with USART3 left to the ARM↔DSP
-link; [`docs/26`](docs/26-dongle-firmware.md).) Flashing helpers
-(ST-Link / OpenOCD) are commented in the `Makefile`; flash to `0x08000000`.
+Today the firmware boots, runs the 72 MHz clock init and a 1 ms SysTick, drives
+the graphic HMI, and services a Modbus-RTU slave against a shared register model —
+the foundation the remaining subsystems grow into, **not yet a functional
+replacement**. Flashing helpers (ST-Link / OpenOCD) are commented in the
+`Makefile`, but see the experimental warning above: **don't**.
 
 ## Repository layout
 
 ```
 docs/        analysis + recovered specification (start here)
 docs/wiring/ per-link wiring source-of-truth (ports, pins, peers, framing)
-include/     stm32f103.h (minimal device header) + inv/ recovered data model
-include/inv/ states, faults, settings, modbus_map, hmi_menu, variant
-src/         startup_stm32f103.c, system_stm32f103.c, variant.c, main.c (skeleton)
-src/modbus/  Modbus-RTU slave engine + UART5 (dongle) port
-src/uart/    interrupt-driven UART5 (dongle) + USART3 (DSP) drivers (RX/TX rings)
-src/can/     CAN1 port (polled RX, as the factory) + BMS frame decoder
-src/hmi/     menu engine + menu model + keypad (keys) + graphic-LCD driver (lcd_tft)
-src/dsp/     ARM->DSP config push (8-block full-snapshot protocol)
-ldscripts/   stm32f103ve.ld (12000XP) + *_18kpv_app.ld + *_6kxp_app.ld (App builds)
-tests/       host unit tests (make test)
+docs/39-…    the parity task board (claim work here)
+include/inv/ recovered data model (states, faults, settings, modbus_map, hmi_menu, variant)
+src/         firmware: startup, main, modbus/, uart/, can/, hmi/, dsp/, relay, …
+ldscripts/   per-variant linker scripts
+tests/       host unit tests (make test) + the Unicorn sim contracts
 tools/       RE scripts (read-only) + the Unicorn emulator & on-screen HMI app
-reference/   original .bin (gitignored) + generated RE outputs (symbols*.csv, …)
+reference/   original .bin (gitignored) + generated RE outputs; see reference/README.md
 Makefile     build -> flashable .bin ; make test
 ```
 
 ## The original binaries are not committed
 
-The proprietary factory images are **not** part of this repository. Contributors
-place their own copy under `reference/` (gitignored). Recorded for integrity:
-
-| File | size | md5 |
-|---|---|---|
-| `..._com_vE_250325.bin` (12000XP ARM — 05-series flat; original baseline, docs/01) | 244080 | `d1c1d8dedd26d59518e95668e95f06d6` |
-| `..._dsp_vE_250325.bin` (12000XP TI DSP, out of scope) | 141304 | `4e3e360ed21742275c2885cba8b69724` |
-| `..._ceaa-05xx_com_vE_250325.hex` (12000XP ARM, 05-series) | 587465 | `d07b6b5ddfdcddd453a3b0cc845e9659` |
-| `..._ceaa-07xx_vE_260214_Br7k5_2.hex` (12000XP ARM, 07-series App — **current reference**) | 574885 | `ccc5172a11ea1e1b302c83bc8e834846` |
-| `..._FAAB-1Bxx_20240528_App.hex` (18kPV ARM App) | 502737 | `7091e1ad60fa2e725a5da8d39fa5bc8c` |
-| `..._ccaa-xx15xx_260519.hex` (6000XP ARM App) | 478004 | `220f1a2fd8aa6adbdbb0a2bea6b9880d` |
-| `169a5158-CBAA-1Cxxxx_mppt_250805.hex` (MPPT stage controller, STM32G0-class Cortex-M0+ — separate processor) | 104767 | `9c4168c1f1ac42cdd0ab6e01deb77325` |
-
-As the product's maintainer you own these images; whether/how to publish them is
-your call. Keeping them out of the public tree is the conventional default.
+The proprietary factory images are **not** part of this repository — contributors
+place their own copy under `reference/` (gitignored). The committed, canonical
+reference image and the 05↔07 address convention are documented in
+[`reference/README.md`](reference/README.md); image hashes for integrity are
+recorded there.
 
 ## Contributing
 
-Pick an unchecked box above or an "unknown" row in
-[`docs/02-recovered-model.md`](docs/02-recovered-model.md). The most valuable
-early contributions are (a) the exact MCU part number, (b) the ARM↔DSP protocol,
-and (c) a config dump + Modbus map from a real unit.
-
-For ideas on what the open firmware could do **beyond** the factory (more
-telemetry for Home Assistant, lease-based remote controls such as direct Smart
-Port switching, standard-Modbus framing), see the brainstorm in
-[`docs/38-oss-feature-ideas.md`](docs/38-oss-feature-ideas.md).
+Claim a task on the [parity roadmap](docs/39-parity-roadmap.md), or pick an
+"unknown" row in [`docs/02-recovered-model.md`](docs/02-recovered-model.md). The
+most valuable contributions right now are (a) the exact MCU part number, (b)
+further decode of the ARM↔DSP protocol, and (c) a config dump + Modbus map from a
+real unit.
 
 ## License
 
-**GNU GPL v3.0** — see [`LICENSE`](LICENSE). Contributions are accepted under
-the same license.
+**GNU GPL v3.0** — see [`LICENSE`](LICENSE). Contributions are accepted under the
+same license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. It is experimental and **not intended to be flashed onto physical
+hardware**; the authors accept no liability for any damage, loss, or injury
+arising from its use. You assume all risk.

@@ -15,58 +15,11 @@ wiring doc first, then the numbered doc.
 **Confidence legend** (used in every table): **✔** proven from firmware (the end
 is noted when only one side is proven) · **~** strong inference · **?** open.
 
-## System block diagram — the processors and their links
+## System block diagram
 
-Six processors have been identified: four on the inverter main/power boards, the
-BMS in the battery pack, and the external datalogger dongle.
-
-```
-                             +------------------------------+
-                             |  EG4 datalogger / cloud      |
-                             |  "dongle"  ESP32-C3 (ext.)   |   master of the
-                             +---------------+--------------+   external RS-485 bus
-                                             | UART5  PC12/PD2            [✔]
-                                             | 9600 RS-485 (DE PA15)
-   battery pack(s)                           | EG4 Modbus (LE + 10-byte SN)
-  +---------------------+  CAN1  PB8/PB9      | ARM = slave
-  | BMS  HC32F460       |<------------------->|
-  | (ARM-CAN1)          |  classic 11-bit CAN |
-  +--------+------------+  0x3xx up / 0x30x dn |
-           | RS-485 pack-to-pack              |
-           : (daisy chain)                    v
-  meter? ----- UART4 PC10/PC11 ------>+--------------------------------------------+
-  (open [?])   2400 RS-485 (DE PA15)  |   ARM "com" MCU  (STM32F103VE-class)       |
-  console? --- USART1 PA9/PA10 ------>|   comms . HMI . supervisor . relays        |
-  (off this boot [?])                 |   << THIS PROJECT >>  no analog metering   |
-                                      +--+-----------------------------------+--+--+
-                 USART3 PB10/PB11        |                                   |  |
-                 19200 TTL   [✔]         |                       SPI1 PA5/6/7|  | GPIOB PB12-15
-                 ARM->DSP config (0x41)  |                       +CS PA4  [✔]|  | bit-banged [✔]
-                 +bootloader 21/22/23    |                            |      |  |
-                 DSP->ARM telem (0x49)   | (= DSP SCI-B)              v      |  v
-                                         v                     +-----------+ | +------------------+
-                                  +--------------------------+  | config    | | | graphic LCD      |
-                                  |  TI C2000 Control DSP    |  | NOR flash | | | 240x160 mono     |
-                                  |  (F2837x) real-time FSM  |  | (ARM-SPI1)| | | MIPI-DCS, 1bpp   |
-                                  |  measures PV & grid      |  +-----------+ | | (ARM-LCD)        |
-                                  +--+-------------------+---+                | +------------------+
-                MPPT USART1 0x42      | DSP = master  [~]|  SCI-C 9600 TTL     |
-                big-endian Modbus [✔] v  of both links   |  'T'/'D'   [✔ DSP]  v
-                (peer=DSP, [~])    +------------------+   |  cross-check  +------------------------+
-                                   | MPPT controller  |   |               | redundant / safety CPU |
-                                   | CBAA, STM32G0    |   +-------------->| (part unknown)         |
-                                   | (MPPT-USART1)    |      SCI-A 9600   | votes + gates inverter |
-                                   | PV V/I/P telem   |      bulk dump    | (DSP-SCI-C)            |
-                                   +------------------+      (DSP-SCI-A)  +-----------+------------+
-                                                                                     | USART2 PA2/PA3
-                                                                                     | 19200 RS-485
-                                                                                     | (DE PC2), RX-only [✔]
-                                                                                     | safety CPU -> ARM:
-                                                                                     | mode + its own grid/PV
-                                                                                     | measurements + fault (E027)
-                                                                                     v  (ARM-USART2)
-                                                                            (to ARM USART2, above)
-```
+> 🗺️ The full system block diagram now lives in the **[top-level README](../../README.md#system-block-diagram)** —
+> kept there to stay prominent, and in one place so a second copy can't drift out of date.
+> Per-link detail (ports, pins, framing, direction) is in the per-wire docs indexed below.
 
 > **Key topology fact (settled).** The ARM's classified operating state, core
 > input registers and fault word are built from the **safety CPU** over USART2 —
