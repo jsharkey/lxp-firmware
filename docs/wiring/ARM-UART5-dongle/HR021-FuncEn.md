@@ -29,5 +29,6 @@ Several **Application-tab** toggles live in feature-enable words: the manual exp
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-- **HR 21 (FuncEn):** [`test_dsp_config.c`](../../../tests/test_dsp_config.c) sets `HR_FUNC_EN` (ACChargeEn) and confirms it flows into the config push. The full bit→toggle mapping is otherwise not yet covered.
+- **HR 21 (FuncEn):** [`test_dsp_config.c`](../../../tests/test_dsp_config.c) sets `HR_FUNC_EN` (ACChargeEn) and confirms it flows into the config push.
+- **DSP config-push (T10/T25):** FuncEn is bit-remapped into the config frame **block 0 @0x2c** (→ DSP `0xAD85` low byte): bit1→`0x10`, bit4→`0x08`, bit6→`0x04`, bit10→`0x20`, bit11→`0x40` (factory-decoded). Routing verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH`); the bit remap is locked in [`test_dsp_config.c`](../../../tests/test_dsp_config.c). See the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md).
 - **Persistence (slot 0 `+0x13`):** [`test_persist_crossimage.py`](../../../tests/test_persist_crossimage.py) round-trips it cross-image. NB the factory does **not** echo FuncEn verbatim on read — it OR-s a capability bit (`stored | 0x200`), so the test checks `(got & written) == written`. See [`docs/31`](../../31-factory-quirks.md) Q8.

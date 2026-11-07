@@ -27,4 +27,6 @@ SETTINGS → **Application tab**: `PV Grid Off` (**default Disable**) = `ubPVGri
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
+- **DSP config-push (T10/T25):** FunctionEn1 is bit-remapped into config-frame **block 0 @0x1c** (low byte of the DSP `0xAD84` flags word, over a `0x02` base): bit0→`0x80`, bit3→`0x08` (the DSP AC-charge-enable bit, docs/07), bit7→`0x10`, bit10→`0x20` (factory-decoded). Routing verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH`); the remap is locked in [`test_dsp_config.c`](../../../tests/test_dsp_config.c). See the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md).
+
 - **Flash persistence (T03):** HR 110 is pinned in the shared `SETTINGS_MAP` ([`settings_persist_contract.py`](../../../tests/settings_persist_contract.py)) and round-trips **cross-image** (ours writes the factory on-flash byte layout; the factory writes and ours reads it back) in [`test_persist_crossimage.py`](../../../tests/test_persist_crossimage.py) (`test_ours_writes_the_factory_byte_layout_full` / `test_factory_persists_ours_reads_by_class`), plus single-image cold-boot via `test_settings_persist_across_cold_boot` ([`test_arm_sim.py`](../../../tests/test_arm_sim.py)).

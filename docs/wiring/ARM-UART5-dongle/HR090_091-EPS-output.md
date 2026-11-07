@@ -21,4 +21,5 @@ SETTINGS → **Application tab**: `EPS Voltage Set` (**default 110/220**; option
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-- **HR 90 (EPSVoltageSet):** HMI enum edit — [`test_hmi.c`](../../../tests/test_hmi.c) (`HR_EPS_VOLT_SET`, clamp + write). Dongle-side write/push is not yet covered.
+- **HR 90 (EPSVoltageSet):** HMI enum edit — [`test_hmi.c`](../../../tests/test_hmi.c) (`HR_EPS_VOLT_SET`, clamp + write).
+- **DSP config-push (T10/T25):** HR 90 and HR 91 share the packed config-frame byte **block 0 @0x1a** (low byte of DSP `0xAD83`): HR 90 EPS voltage → a 2-bit select enum (`208→0, 277→1, 230→2, 240→3`), HR 91 EPS frequency → bit `0x08` when 60 Hz (factory-decoded). Routing verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH`); the enum + freq bit are locked in [`test_dsp_config.c`](../../../tests/test_dsp_config.c). See the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md).

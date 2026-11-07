@@ -193,7 +193,10 @@ def _check_grid_matches_spec(backend):
         blk, off, width = GRID_PUSH[reg]
         a, b = GRID_AB[reg]
         delta = backend.push_delta(reg, a, b)
-        got = {(bb, oo) for (bb, oo) in delta if bb == blk and oo >= 0x17}
+        # target block, payload >= 0x17; drop the block-0 modbus-RX residue at
+        # 0x25/0x26 (shared buffer bleed, not a field -- see dsppush_contract).
+        got = {(bb, oo) for (bb, oo) in delta
+               if bb == blk and oo >= 0x17 and not (bb == 0 and oo in (0x25, 0x26))}
         exp = {(blk, off + i) for i in range(width)}
         if got != exp:
             fails.append("HR %-3d expected block %d @0x%02x (%dB), got %s"

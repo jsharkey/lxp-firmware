@@ -67,12 +67,28 @@ GRID_PUSH = {
     196: (6, 0x21, 1),   # HR_GEN_CHG_START_SOC-> generator charge start SOC (%)
     197: (6, 0x22, 1),   # HR_GEN_CHG_END_SOC  -> generator charge end SOC   (%)
     198: (6, 0x23, 2),   # HR_MAX_GEN_CHG_CURR -> max generator charge (0.1 A)
+    # Block 0 enable/priority core (T25 + single-write decode). These bytes are
+    # packed/bit-remapped (see docs block-00); the spec asserts only the byte each
+    # register MOVES (routing). The exact encoding is locked by the host test
+    # tests/test_dsp_config.c. HR 112 also moves block 3 @0x19 (multi-target); only
+    # its block-0 byte is asserted here. The block-0 modbus residue at 0x25/0x26 is
+    # excluded in the check.
+    120: (0, 0x19, 1),   # HR_SYS_ENABLE      -> 0x19 (& 0xFE)
+    90:  (0, 0x1a, 1),   # HR_EPS_VOLT_SET    -> 0x1a (volt-select enum, low bits)
+    91:  (0, 0x1a, 1),   # HR_EPS_FREQ_SET    -> 0x1a (60 Hz -> bit 0x08)
+    110: (0, 0x1c, 1),   # HR_FUNCTION_EN1    -> 0x1c (bit remap)
+    112: (0, 0x1c, 1),   # HR_SET_SYSTEM_TYPE -> 0x1c (bit0 -> 0x08) [+ block 3]
+    20:  (0, 0x28, 1),   # HR_PV_INPUT_MODEL  -> 0x28 (direct)
+    21:  (0, 0x2c, 1),   # HR_FUNC_EN         -> 0x2c (bit remap)
 }
 # (A, B) write values per register: two valid, distinct in-range values that flip
-# the asserted byte(s) without tripping a clamp (start-V/end-V stay ordered).
+# the asserted byte(s) without tripping a clamp (start-V/end-V stay ordered) and
+# that both store (avoid the 1-value registers).
 GRID_AB = {
     101: (20, 100), 102: (20, 100), 99: (510, 560), 105: (20, 80), 103: (10, 80),
     194: (400, 450), 195: (500, 560), 196: (10, 80), 197: (30, 90), 198: (20, 50),
+    120: (2, 8), 90: (208, 240), 91: (50, 60), 110: (0, 1), 112: (0, 1),
+    20: (1, 2), 21: (0, 2),
 }
 
 # Live (writable) registers in the HR 64-89 schedule block, as the factory image

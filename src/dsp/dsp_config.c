@@ -39,21 +39,53 @@ uint16_t dsp_crc16(const uint8_t *buf, size_t len) { return inv_modbus_crc16(buf
 typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp_field_t;
 
 /*
- * Block 0 — output priority / AC-First + grid-charge enable group.
- * On the DSP this lands in the 0x00AD?? cluster (g_outputPrio=0xADA8,
- * g_acChargeFlags=0xAD84, grid-charge schedule records) — see docs/07.
- * No holding-register write moves a block-0 payload byte in the factory image
- * (the apparent block-0 deltas are shared modbus-buffer residue, not fields), so
- * these offsets are a best-effort guess, not differentially pinned. Kept as a
- * stub; block 0's real content is a constant identity/version template still to
- * be decoded. docs/wiring/ARM-USART3-DSP/field-provenance.md.
+ * Block 0 — output priority / AC-First + grid-charge enable core. Built by
+ * dsp_build_block0() below (a dedicated builder: its HR-driven bytes are packed /
+ * bit-remapped / table-mapped, which the plain field table cannot express). The
+ * transforms are decoded from the factory per-block filler by single-write capture
+ * (tools/dsp_push_matrix.py + docs/wiring/ARM-USART3-DSP/block-00-output-priority.md):
+ *
+ *   0x19 (hi of DSP 0xAD83)  = HR 120 SYS_ENABLE & 0xFE
+ *   0x1a (lo of 0xAD83)      = EPS-volt enum(HR 90) | (HR 91 == 60 ? 0x08 : 0)
+ *   0x1c (lo of 0xAD84 flags)= 0x02 | FUNCTION_EN1(HR 110) remap | (HR 112 bit0 ? 0x08)
+ *                              (bit 0x08 here = the DSP's AC-charge-enable, docs/07)
+ *   0x1e (0xADA8)            = HR 145 OUTPUT_PRIO_CFG (0 Bat/1 PV/2 AC-First; static-
+ *                              confirmed — HR 145 stores only its default live, so this
+ *                              byte is from the doc/static map, not a live diff)
+ *   0x28 (0xAD8D)            = HR 20 PV_INPUT_MODEL
+ *   0x2c (lo of 0xAD85)      = HR 21 FUNC_EN remap
+ *
+ * The rest of block 0 (identity/version template at 0x15-0x18, 0x1b, 0x1d-0x27,
+ * 0x29-0x2e) is a constant not driven by any holding register — still to decode,
+ * so block 0 is not yet byte-exact as a whole; these HR-driven bytes are.
  */
-static const dsp_field_t block0_fields[] = {
-    { HR_OUTPUT_PRIO_CFG, 0x00, 1, 1 }, /* 0=Bat First,1=PV First,2=AC First -> g_outputPrio */
-    { HR_SYS_ENABLE,      0x01, 2, 1 }, /* ACChargeType/flags bits           -> g_acChargeFlags */
-    { HR_FUNC_EN,         0x03, 2, 1 }, /* FuncEn.ACChargeEn (bit 7) etc.                       */
-    { HR_EOD,             0x05, 1, 1 }, /* end-of-discharge SOC                                 */
+/* bit b of `v` set -> OR in map[b]; used for the FUNC_EN / FUNCTION_EN1 remaps. */
+static uint8_t dsp_bit_remap(uint16_t v, const uint8_t map[16])
+{
+    uint8_t out = 0;
+    for (int b = 0; b < 16; b++)
+        if (v & (1u << b)) out |= map[b];
+    return out;
+}
+/* HR 21 FUNC_EN bit -> 0x2c bit (factory-decoded). */
+static const uint8_t DSP_FUNCEN_TO_0X2C[16] = {
+    [1] = 0x10, [4] = 0x08, [6] = 0x04, [10] = 0x20, [11] = 0x40,
 };
+/* HR 110 FUNCTION_EN1 bit -> 0x1c bit (factory-decoded). */
+static const uint8_t DSP_FUNCEN1_TO_0X1C[16] = {
+    [0] = 0x80, [3] = 0x08, [7] = 0x10, [10] = 0x20,
+};
+/* HR 90 EPS output voltage -> 2-bit select enum (factory-decoded). */
+static uint8_t dsp_eps_volt_sel(uint16_t v)
+{
+    switch (v) {
+    case 208: return 0;
+    case 277: return 1;
+    case 230: return 2;
+    case 240: return 3;
+    default:  return 0;
+    }
+}
 
 /*
  * Block 3 — grid-charge slot: end-of-discharge SOC + feed-in limit.
@@ -96,10 +128,10 @@ static const dsp_field_t block6_fields[] = {
  * measurement-calibration gain tables (constant unity defaults, below); block 1
  * is empty (frame still emitted so the rotation + completeness bitmask behave). */
 static const dsp_field_t *const block_fields[DSP_CONFIG_NBLOCKS] = {
-    block0_fields, 0, 0, block3_fields, 0, 0, block6_fields, 0, 0
+    0 /* block 0: dedicated builder */, 0, 0, block3_fields, 0, 0, block6_fields, 0, 0
 };
 static const uint8_t block_nfields[DSP_CONFIG_NBLOCKS] = {
-    (uint8_t)(sizeof block0_fields / sizeof block0_fields[0]), 0, 0,
+    0, 0, 0,
     (uint8_t)(sizeof block3_fields / sizeof block3_fields[0]), 0, 0,
     (uint8_t)(sizeof block6_fields / sizeof block6_fields[0]), 0, 0,
 };
@@ -157,6 +189,33 @@ static dsp_slots_t g_dsp_slots;
 
 static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 
+#define DSP_BLOCK_OUTPUT_PRIO 0  /* HR 20/21/90/91/110/112/120/145 enable+priority core */
+
+/* Read one holding register (0 if no source / unset). */
+static uint16_t dsp_rd(const dsp_cfg_src_t *src, uint16_t reg)
+{
+    uint16_t v = 0;
+    if (src->read_holding) src->read_holding(src->ctx, reg, &v);
+    return v;
+}
+
+/* Block 0 packed/remapped HR-driven bytes (see the decode table above). Only the
+ * HR-driven bytes are written; the surrounding identity/version template is left
+ * zero (not yet decoded), so block 0 is not byte-exact as a whole -- these fields
+ * are. pl = payload base (frame 0x15); offsets below are frame-relative - 0x15. */
+static void dsp_build_block0(const dsp_cfg_src_t *src, uint8_t *pl)
+{
+    pl[0x19 - 0x15] = (uint8_t)(dsp_rd(src, HR_SYS_ENABLE) & 0xFEu);
+    pl[0x1a - 0x15] = (uint8_t)(dsp_eps_volt_sel(dsp_rd(src, HR_EPS_VOLT_SET))
+                      | (dsp_rd(src, HR_EPS_FREQ_SET) == 60 ? 0x08u : 0u));
+    pl[0x1c - 0x15] = (uint8_t)(0x02u
+                      | dsp_bit_remap(dsp_rd(src, HR_FUNCTION_EN1), DSP_FUNCEN1_TO_0X1C)
+                      | ((dsp_rd(src, HR_SET_SYSTEM_TYPE) & 1u) ? 0x08u : 0u));
+    pl[0x1e - 0x15] = (uint8_t)dsp_rd(src, HR_OUTPUT_PRIO_CFG);
+    pl[0x28 - 0x15] = (uint8_t)dsp_rd(src, HR_PV_INPUT_MODEL);
+    pl[0x2c - 0x15] = dsp_bit_remap(dsp_rd(src, HR_FUNC_EN), DSP_FUNCEN_TO_0X2C);
+}
+
 size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
                               uint8_t *out, size_t cap)
 {
@@ -182,7 +241,10 @@ size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
     memset(out + DSP_OFF_PAYLOAD, 0, (size_t)(DSP_PAYLOAD_END - DSP_OFF_PAYLOAD));
     uint8_t *pl = out + DSP_OFF_PAYLOAD;    /* payload base = frame offset 0x15 */
 
-    if (block_id == DSP_BLOCK_AC_CHARGE || block_id == DSP_BLOCK_AC_FIRST) {
+    if (block_id == DSP_BLOCK_OUTPUT_PRIO) {
+        /* Block 0: packed/remapped enable + priority core (dedicated builder). */
+        dsp_build_block0(src, pl);
+    } else if (block_id == DSP_BLOCK_AC_CHARGE || block_id == DSP_BLOCK_AC_FIRST) {
         /* Slot-committer path: commit the schedule settings into the working slot
          * records (gated by each feature's enable bit, marking dirty), then
          * serialise this block's record -- slot-active mask + window times, BE.

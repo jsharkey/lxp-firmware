@@ -206,7 +206,7 @@ fault-bit assignment (below):
   `last_rx` on `dsp_rx_port`'s Modbus-request path → `INV_LOCAL_FAULT_E000`).
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3 & 6 scalars landed)` — blocks **1/2/7/8** byte-identical; blocks **3 & 6 grid-charge scalars** now byte-faithful ours==factory (5 fields, differentially pinned + single-write validated); blocks **4/5 windows** match, their `0x23+` tails + all of **block 0** are undecoded **constant templates** (no writable HR drives them) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable)
+**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3/6 scalars + block-0 enable core + generator charge)` — blocks **1/2/7/8** byte-identical; **every HR-driven field in blocks 0, 3, 4, 5, 6 now emitted byte-faithful ours==factory** (grid-charge + generator-charge scalars, schedule windows, and block-0 packed enable/priority core). What remains is the **non-HR constant templates** (block 0 identity/version, block 4/5 `0x23+` tails) which need the init/config-flash source traced · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
@@ -232,15 +232,20 @@ come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was
   the populated case is the T11 limit derivation.
 - **Block 3** (grid-charge slot): **HR 105 EOD → `0x1b`**, **HR 103 feed-in limit →
   `0x1c`** (both u8 %). Ours==factory. The rest of the block is a constant template.
-- **Block 6** (grid-charge slot): **HR 101 charge-curr → `0x17`**, **HR 102
-  discharge-curr → `0x1b`** (both A→0.1 A ×10), **HR 99 charge-volt → `0x25`**
-  (0.1 V). Ours==factory. The rest is a constant template.
+- **Block 6** (grid-charge slot): lead-acid **HR 101/102** currents (→ `0x17`/`0x1b`,
+  ×10), **HR 99** charge-volt (→ `0x25`), and the **generator-charge** set
+  **HR 194–198** (→ `0x1d`/`0x1f`/`0x21`/`0x22`/`0x23`). Ours==factory. Only the
+  `0x19` word (const) is undecoded.
 - **Block 4** (AC-charge): window times `0x17..0x22` MATCH; tail `0x23+` is a
   constant template (below).
 - **Block 5** (AC-First): window times `0x17..0x22` MATCH; tail `0x23+` constant.
-- **Block 0**: no writable HR drives any payload byte — a constant identity/version
-  template plus two bit-packed enable fields (HR 120 `SYS_ENABLE & ~1 → 0x19`,
-  HR 110 `FUNCTION_EN1` bits → `0x1c`, decoded but not yet emitted).
+- **Block 0**: the HR-driven **enable/priority core now emitted byte-exact**
+  (`dsp_build_block0`): HR 120 `SYS_ENABLE&0xFE → 0x19`, HR 90/91 EPS volt/freq
+  (packed) → `0x1a`, HR 110/112 `FUNCTION_EN1`/`SET_SYSTEM_TYPE` (packed) → `0x1c`,
+  HR 145 priority → `0x1e`, HR 20 `PV_INPUT_MODEL → 0x28`, HR 21 `FUNC_EN` remap →
+  `0x2c`. Routing ours==factory (`GRID_PUSH`), encodings locked
+  ([`test_dsp_config.c`](../tests/test_dsp_config.c)). The identity/version template
+  (`0x15–0x18`, `0x1b`, `0x1d`, `0x1f–0x27`, `0x29–0x2e`) is still a constant to decode.
 
 All five block-3/6 scalars are pinned **differentially** and re-validated with
 **single-write fresh captures** (`tests/test_dsp_push.py::test_{factory,ours}_grid_push_matches_spec`,
@@ -260,8 +265,10 @@ excluded. Every real field above was confirmed by single-write capture.
   0x021c / 0x325a`. No writable HR moves them; they are boot/config-flash defaults.
   Faithful reproduction needs the **init/config-flash source traced** — not opaque
   hardcoding (the bar the calib blocks met: unity has a known meaning; these don't yet).
-- **Block 0 template**: the identity/version/params constants + the HR 110/120
-  bit-packed enables. Same bar: decode the constants before emitting.
+- **Block 0 template**: the HR-driven enable/priority core is now emitted; what
+  remains is the identity/version/params **constant** template (`0x15–0x18`, `0x1b`,
+  `0x1d`, `0x1f–0x27`, `0x29–0x2e`). Same bar: decode the constants before emitting.
+- **Block 3 @0x19** (HR 112 `SET_SYSTEM_TYPE` second target) — mapped, not yet emitted.
 - **Block 1 populated** — battery limits from the working struct (depends on T11).
 - **Header parity** — payload region exact; the frame header is still ours'
   SN+timestamp vs the factory's `0x41`/len/status (`0x080273b4`). Separate
