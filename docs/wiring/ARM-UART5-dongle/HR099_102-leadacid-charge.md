@@ -39,4 +39,12 @@ _Tests that exercise these registers. **Keep this list current when you add or c
 - **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — HR 101 `141` (> spec max 140) is **accepted** (cold default also reads `250`): the factory enforces no upper bound ([`docs/31`](../../31-factory-quirks.md) Q6, replicated for parity). Host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).
 - **HR 99 (ChargeVoltRef):** exercised as the BMS charge-V ceiling (T11a) — `IR 83 = min(0x351, HR 99)`: factory-oracled sim test [`test_arm_sim.py`](../../../tests/test_arm_sim.py) `test_bms_charge_volt_ref_clamps_to_setting` (+ the two `*telemetry*` tests for the pass-through branch), and the pure-function boundary sweep [`test_bms_limits.c`](../../../tests/test_bms_limits.c).
 - **DSP config-push grid-charge slot (T10):** the per-block filler packs these into the ARM→DSP config frame — HR 101 (ChargeCurr)→block 6 @0x17, HR 102 (DischgCurr)→block 6 @0x1b (both A→0.1 A, ×10), HR 99 (ChargeVoltRef)→block 6 @0x25 (0.1 V). Differentially verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH` in [`dsppush_contract.py`](../../../tests/dsppush_contract.py)); see [block-03_06-gridcharge-slots.md](../ARM-USART3-DSP/block-03_06-gridcharge-slots.md).
-- **HR 100 / 144 (CutVolt / FloatVolt):** _No automated test exercises these registers yet — a focused test is welcome._
+- **HR 100 (CutVolt) write validation (T24/T24b):** the whole-HR sweep
+  ([`test_wrsem_sweep.py`](../../../tests/test_wrsem_sweep.py) /
+  [`wrsem_expected.py`](../../../tests/wrsem_expected.py)) found the factory enforces
+  `400-499` (rejects the spec's 500); ours replicates it (host boundaries in
+  [`test_settings_validate.c`](../../../tests/test_settings_validate.c)). HR 99 is
+  validated one-sided (accepts below 500, max 590 — see the sweep).
+- **HR 144 (FloatVolt):** the factory rejects *every* probed value in the bare-boot
+  state (precondition-gated, docs/31 Q11), so ours stays permissive — a recorded
+  `OURS_DEVIATIONS` entry, not yet pinned.

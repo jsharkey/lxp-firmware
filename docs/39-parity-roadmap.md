@@ -342,12 +342,27 @@ The test pins the factory verdicts (a re-pin/image change fails it) and checks
   a precondition (HR 113/144/146 reject-all here) may write under other states —
   flagged in Q11 for T24b.
 
-#### T24b — tighten ours to the factory write bounds + SN 0x10 round-trip
-**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** micro + sim · **Depends:** T24 (the oracle)
+#### T24b — tighten ours to the factory write bounds (+ SN 0x10 round-trip → T24c)
+**Status:** 🟢 `[x] claude/019chjb 2026-11-07` ([`settings_validate.c`](../src/settings/settings_validate.c), [`test_settings_validate.c`](../tests/test_settings_validate.c), [`wrsem_expected.py`](../tests/wrsem_expected.py)) · **Layer:** micro + sim · **Depends:** T24
 
-Implement the factory's per-register validation in `settings_validate` so
-`OURS_DEVIATIONS` (58 vectors) empties, and add the SN write-multiple round-trip
-test once the harness grows a `0x10` master.
+**Done.** `settings_validate` now enforces the factory's recovered per-register
+verdicts (T24 oracle): the tighter maxes (HR 20/59 = 6), shifted/one-sided bounds
+(HR 75/99/100/105/196 + the gen block 194-198), the **not-writable** set
+(HR 22/67/74/82/83/145 → exception 2), and HR 112's value-2 reject (Q9). The sweep's
+**58 deviations collapse to 11** — only HR 24/113/144, which the factory rejects for
+*every* value in the bare-boot state (precondition-gated, docs/31 Q11); ours stays
+permissive there on purpose. Host boundaries in `test_settings_validate.c` (36
+checks); parity re-verified by `make wrsem`. No persisted testval (T03) is newly
+rejected; `make test` + common sim green.
+- **Split: T24c** — the **SN (HR 2-6) `0x10` write → read-back → cold boot** test
+  still needs a write-multiple (`0x10`) master the harness lacks; carried below.
+
+#### T24c — SN (HR 2-6) write-multiple round-trip
+**Status:** ⬜ `[ ]` · **Layer:** sim · **Depends:** a `0x10` (write-multiple) harness master
+
+Add a write-multiple master to `arm_sim_modbus.py`, then a test that sets the SN via
+`0x10`, reads it back (HR 2-6), cold-boots, and confirms it persists — the identity
+gap [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) still lists as uncovered.
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10

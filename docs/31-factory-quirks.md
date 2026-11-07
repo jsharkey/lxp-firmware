@@ -359,13 +359,16 @@ identity/command registers (docs/39 T12), recorded so they are deliberate:
 - **One-sided bounds (confirms Q6):** HR **75 / 99 / 101 / 105** accept above their
   documented max but reject below min. HR **9 / 10** are read-only (`reject:4`).
 - **Read-only ends:** HR 9/10 (versions) reject every write with exception 4.
-- **Our firmware under-validates:** on **58 of 103** vectors ours `accept`s what the
-  factory rejects — `settings_validate` only range-checks the handful T04 wired, so
-  it is far more permissive than the factory. The full list is
-  `wrsem_expected.OURS_DEVIATIONS`; `test_wrsem_sweep.py` guards that it does not
-  **grow**. Tightening `settings_validate` to the factory's per-register bounds is
-  the **T24b** follow-up (a per-register implementation task; the oracle here is its
-  spec).
+- **Our firmware (after T24b):** `settings_validate` now enforces the factory's
+  per-register bounds — the tighter maxes (HR 20/59 = 6), the shifted/one-sided
+  bounds (HR 75/99/100/105/196), the not-writable set (HR 22/67/74/82/83/145 →
+  exception 2) and HR 112's value-2 reject. The sweep's 58 deviations collapse to
+  **11**, all on the three registers the factory rejects for *every* value in the
+  bare-boot state — **HR 24** (ReconnectTime), **HR 113** (SetComposedPhase),
+  **HR 144** (FloatChargeVolt). Those are left permissive on purpose (they are
+  almost certainly precondition-gated — no value is accepted even in range — so
+  blocking valid writes would be wrong); recorded in `wrsem_expected.OURS_DEVIATIONS`,
+  which `test_wrsem_sweep.py` guards against growth.
 - **Caveat — verdicts are the cold-boot state.** Each probe is a fresh boot with no
   operating mode set, so registers the factory gates on a precondition (a running
   state, a mode, standby-only writes) show as `reject` here; that is the inverter's

@@ -22,4 +22,9 @@ SETTINGS → **Application tab**: `AC Input Range` = UPS (170-280) | **APL (90-2
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **Write validation (T24/T24b):** the whole-HR sweep
+  ([`test_wrsem_sweep.py`](../../../tests/test_wrsem_sweep.py) /
+  [`wrsem_expected.py`](../../../tests/wrsem_expected.py)) found the factory accepts
+  0/1 but **rejects 2 (GEN) and 3** in the bare-boot state (exception 3 — likely
+  GEN precondition-gated, docs/31 Q11); ours replicates `[0, 1]`, pinned at the host
+  level by [`test_settings_validate.c`](../../../tests/test_settings_validate.c).
