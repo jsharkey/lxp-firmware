@@ -80,6 +80,10 @@ void relay_set_mode(uint8_t ir_state)
     s_mode = ir_state;
 }
 
+/* `used` keeps this symbol in the ELF even when its single call site is inlined
+ * and --gc-sections would otherwise drop the out-of-line copy: the AC-transfer sim
+ * test (tests/test_arm_sim_self_only.py) calls it by name via sim.call(). */
+__attribute__((used))
 void relay_set_transfer_inputs(bool enabled, bool dsp_force, uint32_t dsp_grid)
 {
     s_transfer_enabled = enabled;
