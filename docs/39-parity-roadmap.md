@@ -251,9 +251,16 @@ come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was
   ([`test_dsp_config.c`](../tests/test_dsp_config.c)). The identity/version template
   (`0x15–0x18`, `0x1b`, `0x1d`, `0x1f–0x27`, `0x29–0x2e`) is still a constant to decode.
 
-All five block-3/6 scalars are pinned **differentially** and re-validated with
+The block-3/6/0 scalars are pinned **differentially** and re-validated with
 **single-write fresh captures** (`tests/test_dsp_push.py::test_{factory,ours}_grid_push_matches_spec`,
-`GRID_PUSH`; [`block-03_06`](wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md)).
+`GRID_PUSH`; [`block-03_06`](wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md)),
+and — stronger — an **absolute cross-image check** (`test_ours_matches_factory_absolute`)
+drives both images to the same register state and requires every HR-driven byte to be
+**byte-identical ours==factory** (not just that it moves). That check caught two real
+encoding bugs (a wrong block-0 `0x1c` bit-map; it also forced the per-block, fresh-backend
+write grouping to stay within the factory's dongle-transaction budget). The one byte it
+does **not** assert byte-exact is block-0 `0x1c`, whose `0x02` base has an uncracked
+HR 20/21 interaction (clean bits + AC-charge-enable are reproduced; emitted best-effort).
 
 **Methodology correction — beware the differential double-write.** `push_delta`
 writes A, builds, writes B, builds. A byte that only changes because the *second*

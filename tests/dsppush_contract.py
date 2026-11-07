@@ -91,6 +91,46 @@ GRID_AB = {
     20: (1, 2), 21: (0, 2),
 }
 
+# --- absolute cross-image check (T10) ----------------------------------------
+# Drive BOTH images to the exact same register state, then require every HR-driven
+# payload byte to be byte-identical ours==factory. This is stronger than the
+# differential specs above (which check only that a byte MOVES): it checks the VALUE,
+# so a wrong scale / packing / lookup in ours is caught, independently of the decode
+# the host test (test_dsp_config.c) encodes. (It is exactly this check that exposed a
+# wrong 0x1c bit-map in an earlier revision.)
+#
+# Grouped PER BLOCK, each driven on its OWN fresh backend: the factory sim serves only
+# a bounded number of dongle transactions before its loop must cycle, so one big
+# combined write set exhausts the budget and later writes silently no-op. Small groups
+# (<=8 writes, fresh boot) stay within budget and never touch the cached backends the
+# other tests share. Values are valid + storable on both images (avoid the 1-value
+# registers; keep gen start-V < end-V; times are hour|min<<8).
+ABS_WRITES_BY_BLOCK = {
+    4: [(68, 1 | (5 << 8)), (69, 2 | (10 << 8)), (70, 3 | (15 << 8)),
+        (71, 4 | (20 << 8)), (72, 5 | (25 << 8)), (73, 6 | (30 << 8))],
+    5: [(152, 7 | (35 << 8)), (153, 8 | (40 << 8)), (154, 9 | (45 << 8)),
+        (155, 10 | (50 << 8)), (156, 11 | (55 << 8)), (157, 12 | (0 << 8))],
+    3: [(105, 70), (103, 60)],
+    6: [(101, 80), (102, 90), (99, 560),
+        (194, 400), (195, 560), (196, 50), (197, 90), (198, 40)],
+    0: [(120, 0xA5), (90, 240), (91, 60), (110, 0x0081), (112, 1), (20, 4), (21, 0x0002)],
+}
+# HR-driven payload offsets to compare per block. Excludes the non-HR settings/model
+# template bytes, the modbus residue (0x15/0x16, block 0 0x25/0x26), block 0's 0x1e
+# (OUTPUT_PRIO: not live-settable via the dongle), and block 3's 0x19 (HR 112 parallel
+# -role lookup: ours is non-parallel, intentionally not emitted). docs block-00/03_06.
+# 0x1c is intentionally NOT asserted byte-exact: its clean bits (0x80/0x10/0x20 from
+# FUNCTION_EN1, 0x08 AC-charge-enable from SET_SYSTEM_TYPE) are reproduced, but its
+# 0x02 base bit has an uncracked combinational dependency on HR 20/21 (it clears once
+# PV-mode + FuncEn are configured), so ours emits it best-effort only. docs block-00.
+ABS_OFFSETS = {
+    0: [0x19, 0x1a, 0x28, 0x2c],
+    3: [0x1b, 0x1c],
+    4: [0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22],
+    5: [0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22],
+    6: [0x17, 0x18, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26],
+}
+
 # Live (writable) registers in the HR 64-89 schedule block, as the factory image
 # exposes them. 67 (AC-charge SOC) and 74/76-89 (charge-priority power/windows +
 # forced-discharge) are inert -- a dongle write does not store (read-back stays at
@@ -246,6 +286,28 @@ class _Backend:
         fa = self._blocks_after_write(reg, a)
         fb = self._blocks_after_write(reg, b)
         return _payload_delta(fa, fb)
+
+    def blocks_after_writes(self, pairs):
+        """Write several (reg, value) over the dongle, then build all blocks (same
+        context-snapshot/quiesce discipline as _blocks_after_write). Returns
+        {block: payload bytes}. Used for the absolute cross-image check: drive both
+        images to the SAME register state and compare the built frames."""
+        sim, mb = self._boot()
+        for reg, value in pairs:
+            mb.write_single(reg, value)
+        ctx = sim.uc.context_save()
+        saved = {k: getattr(sim, k) for k in self._ENGINE_VARS}
+        if hasattr(sim, "_systick_due"):
+            sim._systick_due = False
+            sim._pendsv_set = False
+            sim._pending_irqs = []
+            sim._tick_mark = sim._insns + 1_000_000_000
+        try:
+            return {blk: self._build_block(sim, blk) for blk in range(NBLOCKS)}
+        finally:
+            sim.uc.context_restore(ctx)
+            for k, v in saved.items():
+                setattr(sim, k, (list(v) if isinstance(v, list) else v))
 
 
 class FactoryBackend(_Backend):

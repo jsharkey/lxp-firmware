@@ -26,7 +26,7 @@ sys.path.insert(0, HERE)
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
 from dsppush_contract import (DSP_PUSH, WRITABLE_64_89, INERT_64_89,
                               ab_values, CALIB_BLOCKS, EXPECT_CAL, calib_payloads,
-                              GRID_PUSH, GRID_AB,
+                              GRID_PUSH, GRID_AB, ABS_WRITES_BY_BLOCK, ABS_OFFSETS,
                               FactoryBackend, OursBackend)  # noqa: E402
 
 
@@ -216,6 +216,27 @@ def test_ours_grid_push_matches_spec():
     with the DSP unit scaling (currents A->0.1A), so ours is byte-faithful to the
     factory for these fields (T10)."""
     _check_grid_matches_spec(_ours_or_skip())
+
+
+def test_ours_matches_factory_absolute():
+    """Strongest check: per block, drive factory AND ours to the identical register
+    state (ABS_WRITES_BY_BLOCK) on FRESH backends, then every HR-driven payload byte
+    (ABS_OFFSETS) must be byte-for-byte equal. Unlike the differential specs this pins
+    the VALUE, so a wrong scale/packing/lookup in ours is caught independently of the
+    decode. Fresh per-block backends keep each write set within the factory's dongle
+    transaction budget and avoid polluting the shared cached backends."""
+    _factory_or_skip(); _ours_or_skip()      # skip early if unavailable
+    fails = []
+    for blk, writes in sorted(ABS_WRITES_BY_BLOCK.items()):
+        fb = FactoryBackend(FACTORY_IMAGE)
+        ob = OursBackend(OURS_BIN, OURS_ELF)
+        ff = fb.blocks_after_writes(writes)[blk]
+        of = ob.blocks_after_writes(writes)[blk]
+        for o in ABS_OFFSETS[blk]:
+            if ff[o] != of[o]:
+                fails.append("block %d @0x%02x: factory=0x%02x ours=0x%02x"
+                             % (blk, o, ff[o], of[o]))
+    assert not fails, "\n        " + "\n        ".join(fails)
 
 
 if __name__ == "__main__":

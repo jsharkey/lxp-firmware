@@ -71,18 +71,27 @@ int main(void)
     holding[HR_SYS_ENABLE]       = 0x00A5;  /* 0x19 = 0xA5 & 0xFE = 0xA4            */
     holding[HR_EPS_VOLT_SET]     = 240;     /* volt sel 3 ...                      */
     holding[HR_EPS_FREQ_SET]     = 60;      /* ... | 0x08 -> 0x1a = 0x0B           */
-    holding[HR_FUNCTION_EN1]     = 0x0009;  /* bit0->0x80, bit3->0x08              */
-    holding[HR_SET_SYSTEM_TYPE]  = 1;       /* bit0 -> 0x08; 0x1c = 0x02|0x88|0x08 */
+    holding[HR_FUNCTION_EN1]     = 0x0081;  /* bit0->0x80, bit7->0x10 (bit3 = none) */
+    holding[HR_SET_SYSTEM_TYPE]  = 1;       /* bit0 -> 0x08; 0x1c = 0x02|0x90|0x08  */
     holding[HR_OUTPUT_PRIO_CFG]  = 2;       /* 0x1e = 2                            */
     holding[HR_PV_INPUT_MODEL]   = 4;       /* 0x28 = 4                            */
     holding[HR_FUNC_EN]          = 0x0002;  /* bit1 -> 0x10; 0x2c = 0x10           */
     dsp_build_config_frame(&src, 0, f, sizeof f);
     CHECK(f[0x19] == 0xA4, "block0 0x19 = SYS_ENABLE & 0xFE");
     CHECK(f[0x1a] == 0x0B, "block0 0x1a = EPS volt-sel(240)=3 | 60Hz 0x08");
-    CHECK(f[0x1c] == 0x8A, "block0 0x1c = 0x02 | FUNCTION_EN1 remap | systype bit0");
+    /* 0x1c is our best-effort: clean bits exact, but the 0x02 base has an uncracked
+     * factory interaction with HR 20/21 (it clears once PV-mode+FuncEn configured),
+     * so this locks OUR output, not a factory byte -- 0x1c is excluded from the
+     * cross-image ABS check. docs block-00. */
+    CHECK(f[0x1c] == 0x9A, "block0 0x1c = 0x02 | FUNCTION_EN1(b0,b7) | systype b0 0x08 (ours)");
     CHECK(f[0x1e] == 0x02, "block0 0x1e = OUTPUT_PRIO_CFG");
     CHECK(f[0x28] == 0x04, "block0 0x28 = PV_INPUT_MODEL");
     CHECK(f[0x2c] == 0x10, "block0 0x2c = FUNC_EN remap (bit1->0x10)");
+    /* FUNCTION_EN1 bit3 contributes nothing to 0x1c (the 0x08 is systype's) */
+    memset(holding, 0, sizeof holding);
+    holding[HR_FUNCTION_EN1] = 0x0008;      /* bit3 only, systype 0 */
+    dsp_build_config_frame(&src, 0, f, sizeof f);
+    CHECK(f[0x1c] == 0x02, "block0 0x1c: FUNCTION_EN1 bit3 adds nothing (base 0x02)");
     /* a register that contributes nothing leaves the byte at its base/zero */
     memset(holding, 0, sizeof holding);
     dsp_build_config_frame(&src, 0, f, sizeof f);

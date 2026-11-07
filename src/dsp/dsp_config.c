@@ -48,7 +48,12 @@ typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp
  *   0x19 (hi of DSP 0xAD83)  = HR 120 SYS_ENABLE & 0xFE
  *   0x1a (lo of 0xAD83)      = EPS-volt enum(HR 90) | (HR 91 == 60 ? 0x08 : 0)
  *   0x1c (lo of 0xAD84 flags)= 0x02 | FUNCTION_EN1(HR 110) remap | (HR 112 bit0 ? 0x08)
- *                              (bit 0x08 here = the DSP's AC-charge-enable, docs/07)
+ *                              (bit 0x08 here = the DSP's AC-charge-enable, docs/07).
+ *                              BEST-EFFORT: the clean bits (0x80/0x10/0x20 from 110,
+ *                              0x08 from 112) are exact, but the 0x02 base has an
+ *                              uncracked factory interaction with HR 20/21 (it clears
+ *                              once PV-mode + FuncEn are configured), so this byte is
+ *                              not claimed byte-exact. docs block-00.
  *   0x1e (0xADA8)            = HR 145 OUTPUT_PRIO_CFG (0 Bat/1 PV/2 AC-First; static-
  *                              confirmed — HR 145 stores only its default live, so this
  *                              byte is from the doc/static map, not a live diff)
@@ -71,9 +76,10 @@ static uint8_t dsp_bit_remap(uint16_t v, const uint8_t map[16])
 static const uint8_t DSP_FUNCEN_TO_0X2C[16] = {
     [1] = 0x10, [4] = 0x08, [6] = 0x04, [10] = 0x20, [11] = 0x40,
 };
-/* HR 110 FUNCTION_EN1 bit -> 0x1c bit (factory-decoded). */
+/* HR 110 FUNCTION_EN1 bit -> 0x1c bit (factory-decoded, 112 controlled). The
+ * 0x08 bit is contributed by HR 112 (SET_SYSTEM_TYPE) bit0, not FUNCTION_EN1. */
 static const uint8_t DSP_FUNCEN1_TO_0X1C[16] = {
-    [0] = 0x80, [3] = 0x08, [7] = 0x10, [10] = 0x20,
+    [0] = 0x80, [7] = 0x10, [10] = 0x20,
 };
 /* HR 90 EPS output voltage -> 2-bit select enum (factory-decoded). */
 static uint8_t dsp_eps_volt_sel(uint16_t v)

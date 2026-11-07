@@ -107,20 +107,30 @@ shows as the low byte of a BE16 word:
 |---|---|---|
 | `0x19` | `0xAD83` hi | **HR 120** `SYS_ENABLE` `& 0xFE` (bit0 cleared) |
 | `0x1a` | `0xAD83` lo | **HR 90** EPS-volt enum `{208→0, 277→1, 230→2, 240→3}` \| **HR 91** (`== 60 ? 0x08`) |
-| `0x1c` | `0xAD84` lo | `0x02` base \| **HR 110** `FUNCTION_EN1` remap `{b0→0x80, b3→0x08, b7→0x10, b10→0x20}` \| **HR 112** `SET_SYSTEM_TYPE` `b0→0x08` |
+| `0x1c` | `0xAD84` lo | `0x02` base\* \| **HR 110** `FUNCTION_EN1` remap `{b0→0x80, b7→0x10, b10→0x20}` \| **HR 112** `SET_SYSTEM_TYPE` `b0→0x08` (= AC-charge enable) |
 | `0x1e` | `0xADA8` | **HR 145** `OUTPUT_PRIO_CFG` (static; HR 145 stores only its default live) |
 | `0x28` | `0xAD8D` | **HR 20** `PV_INPUT_MODEL` (direct) |
 | `0x2c` | `0xAD85` lo | **HR 21** `FUNC_EN` remap `{b1→0x10, b4→0x08, b6→0x04, b10→0x20, b11→0x40}` |
 
 `0x08` in the `0x1c` byte is the DSP's **AC-charge-enable** gate bit (the one AC
-First is ANDed with, above) — reached from `FUNCTION_EN1` bit3 or `SET_SYSTEM_TYPE`
-bit0. The bit `0x08` on `0x19`'s word (`0xAD83`) is the EPS **60 Hz** flag.
+First is ANDed with, above) — reached from `SET_SYSTEM_TYPE` bit0. The bit `0x08` on
+`0x19`'s word (`0xAD83`) is the EPS **60 Hz** flag.
 
-**Our firmware** emits all six of these byte-for-byte: `src/dsp/dsp_config.c`
-`dsp_build_block0()`. Routing (which register moves which byte) is verified
-ours==factory by [`test_dsp_push.py`](../../../tests/test_dsp_push.py)
-`test_{factory,ours}_grid_push_matches_spec`; the exact transforms are locked by the
-host test [`test_dsp_config.c`](../../../tests/test_dsp_config.c). The surrounding
+\* **`0x1c` is best-effort, not byte-exact.** Its clean bits (`0x80`/`0x10`/`0x20`
+from `FUNCTION_EN1`, `0x08` from `SET_SYSTEM_TYPE`) are reproduced, but the `0x02`
+base bit has an **uncracked combinational dependency on HR 20/21**: with 110/112 set,
+writing PV-mode (HR 20) and FuncEn (HR 21) to configured values *clears* the `0x02`
+(e.g. `0x9a`→`0x98`). The single-write matrix can't see this (it moves one register);
+only the absolute cross-image check surfaced it. So `0x1c` is excluded from the
+byte-exact `ABS_OFFSETS` set and our firmware emits it best-effort.
+
+**Our firmware** emits these bytes in `src/dsp/dsp_config.c` `dsp_build_block0()`.
+Routing (which register moves which byte) is verified ours==factory by
+[`test_dsp_push.py`](../../../tests/test_dsp_push.py)
+`test_{factory,ours}_grid_push_matches_spec`; the HR-driven bytes **except `0x1c`**
+are additionally verified **byte-exact ours==factory** by the absolute cross-image
+check `test_ours_matches_factory_absolute`; the transforms are locked by the host
+test [`test_dsp_config.c`](../../../tests/test_dsp_config.c). The surrounding
 identity/version template (`0x15–0x18`, `0x1b`, `0x1d`, `0x1f–0x27`, `0x29–0x2e`) is
 **not** driven by any holding register. Decoded (T10): it is boot-**computed** into
 the settings working struct `0x2000c8xx` (zero pre-boot, written during boot — not a
