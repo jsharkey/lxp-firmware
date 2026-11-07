@@ -368,7 +368,8 @@ int main(void) {
         can_port_poll(on_can_frame);  /* drain battery BMS telemetry -> register image */
         if ((uint32_t)(g_ticks - last_bms) >= 1000) {   /* ~1 Hz keep-alive/request to the pack */
             last_bms = g_ticks;
-            static const uint8_t keepalive[8] = {0};    /* payload provisional (docs/20) */
+            static const uint8_t keepalive[8] = {0};    /* 0x305 DLC8 all-zero: matches
+                                                         * the factory TX, oracled (T11b) */
             can_port_send(BMS_CAN_ID_INV_ALIVE, keepalive, sizeof keepalive);
         }
 

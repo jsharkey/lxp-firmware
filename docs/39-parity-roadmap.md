@@ -500,13 +500,16 @@ frames off USART3.
   same settings + BMS state.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** split → **T11a `[x]`** (charge-V working limit), **T11b `[ ]`** (inverter→BMS TX), **T11c `[ ]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+**Status:** split → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[ ]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
 
 Split after the T11a oracle came back much smaller than the card assumed: the
 only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
 charge-voltage one, and it is a plain `min` with a setting, not a multi-field
 cell-count computation. The current/discharge fields and the inverter→BMS TX need
-the RTOS tasks (T02) to observe, so they are carried as T11b/T11c.
+the RTOS tasks (T02) to observe, so they were carried as T11b/T11c. **T11b is now
+done** (T02 landed): the inverter→BMS TX is a `0x305` DLC8 all-zero keep-alive that
+ours already matches. The IR 81/82/84 current/discharge fields turned out to be a
+genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
 
 #### T11a — BMS charge-voltage working limit (IR 83 = min(0x351, HR 99))
 **Status:** `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
@@ -525,15 +528,21 @@ the RTOS tasks (T02) to observe, so they are carried as T11b/T11c.
   [`IR081_106-BMS`](wiring/ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a),
   [`HR099_102`](wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md).
 
-#### T11b — inverter→BMS CAN TX (`0x305` keep-alive + `0x300/0x301/0x400`)
-**Status:** `[ ]` · **Layer:** sim (CAN TX capture) · **Depends:** T02 (TX task)
+#### T11b — inverter→BMS CAN TX (`0x305` keep-alive)
+**Status:** `[x] claude/019chjb 2026-11-07` ([`test_can_tx.py`](../tests/test_can_tx.py), [`can_tx_contract.py`](../tests/can_tx_contract.py), [`arm_sim_can.py`](../tests/arm_sim_can.py) `capture_tx`, [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b)) · **Layer:** sim (CAN TX capture) · **Was:** T02-blocked, now done
 
-- Our keep-alive `0x305`-class frame sends **zeros** ("payload provisional",
-  docs/20). Capture the factory's CAN TX (ids, period, payload under different
-  states) in the sim and match it. Some BMS presets need this to keep the pack's
-  contactor closed. **Likely T02-blocked:** the factory builds/sends these from a
-  scheduler task (`sub_0800574c`→`sub_080228c0`), which does not run without the
-  RTOS — confirm, then capture once T02 lands.
+- **Finding (oracle, unblocked by T02):** with the TX task running under the RTOS,
+  the factory transmits **`0x305`, DLC 8, payload all-zero**, once it has received
+  pack telemetry, periodically, and **state-independent** (nominal vs faulted/low
+  identical). No `0x300/0x301/0x400` in steady state. **Our firmware already sends
+  exactly that** (`main.c` ~1 Hz keep-alive, `can_port.c`) — the "payload
+  provisional" note was correct by luck and is now settled.
+- **Done:** added a reusable bxCAN **TX capture** to the CAN harness
+  (`arm_sim_can.py` `capture_tx` — presents TME, records each TXRQ; our firmware
+  even *drops* the keep-alive unless TME0 reads set, so the capture is what lets
+  ours transmit in the sim too); sim test `test_can_tx.py` asserts `0x305`/DLC8/zero
+  for **both** images and that they agree; docs in
+  [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
 
 #### T11c — BMS quirks Q1-Q4 as committed tests
 **Status:** `[ ]` · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**

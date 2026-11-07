@@ -69,11 +69,22 @@ separate hard clamp. Reimplemented as the pure function
 ([`include/inv/bms_limits.h`](../../include/inv/bms_limits.h)), wired in `on_can_frame`.
 
 The pack's other `0x351` fields (max charge/discharge current → IR 81/82,
-discharge-voltage limit → IR 84) are **not published** on this image in the harness
-(they stay `0` under the same sweep). Whether that is genuine or a scheduler-task
-publish that needs the full RTOS (**T02**) is unresolved — see
+discharge-voltage limit → IR 84) are **not published** on this image: they stay `0`
+under the same sweep even with the RTOS running (T02 done) and all `0x351` fields
+fed over 30M instructions, while the aggregate consumer clearly runs (IR 83 moves).
+So it is a genuine map gap on this image, not an RTOS-task-gating artifact — see
 [`IR081_106-BMS`](ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a).
-The inverter→BMS control-frame TX (`0x305` keep-alive etc.) is **T11b**.
+
+## Inverter → battery TX (T11b)
+
+The inverter transmits a **keep-alive on `0x305`, DLC 8, payload all-zero**, once it
+has received pack telemetry, periodically (~1 Hz class), and the payload does **not**
+vary with battery state (nominal vs faulted/low: identical). Captured black-box off
+the bxCAN TX mailbox on `ceaa-07xx` with the TX task running under the RTOS (T02;
+`tests/arm_sim_can.py` `capture_tx`). No `0x300`/`0x301`/`0x400` are emitted in steady
+state. **Our firmware already matches byte-for-byte** (`src/main.c` ~1 Hz, `can_port.c`),
+so the earlier "payload provisional" note is settled. Oracle test:
+[`test_can_tx.py`](../../tests/test_can_tx.py) / [`can_tx_contract.py`](../../tests/can_tx_contract.py).
 
 ## Key functions / files
 

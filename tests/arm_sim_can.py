@@ -47,6 +47,12 @@ CAN_RI0R  = CAN1 + 0x1B0       # identifier: STID[31:21], IDE bit2, RTR bit1
 CAN_RDT0R = CAN1 + 0x1B4       # DLC[3:0], FMI[15:8], TIME[31:16]
 CAN_RDL0R = CAN1 + 0x1B8       # data bytes 0..3 (little-endian)
 CAN_RDH0R = CAN1 + 0x1BC       # data bytes 4..7 (little-endian)
+# TX status + the three TX mailboxes (for inverter->battery capture):
+CAN_TSR  = CAN1 + 0x008        # transmit status: RQCPx/TXOKx low, TMEx (empty) bits 26-28
+CAN_TX_MB = (CAN1 + 0x180, CAN1 + 0x190, CAN1 + 0x1A0)   # TIxR, +4 TDTxR, +8 TDLxR, +0xc TDHxR
+TSR_TME_ALL  = 0x1C000000      # TME0|TME1|TME2 -> all three mailboxes free
+TSR_DONE = (0x3, 0x300, 0x30000)  # per-mailbox RQCPx|TXOKx (transmit complete, OK)
+TIR_TXRQ = 1 << 0              # TIxR transmit-mailbox request
 MCR_INRQ   = 1 << 0
 MCR_SLEEP  = 1 << 1
 MSR_INAK   = 1 << 0
@@ -68,10 +74,56 @@ class CanBattery:
     receive path -- polled (ours) or interrupt-driven (the factory) -- consumes
     them."""
 
-    def __init__(self, sim):
+    def __init__(self, sim, capture_tx=False):
         self.sim = sim
         self._rx = []              # queued frames to the ARM: (can_id, data bytes)
+        self.tx = []               # captured inverter->battery frames: (id, dlc, bytes)
         self._install_hooks()
+        if capture_tx:
+            self._install_tx_hooks()
+
+    # -- bxCAN TX capture (inverter->battery), opt-in --------------------------
+    def _install_tx_hooks(self):
+        """Capture frames the firmware transmits on CAN1. Models the TX side the
+        way _install_hooks models RX: present all three TX mailboxes as free (TSR
+        TMEx) so a non-blocking sender proceeds, and on each TXRQ record the frame
+        and report it sent (RQCPx/TXOKx). Needed for both images -- our firmware
+        even drops the keep-alive unless TME0 reads set (can_port_send)."""
+        uc = self.sim.uc
+
+        def on_tsr_read(uc, access, addr, size, value, ud):
+            cur = struct.unpack("<I", uc.mem_read(CAN_TSR, 4))[0]
+            uc.mem_write(CAN_TSR, struct.pack("<I", cur | TSR_TME_ALL))
+            return True
+
+        def make_ti_write(i, base):
+            def on_ti_write(uc, access, addr, size, value, ud):
+                # Merge this write into the current TIxR so a 16-bit TXRQ write
+                # (STID written separately, earlier) still yields the full id.
+                old = struct.unpack("<I", uc.mem_read(base, 4))[0]
+                shift = (addr - base) * 8
+                mask = (((1 << (size * 8)) - 1) << shift) & 0xFFFFFFFF
+                eff = (old & ~mask) | ((value << shift) & mask)
+                if eff & TIR_TXRQ:
+                    tdt = struct.unpack("<I", uc.mem_read(base + 4, 4))[0]
+                    dl  = uc.mem_read(base + 8, 4)
+                    dh  = uc.mem_read(base + 12, 4)
+                    cid = (eff >> 3) if (eff & 0x4) else (eff >> 21) & 0x7FF  # ext : std
+                    dlc = tdt & 0xF
+                    self.tx.append((cid, dlc, bytes((bytes(dl) + bytes(dh))[:dlc])))
+                    uc.mem_write(base, struct.pack("<I", eff & ~TIR_TXRQ))  # consume request
+                    cur = struct.unpack("<I", uc.mem_read(CAN_TSR, 4))[0]
+                    uc.mem_write(CAN_TSR, struct.pack("<I", cur | TSR_TME_ALL | TSR_DONE[i]))
+                return True
+            return on_ti_write
+
+        uc.hook_add(UC_HOOK_MEM_READ, on_tsr_read, begin=CAN_TSR, end=CAN_TSR + 4)
+        for i, base in enumerate(CAN_TX_MB):
+            uc.hook_add(UC_HOOK_MEM_WRITE, make_ti_write(i, base), begin=base, end=base + 4)
+
+    def tx_frames(self, can_id=None):
+        """Captured TX frames (id, dlc, bytes), optionally filtered to one id."""
+        return [f for f in self.tx if can_id is None or f[0] == can_id]
 
     # -- bxCAN RX FIFO0 glue (on top of arm_sim's peripheral hooks) ----------
     def _present_head(self, uc):
