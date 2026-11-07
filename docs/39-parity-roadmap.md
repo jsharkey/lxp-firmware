@@ -101,17 +101,18 @@ call/wiring line or two to `main.c`. Rebase often.
 | DSP link RX (USART3) | **Modbus-slave + bootloader demux** (`sub_0801c3e6`); NOT a `0x49` parser — that's USART2 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **demux + Modbus-serve done** (`src/dsp/dsp_rx.c` + `dsp_rx_port.c`, T09) | **closed (T09)**; link-loss supervision is T08 |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
-| Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | HR 15 seeded once; `check_sn=false`; HR 11 inert | command semantics |
+| Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | **HR 11 one-shot dispatch** (`src/state/command.c`: energy-clear, BMS switch, real reboot; defaults/adj/fault/monitor accepted-ignored), **HR 15 live address change** (after reply, loaded on boot), HR 9/10 own-version read-back; `check_sn=false` (T12) | defaults/adj/fault/monitor record ops; wrong-SN factory behaviour (T02) |
 | Schedules | AC-First + AC-charge windows evaluated ARM-side | AC-First window verdict only (`src/sched/acfirst.c`); optchg is dormant in the factory too (Q5) | charge/discharge/gen schedules + SOC/V gates |
 | Relays | driven by the mode task `sub_0801b3dc` ([`docs/18`](18-power-path-relays.md)) | `src/relay.c` mirrors 2 contracts | sequencing under the live mode |
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
 | Harness depth | — | factory RTOS tasks **don't run** in the sim, so peer data is injected at the bank, not on the wire ([`docs/19`](19-gpio-test-harness.md), `tests/arm_sim_safety.py`) | wire-level e2e for USART2/USART3/relay task |
 
-Register-level coverage: **23 of 56** `docs/wiring/ARM-UART5-dongle/` register files list **no
-test** at all (recount as of T07). These include IR 6, 19, 60-63, 77, 107 and
-HR 11, 16, 23-62, 103, 110, 112-113, 146-148, 194-198. (T04 added write-validation
+Register-level coverage: **22 of 56** `docs/wiring/ARM-UART5-dongle/` register files list **no
+test** at all (recount as of T12). These include IR 6, 19, 60-63, 77, 107 and
+HR 16, 23-62, 103, 110, 112-113, 146-148, 194-198. (T04 added write-validation
 coverage for HR 9-10, 15, 20, 22, 66, 101, 105; T07 added serve coverage for
-IR 7-11, 16-17, 24-27, 69-70.) The tasks below are what close them.
+IR 7-11, 16-17, 24-27, 69-70; T12 added command-dispatch + one-shot coverage for
+HR 11.) The tasks below are what close them.
 
 ---
 
@@ -551,20 +552,38 @@ the RTOS tasks (T02) to observe, so they are carried as T11b/T11c.
 ## P2 — features and commands
 
 ### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
-**Status:** `[~] claude 2026-11-07` · **Layer:** sim · **Depends:** T03 (persistence of addr / SN)
+**Status:** `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
+
+Done — HR 11 command dispatch, HR 15 live address change, HR 9/10 own-version
+read-back, and the SN/W008 behaviour decisions are implemented and tested. The
+items below record what is proven vs. what is pinned by decision because the
+factory behaviour is not observable in this harness (its UART5 path is a
+non-NVIC task, T02).
 
 - **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
-  [`docs/23`](23-arm-config-writer.md) §Reset-to-default): find out what each
-  bit does in the factory sim (clear energy records? defaults → which slots get
-  rewritten, to what? reboot → when? BMS switch?). Assert the post-state.
-- **HR 15 ComAddr:** after a write, does the slave answer on the new address
-  **immediately** or after reboot? Is address 0 broadcast?
-- **SN (HR 2-6):** how is it set (`0x10` only?), how is it persisted, and is
-  the request SN **checked** (our `check_sn=false`)? What does the factory reply
-  to a wrong SN: silence or an exception?
-- **HR 9-10 versions + W008:** we report our own version, and W008 comes from
-  the version compare ([`HR009_010`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md)).
-  Decide in docs/31 what ours does on a version mismatch.
+  [`docs/23`](23-arm-config-writer.md) §Reset-to-default): **done.**
+  `src/state/command.c` (`inv_command_apply`) dispatches one op per set bit,
+  reboot last; it is a one-shot (register reads back 0). Wired: bit 0 clears
+  energy/runtime counters, bit 5/6 drive the BMS charge/discharge switches, bit 7
+  is a real `SCB->AIRCR` SYSRESETREQ (constants confirmed in the 07 image). Bits
+  1/2/3/4 (defaults / adj-ratio / fault & monitor records) are accepted-and-ignored
+  for now rather than faked (docs/23 open). Tests: [`test_command.c`](../tests/test_command.c)
+  (24 checks), + one-shot over the wire in [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py).
+- **HR 15 ComAddr:** **done.** Ours adopts the new address after the write's own
+  reply (deferred one transaction so the ACK lands on the old address), and loads
+  the stored value on boot — no reboot. Address-0 broadcast and the factory's exact
+  apply-moment are **not observable** here (T02); our contract is "immediate, after
+  the reply". Test: `test_comaddr_changes_slave_address_live`.
+- **SN (HR 2-6):** persisted via T03 (`0x10` write-multiple); ours runs
+  `check_sn=false` (SN echoed, not required to match). Whether the factory drops or
+  excepts a wrong-SN frame is **not observable** (sim-blocked, T02); decision in
+  docs/31 is to serve any correctly addressed frame rather than risk stranding a
+  dongle.
+- **HR 9-10 versions + W008:** **done.** Ours seeds HR 9 high / HR 10 high from its
+  own build constants (`OSS_ARM_COMMS_VER`, `OSS_FW_VERSION_CODE`), keeps HR 10 low
+  as the live relayed DSP byte, and holds **W008 clear** until a real relayed version
+  arrives (the version-compare feed is T02-blocked) rather than firing on placeholder
+  constants. Decisions recorded in [`docs/31`](31-factory-quirks.md).
 
 ### T13 — HMI status dashboard (overview screen; no editors)
 **Status:** `[ ]` · **Layer:** sim (panel framebuffer) + host (layout) · **Soft-depends:** T06/T07 for real values (works with injected values earlier)

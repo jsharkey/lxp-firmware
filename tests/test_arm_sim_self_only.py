@@ -187,6 +187,34 @@ def test_modbus_de_toggles_around_tx():
         "DE did not go HIGH-before-LOW around a transmit: %r" % de
 
 
+def test_comaddr_changes_slave_address_live():
+    """Writing HR 15 (ComAddr) changes our Modbus slave address **immediately**:
+    after a write of 7 (sent to the default address 1) the slave answers on
+    address 7 and no longer on 1 -- no reboot required (src/main.c, T12).
+    docs/wiring/ARM-UART5-dongle/HR015-ComAddr.md."""
+    from arm_sim_modbus import ModbusDongle
+    HR_COM_ADDR = 15
+    sim = _ours()
+    mb = ModbusDongle(sim)                         # boots; default request address 1
+    assert mb.write_single(HR_COM_ADDR, 7) == 7, "HR 15 write not acknowledged on addr 1"
+    mb.addr = 7                                     # now address the slave as 7
+    assert mb.read_holding(HR_COM_ADDR) == [7], "slave did not answer on the NEW address 7"
+    mb.addr = 1                                     # the old address must go silent
+    assert mb.read_holding(HR_COM_ADDR) is None, "slave still answers on the OLD address 1"
+
+
+def test_hr11_resetsetting_is_one_shot_command():
+    """HR 11 (ResetSetting) is a command, not a stored value: a write triggers the
+    action and the register reads back 0 (src/main.c + src/state/command.c, T12).
+    We use bit 0 (EnergyRecordClr) -- harmless -- and never bit 7 (reboot)."""
+    from arm_sim_modbus import ModbusDongle
+    HR_RESET_SETTING = 11
+    sim = _ours()
+    mb = ModbusDongle(sim)
+    assert mb.write_single(HR_RESET_SETTING, 0x01) == 0x01, "HR 11 write not acknowledged"
+    assert mb.read_holding(HR_RESET_SETTING) == [0], "HR 11 did not read back 0 (should be one-shot)"
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]

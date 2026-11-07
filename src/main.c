@@ -24,6 +24,7 @@
 #include "inv/config_flash.h"
 #include "inv/settings_map.h"
 #include "inv/classify.h"
+#include "inv/command.h"
 #include "inv/acfirst.h"
 #include "inv/rtc.h"
 #include "inv/energy.h"
@@ -167,20 +168,55 @@ static void apply_if_time_reg(uint16_t reg) {
                             g_rt.holding_reg[HR_TIME_MIN_SEC]);
 }
 
+/* Our reported firmware versions (HR 9/10, read-only). Bump on a release. */
+#define OSS_ARM_COMMS_VER   0x01   /* this STM32 "comms" CPU build (HR 9 high) */
+#define OSS_FW_VERSION_CODE 0x01   /* OSS FW version code (HR 10 high)         */
+
+static mb_config_t g_mb;   /* defined below; forward tentative decl for mb_wr_hold */
+static volatile uint16_t g_pending_com_addr;  /* HR 15: new slave addr to adopt after the reply (0 = none) */
+
+/* ---- HR 11 ResetSetting command actions (docs/39 T12) ---- */
+static volatile uint8_t g_bms_chg_sw = 1;      /* BMS charge switch request  (HR 11 bit 5) */
+static volatile uint8_t g_bms_dischg_sw = 1;   /* BMS discharge switch request (bit 6)     */
+static void cmd_energy_clear(void)    { energy_reset_all(); }        /* bit 0 EnergyRecordClr */
+static void cmd_bms_charge_on(void)   { g_bms_chg_sw = 1; }          /* bit 5 — propagated on CAN once the 0x35C TX payload is pinned (docs/20) */
+static void cmd_bms_discharge_on(void){ g_bms_dischg_sw = 1; }       /* bit 6 */
+static void cmd_reboot(void) {                                       /* bit 7 InvReboot */
+    *(volatile uint32_t *)0xE000ED0CU = 0x05FA0004U;  /* SCB->AIRCR: SYSRESETREQ (as the factory, docs/23) */
+    __asm volatile ("dsb");
+    for (;;) { }
+}
+/* AlltoDefault / AdjRatioClr / FaultRecordClr / MonitorData are not modelled yet
+ * (the defaults field-table + record stores are docs/23 open items) -> NULL, so a
+ * write of those bits is accepted and ignored rather than faked. */
+static const inv_cmd_ops_t g_cmd_ops = {
+    .energy_clear     = cmd_energy_clear,
+    .bms_charge_on    = cmd_bms_charge_on,
+    .bms_discharge_on = cmd_bms_discharge_on,
+    .reboot           = cmd_reboot,
+};
+
 static mb_exception_t mb_wr_hold(void *c, uint16_t a, uint16_t v) {
     (void)c;
     if (a >= 256) return MB_EXC_ILLEGAL_ADDRESS;
+    if (a == HR_RESET_SETTING) {                 /* HR 11: one-shot command, not stored */
+        inv_command_apply(v, &g_cmd_ops);
+        g_rt.holding_reg[HR_RESET_SETTING] = 0;  /* reads back 0 after the action */
+        return MB_OK;
+    }
     sv_result_t sv = settings_validate(a, v);   /* range / read-only check (T04) */
     if (sv.exc != MB_OK) return sv.exc;          /* reject out-of-range / read-only */
     g_rt.holding_reg[a] = sv.value;
     settings_persist_hr(a, sv.value);  /* journal persisted settings to the config flash */
     apply_if_time_reg(a);              /* HR 12-14 -> set the wall clock */
+    if (a == HR_COM_ADDR)              /* HR 15: adopt the new address AFTER this reply */
+        g_pending_com_addr = sv.value; /* (so the write is ACKed on the old address) */
     return MB_OK;
 }
 
 static mb_config_t g_mb = {
-    .address  = 1,              /* TODO: load from HR_COM_ADDR / settings */
-    .check_sn = false,
+    .address  = 1,              /* seeded from persisted HR_COM_ADDR at boot */
+    .check_sn = false,         /* ours does not reject on request-SN mismatch (docs/31) */
     .sn       = { '0','0','0','0','0','0','0','0','0','0' },
     .regs     = { mb_rd_input, mb_rd_hold, mb_wr_hold, 0 }
 };
@@ -193,11 +229,17 @@ static bool hmi_read(hmi_regspace_t sp, uint16_t r, uint16_t *o) {
 }
 static bool hmi_write(uint16_t r, uint16_t v) {
     if (r < 256) {
+        if (r == HR_RESET_SETTING) {             /* HR 11: one-shot command, not stored */
+            inv_command_apply(v, &g_cmd_ops);
+            g_rt.holding_reg[HR_RESET_SETTING] = 0;
+            return true;
+        }
         sv_result_t sv = settings_validate(r, v);   /* same validation as the dongle (T04) */
         if (sv.exc != MB_OK) return false;           /* reject out-of-range / read-only */
         g_rt.holding_reg[r] = sv.value;
         settings_persist_hr(r, sv.value);  /* journal persisted settings to the config flash */
         apply_if_time_reg(r);              /* HR 12-14 -> set the wall clock */
+        if (r == HR_COM_ADDR) g_pending_com_addr = sv.value;
         return true;
     }
     return false;
@@ -246,6 +288,17 @@ int main(void) {
 
     config_flash_init();                     /* SPI NOR up; load persisted settings */
     settings_seed_hr(g_rt.holding_reg);      /* persisted values override the defaults */
+    {   /* HR 15 ComAddr: adopt the persisted Modbus slave address (T12) */
+        uint16_t a = g_rt.holding_reg[HR_COM_ADDR];
+        if (a >= 1 && a <= 150) g_mb.address = (uint8_t)a;
+    }
+    /* FW-version read-back (HR 9/10, docs/32 / T12): report ours. HR9 low =
+     * redundant CPU (0 on the 12000XP), HR9 high = this ARM comms-CPU version;
+     * HR10 low = DSP version (relayed over USART2 when that RX lands, 0 until
+     * then), HR10 high = FW-version code. W008 (version mismatch) stays clear
+     * until a remote version is actually received (docs/31). */
+    g_rt.holding_reg[HR_SLAVE_COM_VER] = (uint16_t)(OSS_ARM_COMMS_VER << 8);
+    g_rt.holding_reg[HR_CNTL_FW_VER]   = (uint16_t)(OSS_FW_VERSION_CODE << 8);
 
     systick_init_1ms();
     mb_port_init(&g_mb);                 /* dongle Modbus slave on UART5 (docs/26) */
@@ -301,6 +354,10 @@ int main(void) {
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
         mb_port_poll(g_ticks);
+        if (g_pending_com_addr) {        /* HR 15 adopted after the reply left (T12) */
+            g_mb.address = (uint8_t)g_pending_com_addr;
+            g_pending_com_addr = 0;
+        }
 
         /* Service the ARM<->DSP link's receive side on USART3: the DSP polls the
          * ARM as a Modbus slave here (func 03/04/06/10) and sends firmware-update

@@ -267,3 +267,42 @@ matches them deliberately:
 - **`0x351` charge-voltage limit → IR 83 is clamped** to a cell-count-derived
   maximum (~57.4 V on this pack) before publishing. Reasonable safety behaviour;
   we currently publish the pack's value as-is and test below the clamp.
+
+---
+
+## OSS behaviour decisions — identity & command registers (T12)
+
+Not factory quirks; these are **our** firmware's chosen behaviour for the
+identity/command registers (docs/39 T12), recorded so they are deliberate:
+
+- **W008 (FW-version mismatch).** W008 is ARM-computed from a version compare
+  ([`HR009_010`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md)). **Ours leaves
+  W008 clear until it has actually received a remote (DSP) version to compare** —
+  i.e. once the USART2 ingest lands (T05) and HR 10 low is populated. Rationale: a
+  version source of 0 at boot must not raise a spurious mismatch warning. The
+  classifier already accepts the bit (`INV_LOCAL_WARN_W008`, `inv_classify`), so
+  only the compare needs wiring when the version source exists.
+- **HR 9/10 versions.** Ours reports its own build versions as read-back
+  (`OSS_ARM_COMMS_VER` → HR 9 high, `OSS_FW_VERSION_CODE` → HR 10 high; HR 9 low =
+  0 redundant CPU, HR 10 low = DSP version when relayed). Read-only — a write
+  draws exception (T04).
+- **Request-SN checking (HR 2-6).** Ours runs with **`check_sn = false`**: it does
+  **not** reject a dongle frame whose 10-byte SN differs from ours; the SN is
+  echoed, not matched. Rationale: maximise interop with monitoring tools that do
+  not know the unit's SN. (What the *factory* replies to a wrong SN — silence vs
+  an exception — is **not observable in this harness**: the dongle/UART5 path is a
+  non-NVIC task that needs T02, and the factory's provisioned SN in the sim is not
+  its real one. Open; see HR002_006-SN.)
+- **HR 11 ResetSetting is one-shot.** Ours applies each set bit as an action and
+  reads the register back as 0 (never stored) — `src/state/command.c`,
+  dispatching: bit 0 → clear energy/runtime counters, bit 7 → `SCB->AIRCR`
+  SYSRESETREQ reboot (the factory's mechanism, confirmed in the 07 image:
+  `0xE000ED0C`/`0x05FA0004` present; docs/23), bits 5/6 → BMS charge/discharge
+  switch requests. Bits 1/2/3/4 (defaults / adj-ratio / fault & monitor records)
+  are **accepted and ignored for now** — the defaults field-table and record
+  stores are docs/23 open items — rather than faked.
+- **HR 15 ComAddr timing.** Ours adopts the new slave address **after** the write's
+  own reply has been sent (the write is ACKed on the old address, the next request
+  uses the new one) and persists it (T03), re-adopting it at boot. No reboot
+  needed. (Whether the *factory* switches on the same reply or after a reboot is
+  the UART5-path question above — not observable here.)
