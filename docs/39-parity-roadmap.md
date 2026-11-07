@@ -215,13 +215,14 @@ whole-inverter warnings the USART2 peer can't clear (detail below).** What's ver
   warn-blink can't be cleared by feeding USART2 — **PC6 is a whole-inverter
   run-enable relay, not a clean function of the USART2 mode byte.** This settles
   docs/18's "multi-input, time-varying" note at the register level.
-- **So the achievable black-box result is `state → IR_STATE` (done above);** a
-  deterministic `state → PC6` demo would require driving `0x2000d890` to a healthy
-  state too (a fuller inverter model: valid DSP/grid health), which is beyond a lone
-  USART2 feed. Revised **done-when:** either (a) assert IR_STATE tracks the fed mode
-  (achievable now, needs the ~85-frame settle + a boot-snapshot cache, docs/28), or
-  (b) model the `0x2000d890` health inputs so the warns clear and PC6 follows — a
-  larger task than this card.
+- **The achievable black-box result — `state → IR_STATE` — is now LANDED as a
+  test:** `test_usart2_mode_reaches_ir_state` feeds the mode byte on the wire and
+  asserts IR_STATE (`0x2000d0e4+0xa0`) tracks it across run/non-run modes, through
+  the real RX-ISR ingest (the trust counter is seeded warm, as the serve test seeds
+  the bank, so it is fast; the ~85-frame warm-up is separately verified). A
+  deterministic `state → PC6` demo would additionally require driving `0x2000d890`
+  to a healthy state (a fuller inverter model: valid DSP/grid health), which is
+  beyond a lone USART2 feed — option (b), a larger task than this card.
 - **Harness gotcha found:** between fed frames the assembler's ready flag
   (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
   settle) — too short a gap silently drops the next frame.

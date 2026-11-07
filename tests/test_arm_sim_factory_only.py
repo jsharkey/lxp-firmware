@@ -49,30 +49,30 @@ def _factory():
 
 
 # --- factory relay drive: re-pin needed before these can run (docs/18) ------
-# These two tests were written against docs/18's first relay analysis, which has
-# since been retracted: the addresses they used -- the manual-mode flag
-# `0x2000d0e4+0xa9`, the override command word `0x2000da6c`, and IR_STATE at
-# `0x2000d0e4+0xa0` -- are the phantom addresses docs/18 now flags as *not
-# materialized anywhere in the image* (the real IR_STATE byte is `0x2000a0d8+0x90`,
-# docs/22/30). The "updaters" they called (`sub_08018a7c`, `sub_08016ec6`) are
-# also not callable entry points: `sub_08016ec6` is a tail inside the 20-byte bit
-# helper `sub_08016ebc`, and `sub_08018a7c` is a mid-function branch of the large
-# decider `sub_08018518` (it reads `r10`/`sl` and faults when entered cold). The
-# real relay deciders are big multi-input control functions (they read IR_STATE
-# *and* the DSP grid/fault status, debounce counters and config enables), so they
-# can't be exercised as the isolated updaters assumed here without seeding that
-# whole context -- the "re-pin the relay state source" item docs/18 leaves open.
+# These two tests drive the factory relay deciders directly. The addresses are now
+# re-pinned (T02b): IR_STATE is `0x2000d0e4+0xa0` (verified -- the PC6/PB2 decider
+# `sub_08016ec6`, a real function entry, reads exactly that byte to gate PC6), and
+# `0x2000da6c` bit 4 is the manual relay override (docs/18). (The earlier note that
+# these were "phantoms" and that IR_STATE lived at `0x2000a0d8+0x90` was a
+# disassembler-base artifact, now corrected -- docs/18/19/22.) But the deciders
+# still can't be exercised as the isolated updaters these tests assume: they are
+# big multi-input RTOS-task control functions that read IR_STATE *and* the
+# whole-inverter warning/fault status (the ARM-local struct `0x2000d890`), debounce
+# counters and config enables. PC6 in particular blinks (state-independently)
+# whenever a warning is present, and those warnings gate on `0x2000d890` -- which no
+# single injected input or lone USART2 feed clears (T02b, docs/39). So a clean
+# black-box factory drive isn't available without modelling that whole context.
 #
-# Until that re-pin lands, these SKIP rather than assert against stale addresses
-# (where they previously crashed / failed). The same override + working-mode
-# contracts (RELAY_OVERRIDE_TRUTH / RUN_STATES / NONRUN_STATES) are still enforced
-# on our implementation by tests/test_arm_sim_self_only.py, so the behaviour is
-# covered; only the factory-oracle cross-check is paused.
-_RELAY_REPIN = ("factory relay deciders need re-pinning (docs/18): the addresses "
-                "these drove (0x2000d0e4+0xa0/0xa9, 0x2000da6c) are retracted "
-                "phantoms and sub_08018a7c/sub_08016ec6 are not callable entry "
-                "points -- see the comment above. Contract still enforced in "
-                "test_arm_sim_self_only.py.")
+# So these SKIP: the same override + working-mode contracts (RELAY_OVERRIDE_TRUTH /
+# RUN_STATES / NONRUN_STATES) are enforced on our implementation by
+# tests/test_arm_sim_self_only.py, so the behaviour is covered; only the
+# factory-oracle cross-check is paused. (The wire->IR_STATE half of the factory
+# path IS covered black-box by test_usart2_mode_reaches_ir_state above.)
+_RELAY_REPIN = ("factory relay deciders are multi-input RTOS control functions "
+                "(PC6 = sub_08016ec6 reads IR_STATE 0x2000d0e4+0xa0 but blinks on "
+                "whole-inverter warnings in 0x2000d890 that a lone input can't "
+                "clear -- T02b, docs/39); can't be driven as isolated updaters. "
+                "Contract still enforced in test_arm_sim_self_only.py.")
 
 
 def test_relay_override_drives_transfer_pins():
@@ -184,6 +184,34 @@ def test_usart2_frame_reaches_modbus():
             rd = mb.read_input(ir)
             assert rd == [exp], ("frame %s: fed wire frame -> IR %d = %r, expected [%d]"
                                  % (label, ir, rd, exp))
+
+
+# --- USART2 operating-mode -> IR_STATE (T02b, docs/18, docs/22, docs/39) --------
+# The safety frame's operating-mode byte (frame[+4]) flows wire -> bank+0 ->
+# classifier sub_0801a678 -> IR_STATE (0x2000d0e4+0xa0, which the PC6 run-enable
+# relay decider reads). The distributor only publishes the mode once the safety
+# link's frame-trust counter (0x2000da3e) is warm (>= 0x54, which ~85 valid frames
+# reach naturally -- docs/39 T02b); we seed that counter to the warm state (as
+# test_safety_cpu_telemetry_reaches_modbus seeds the bank) so the test is fast,
+# while the mode byte still travels the full real path (RX ISR -> assembler -> CRC
+# -> distributor -> classifier). (A clean mode->PC6 is NOT reachable from USART2
+# alone: PC6 blinks whenever ARM-local warnings are present, and those gate on the
+# whole-inverter status struct 0x2000d890 the USART2 peer can't clear -- docs/39.)
+def test_usart2_mode_reaches_ir_state():
+    """A USART2 operating-mode byte fed on the wire reaches the factory's state
+    classifier: IR_STATE (0x2000d0e4+0xa0) tracks the fed mode across run and
+    non-run values, through the real RX-ISR ingest. Factory-only (docs/39 T02b)."""
+    from arm_sim_usart2 import Usart2SafetyWire
+    TRUST_CTR = 0x2000da3e
+    IR_STATE  = 0x2000d0e4 + 0xa0
+    wire = Usart2SafetyWire(_factory())
+    wire.sim.w32(TRUST_CTR, (wire.sim.r32(TRUST_CTR) & ~0xFFFF) | 0x54)   # warm link
+    for mode in (0x04, 0x00, 0x10, 0x40, 0x02, 0x01):
+        wire.feed_frame({0x04: (mode, 1), 0x0d: (mode, 1)})
+        wire.sim.run(4_000_000)                       # distributor + classifier run
+        got = wire.sim.r32(IR_STATE) & 0xFF
+        assert got == mode, ("fed USART2 mode 0x%02x on the wire -> IR_STATE 0x%02x "
+                             "(expected 0x%02x)" % (mode, got, mode))
 
 
 # --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------
