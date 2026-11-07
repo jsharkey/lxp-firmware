@@ -124,7 +124,36 @@ HR 11.) The tasks below are what close them.
 
 ## P0 — unblockers and the biggest gaps
 
-_All P0 tasks are done; see [Completed tasks](#completed-tasks)._
+_T01-T04 are done; see [Completed tasks](#completed-tasks). T22 was added on
+2026-11-07 from a coverage audit of the dongle register docs._
+
+### T22 — Register-coverage bookkeeping: catch up, then automate it
+**Status:** `[ ]` · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
+
+An audit on 2026-11-07 found that the per-register `## Test coverage` sections
+in [`ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) **lag the tests
+that already exist**. As a result, the gap list overstates what is untested and
+hides what really is.
+- **Catch-up (mechanical).** `tests/settings_persist_contract.py`
+  `SETTINGS_MAP` round-trips 62 HRs cross-image (T03:
+  `test_ours_writes_the_factory_byte_layout_full`,
+  `test_factory_persists_ours_reads_by_class`). **None** of the following files
+  record it: `HR015`, `HR020`, `HR023_024` (HR 23), `HR025_062` (29 of the
+  grid-protection regs), `HR064_089` (64-66, 68-73, 75), `HR103`, `HR105`,
+  `HR110`, `HR112`, `HR120`, `HR147_148` (HR 147). In addition, `IR028_059`
+  says "all other counters: no test", yet `test_energy.py` / `test_energy.c`
+  cover Epv1 day/all, the midnight reset and the daily-reset location.
+  Re-audit every file against the current `tests/`.
+- **Automate.** Add a read-only `tools/reg_coverage.py`. It extracts the
+  registers each test touches (`IR_*`/`HR_*` symbols via `modbus_map.h`, plus
+  the contract tables `SETTINGS_MAP`, `WRITE_VECTORS`, `SAFETY_TELEMETRY`, the
+  telemetry/energy contracts, …). It then prints a register × test matrix and
+  lists (a) registers whose doc does not mention a test that touches them, and
+  (b) spec registers with no test at all.
+- Wire it up as `make coverage-report`. Once the catch-up is done, consider a
+  `--check` mode that `make test` runs, so a new test that isn't recorded fails
+  fast. Then replace the hand-counted "26 of 54" figure in the gap snapshot
+  with the tool's output.
 
 ---
 
@@ -202,6 +231,61 @@ come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was
   [`frame-header`](wiring/ARM-USART3-DSP/frame-header.md) follow-up.
 - **Done when:** every block's payload is byte-identical to the factory's for the
   same settings + BMS state.
+
+### T23 — Whole-surface read sweep: every register, both images, one diff
+**Status:** `[ ]` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
+
+Most registers are tested one at a time, on the path some feature happened to
+need. Nothing yet checks the **whole map**. Add one common sim test (warm once,
+clone per case) that boots both images into the **same seeded state**:
+settings written via T03's table, bank and CAN snapshots from the existing
+contracts, and a fixed RTC. It then reads **every IR 0-159, IR 5000-5126 and
+HR 0-255** in spec-legal chunks (≤40 registers, no 40-group crossing) and
+diffs value **or exception code** per register.
+- It also asserts the framing rules on both images: a read crossing a 40-group
+  boundary, a read longer than 40, a zero-length read, and an out-of-map
+  address (which exception, or silence?).
+- **Output:** a committed expected-diff table. Every register is one of
+  `match`, `known-diff → docs/31 Qn` or `ours-red (task Txx)`. That table *is*
+  the parity scoreboard: new work turns `ours-red` into `match`. Reserved
+  registers and spec-only (`idx`) registers get covered for free: they read
+  back *something*, and now we pin what.
+- Run a second pass with a different seeded snapshot. A register that doesn't
+  change between passes is either constant or not wired, and the doc should
+  say which.
+
+### T24 — Write-semantics sweep across the whole HR surface (extends T04)
+**Status:** `[ ]` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
+
+T04 built the mechanism but its `WRITE_VECTORS` cover only **six** registers
+(HR 9, 15, 20, 66, 101, 105). Generate vectors for **every** writable HR in the
+spec: `min-1 / min / max / max+1` from the ranges in `modbus_map.h` and the
+per-register docs, plus reserved addresses and `0x10` on non-SN/time
+registers. Record the factory verdict per register (accept / clamp / exception
+code / store-but-ignore). Q6 (one-sided range checks), Q7 (HR 22 not writable)
+and Q9 (HR 112 rejects 2) were each found by hand, so this sweep will surface
+the rest. Every deviation from the spec goes into docs/31, and every register
+file gets a coverage line.
+- Include the one identity gap left after T12: a dedicated **SN (HR 2-6)
+  `0x10` write → read-back → cold boot** test, which
+  [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) still lists as
+  uncovered.
+
+### T25 — HR write → DSP push matrix (the side-effect half of every setting)
+**Status:** `[ ]` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
+
+For most settings HRs, only *storage* is tested (T03). Whether a dongle write
+actually **reaches the DSP** is not. For example, HR 90/91 EPS V/f note "the
+dongle-side write/push is not yet covered", and HR 16, 22-62, 103, 110,
+146-148 have no push test at all. For each writable HR, write a distinct value
+on the factory image, capture the next full block rotation off USART3, and
+record which block/offset changed (or "none: ARM-local only"). Then run the
+same sweep on ours.
+- This turns [`hr-controlled-fields`](wiring/ARM-USART3-DSP/hr-controlled-fields.md)
+  from a per-field confidence table into a tested matrix. It also hands T10 an
+  exact field list per block.
+- Registers whose effect is evaluated ARM-side (windows, gates) are expected to
+  show "none" here. Their behaviour test lives in T15/T16.
 
 ---
 
@@ -346,6 +430,42 @@ which is a natural micro-test), #9 battery warning buzzer (find the GPIO via
 [`docs/16`](16-arm-io-map.md)), #11 Smart Load power display (Psmart / Peps_port /
 Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
+
+### T26 — Document + test the spec-only (`idx`) registers
+**Status:** `[ ]` · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
+
+These spec registers have **no file** in `ARM-UART5-dongle/` and no test:
+**HR** 63, 92-97, 104, 106-109, 114-119, 121-125, 132-144, 149-151, 158-193;
+**IR** 108-112. Some of them are **already persisted** by T03 (HR 107,
+109, 119, 151) without a doc. For each group:
+1. find the factory getter/setter case;
+2. classify it as live / persisted / pushed to DSP / dormant (T23 and T25
+   give most of this);
+3. write the register file in the house format (meaning, provenance,
+   side-effects, `## Test coverage`);
+4. add it to the T24 vectors.
+
+HR 158-169 overlaps T15 and HR 170-193 overlaps T19. Coordinate through those
+cards rather than duplicating. AFCI IR 140-152 stays with T19.
+
+### T27 — Input registers that still have no test
+**Status:** `[ ]` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
+
+As of the audit, these input registers have no test at all:
+- **IR 6 InternalFault**: T06 publishes it (classifier output), but no
+  register-level serve test exists. Add it to the classifier e2e test.
+- **IR 77 ACInputType** (grid vs generator): find the source (a bank field? a
+  HR 146 LineMode derivation?), then factory-oracle it.
+- **IR 127-138 EPS split-phase** (L1N/L2N V, P, S, E): [`docs/33`](33-usart2-telemetry-bank.md)
+  says IR 127/128 come from the bank, so extend `SAFETY_TELEMETRY`. The P/S/E
+  entries are probably ARM-computed, so extend the T07 telemetry contract. The
+  E (energy) entries belong with the energy channels below.
+- **Energy counters beyond Epv1**: `test_energy.py` covers only the PV1
+  channel. Cover all ten channels (IR 28-37 day, 40-59 all), the 32-bit
+  low/high carry at `0xFFFF → 0x10000`, and gating per state. The
+  boundary-heavy parts (carry, rollover) suit a micro-test.
+- **IR 108 T1** (12K BT temperature): live or dormant on `ceaa-07xx`?
+- IR 71-75 (AutoTest) and IR 113 (ParallelInfo) stay with **T19**.
 
 ---
 
