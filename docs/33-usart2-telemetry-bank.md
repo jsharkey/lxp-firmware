@@ -3,7 +3,7 @@
 > **Bank base correction (verified, T02a).** An earlier revision of this doc put
 > the bank at `0x20009e54`; that address has **zero** literal references in the
 > image, while **`0x2000ce5c` has 22** and is the base the real parser writes and
-> the register getter reads. Verified end to end against `reference/com_flat.bin`
+> the register getter reads. Verified end to end against `reference/ceaa-07xx_vE_260214.bin`
 > (= `ceaa-07xx_vE_260214`, md5 `fc5b44bd13f6…`): seeding `0x2000ce5c+off` serves
 > all 15 contract fields correctly, and a wire frame fed through the real RX ISR
 > lands there and reaches the dongle (`tests/test_arm_sim_factory_only.py` —
@@ -29,7 +29,7 @@ the bank is filled from the wire frame, (2) its field map, and (3) **which field
 the external Modbus dongle** as input/holding registers.
 
 Everything here is from the factory ARM image `reference/ceaa-07xx_vE_260214.bin` (12000XP
-`ceaa-07xx`, = `reference/com_flat.bin`, md5 `fc5b44bd13f6…`), and the receive chain below
+`ceaa-07xx`, = `reference/ceaa-07xx_vE_260214.bin`, md5 `fc5b44bd13f6…`), and the receive chain below
 was re-derived and **executed under the arm_sim emulator** (T02a): a frame fed on the wire
 drives the real chain into the bank and out to the dongle. The read side is a sweep of the
 register getters `sub_0803289c` (input) / `fn_ceaa` (holding), recording which bank offset

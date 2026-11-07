@@ -97,7 +97,7 @@ RTC forward" exercises the rollover, not the accumulation rate.
 > validated (Epv1_all counts up from the STATUS-struct power telemetry, gated on a
 > running state), and the **daily rollover** is the calendar-date detector
 > `0x08037cb2` — now driven in isolation and asserted against both images.
-> **Note:** `reference/com_flat.bin` is the **05-series**, so its calendar is
+> **Note:** `ceaa-05xx_com_vE_250325.bin` is the **05-series**, so its calendar is
 > `0x2000a718` (day`+3`), *not* the `0x2000d850` this doc's §1 cites for the
 > 07-series — the dead-ends below that keyed on `0x2000d853` were chasing the wrong
 > image's address. The notes stand as the trail that led there.

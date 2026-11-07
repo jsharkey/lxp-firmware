@@ -29,7 +29,7 @@ So a `0x49` frame fails twice over: `0x49` as the first byte is not our address
 the assembler). The frame never assembles, so **the ARM does not consume DSP
 `0x49` telemetry on USART3.**
 
-### Evidence (image `com_flat.bin`, 260214-family App @ `0x08005000`)
+### Evidence (image `ceaa-07xx_vE_260214.bin`, 260214-family App @ `0x08005000`)
 
 Static (App vector table + `tools/disres.py`) and dynamic (driving the real byte
 handler in `tests/dsprx_contract.py`):
@@ -47,7 +47,7 @@ handler in `tests/dsprx_contract.py`):
   (`sub_0801c3e6` @ `0x0801c418`); the func dispatch is the `cmp #3/#4/#6/#0x10`
   then `#0x21/#0x22/#0x23` chain, every other value doing `strh 0, [buf,#0x44e]`
   (reset). Full listing: `python3 tools/disres.py 0x0801c3e6 --img
-  reference/com_flat.bin --sym reference/symbols.csv`.
+  reference/ceaa-07xx_vE_260214.bin --sym reference/symbols.csv`.
 - Caller scan: `sub_0801c3e6` is BL-called **only** from `0x0801c714` (inside the
   USART3 drain `sub_0801c6e0`); the `0x49` detector `sub_0801c808` **only** from
   `0x0801ca32` (inside the USART2 drain `sub_0801c9ec`). The two wires have

@@ -209,7 +209,7 @@ class FactoryBackend(_Backend):
         self.symbols = symbols or os.path.join(
             os.path.dirname(__file__), "..", "reference", "symbols.csv")
 
-    # Per-block filler (the real builder) in 07-series com_flat.bin, flat base
+    # Per-block filler (the real builder) in 07-series ceaa-07xx_vE_260214.bin, flat base
     # 0x08000000: fn_fill_cfg_block(buf, off, block_id) -- buf[off]=block_id, then
     # the block's big-endian fields from the ARM working RAM into buf[off+1]+. This
     # is docs/10's FUN_08026830 read at the CORRECT flat base; an earlier

@@ -8,7 +8,7 @@
 
 docs/10 named the push builder `FUN_080273b4`/`FUN_08026830`. Those Ghidra addresses
 are **flat `0x08000000`-based** (the whole image, bootloader + App), so they resolve
-directly in `reference/com_flat.bin`:
+directly in `reference/ceaa-07xx_vE_260214.bin`:
 
 | function | role |
 |---|---|
@@ -28,6 +28,13 @@ directly in `reference/com_flat.bin`:
 The maps below are from emulating the filler `0x08026830` for each block id 0–8 and
 recording, for every payload byte it writes, **which RAM address it read** (reliable —
 it is the real builder, not a guess).
+
+> **Settings-base caveat.** The source struct is written as `0x20009854` below. That
+> is also the **05-series** settings base, while the 07 time-window/config evaluators
+> definitively use `0x2000c85c`. Whether the `0x20009854` the 07 builder reads is a
+> distinct 07 struct or a stale-05 carry-over is **not yet verified** — see the
+> ambiguity note in [`reference/README.md`](../../../reference/README.md). The struct
+> **offsets** below are base-relative and hold either way.
 
 ## The key finding: the push serializes DERIVED WORKING state, not raw registers
 

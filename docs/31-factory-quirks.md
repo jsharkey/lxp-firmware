@@ -177,7 +177,7 @@ read back what it produced — see each entry's *How found*.
 - **Evidence:** fresh-boot-per-value dongle write probe (the harness RX state
   degrades after a rejected write, so each value is probed on a fresh boot),
   classifying the reply (echo vs exception + code) and the read-back
-  (`tests/settings_contract.py`, image `com_flat.bin`). Static isolation of the
+  (`tests/settings_contract.py`, image `ceaa-07xx_vE_260214.bin`). Static isolation of the
   per-register validator was not achieved (the symbol map's regeneration merged
   it), so this is a dynamic finding.
 - **Our firmware:** **replicated for parity** — `settings_validate()`
@@ -193,12 +193,12 @@ read back what it produced — see each entry's *How found*.
 - **Observed:** a func-`0x06` write to **HR 22** (documented `StartPVVolt`,
   `900-5000`) returns **exception `2` (ILLEGAL_ADDRESS)** regardless of the value
   (tried in-range `2500` and out-of-range `899`), and a read of HR 22 returns
-  `65`, not a `900-5000` voltage. So on `com_flat.bin` HR 22 behaves as an
+  `65`, not a `900-5000` voltage. So on `ceaa-07xx_vE_260214.bin` HR 22 behaves as an
   **unimplemented / remapped** address, not the documented PV-start-voltage.
 - **Expected:** a documented, writable holding register.
 - **Evidence:** fresh-boot dongle write/read probe (`tests/settings_contract.py`).
-  Could be variant/image-specific (this is the ceaa 05-family image; the register
-  may live elsewhere or be gated).
+  Could be variant/image-specific (probed on the committed ceaa-07xx image; the
+  register may live elsewhere or be gated on another revision).
 - **Our firmware:** ours implements HR 22 in its register map, so ours would
   **accept** an in-range write where the factory rejects it — a deliberate
   divergence, **not** asserted in the common write-semantics test. Needs more RE
@@ -256,7 +256,7 @@ read back what it produced — see each entry's *How found*.
 - **Expectation:** the symmetric "config out / telemetry back on the same wire"
   reading (earlier `telemetry-0x49.md`) implied the ARM parses the DSP's `0x49`
   on USART3. It does not.
-- **Evidence:** App vector table + `tools/disres.py` on `com_flat.bin`
+- **Evidence:** App vector table + `tools/disres.py` on `ceaa-07xx_vE_260214.bin`
   (`sub_0801c3e6` dispatch; `sub_0801c808` SOF test); dynamic oracle
   `tests/test_dsp_rx.py` (the real byte handler drops a `0x49` SOF, assembles
   Modbus/bootloader). Static + dynamic.

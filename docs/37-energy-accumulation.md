@@ -5,7 +5,11 @@ the energy-counter **RAM struct is now located**, the **accumulator is found and
 validated**, and the **daily-rollover trigger is characterised** (located as a
 mechanism, now driven in isolation and asserted against both images — see §4).
 
-> **Image:** `reference/com_flat.bin` — the **05-series** (`ceaa-05xx`) build:
+> **Image:** `ceaa-05xx_com_vE_250325.bin` — the **05-series** (`ceaa-05xx`) build.
+> ⚠️ This is the older 05 image, **not** the committed canonical reference
+> (`reference/ceaa-07xx_vE_260214.bin`, the 07-series). Every address below is a
+> **05-image** address and does not transfer to the 07 image (different base /
+> layout — see [`docs/11`](11-12000xp-revisions.md)):
 > settings `0x20009854`, telemetry bank `0x20009e54`, RTC calendar `0x2000a718`
 > (the `ceaa05` profile in `tests/timewindow_contract.py`; *not* the 07-series
 > `0x2000d850`). Addresses are from this image; symbol-map regenerations relabel
@@ -70,7 +74,7 @@ same getter that serves IR 0 etc.). Its energy cases read the struct above; the
 
 ## 4. Daily rollover — the calendar-date reset (located + tested)
 
-> **Correction of an earlier draft of this section.** `reference/com_flat.bin` is
+> **Correction of an earlier draft of this section.** `ceaa-05xx_com_vE_250325.bin` is
 > the **05-series** image: its RTC calendar is at **`0x2000a718`** (day@`+3`), *not*
 > the 07-series `0x2000d850`, and the day byte is a **constant-base literal**, not a
 > register-held pointer. My first rollover attempt poked `0x2000d850` (the wrong

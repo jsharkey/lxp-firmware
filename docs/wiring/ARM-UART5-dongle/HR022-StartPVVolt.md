@@ -18,7 +18,7 @@ itself. **Open:** exact byte offset in the DSP config block.
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-- **Write probe (T04):** on `com_flat.bin` a func-`0x06` write to HR 22 returns
+- **Write probe (T04):** on `ceaa-07xx_vE_260214.bin` a func-`0x06` write to HR 22 returns
   Modbus exception 2 (ILLEGAL_ADDRESS) for any value and a read returns `65` — the
   register appears unimplemented/remapped on this image. Recorded as
   [`docs/31`](../../31-factory-quirks.md) **Q7**; not asserted in the common

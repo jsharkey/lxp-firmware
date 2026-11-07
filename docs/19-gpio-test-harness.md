@@ -231,7 +231,7 @@ The other half is driving the **peer-ingest tasks** black-box so a test can feed
 raw bytes and watch IRs change (no internal-function call). The USART2 safety
 link is now **cracked end to end** and `test_usart2_frame_reaches_modbus` feeds a
 wire frame through the real RX ISR and reads the decoded value back over Modbus.
-Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) under
+Findings, against `reference/ceaa-07xx_vE_260214.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) under
 `attach_config_flash()` + `enable_rtos()`:
 
 - **USART2 RX is RXNE-interrupt-driven, *not* DMA.** At the idle after boot
@@ -262,7 +262,7 @@ Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) un
   was a mis-transcription — see docs/33). From the bank the factory's own getter
   serves it over Modbus; `test_usart2_frame_reaches_modbus` feeds a tag-2 frame on
   the wire and reads grid R/freq/etc. back as IR 12/15/… with no bank seeding.
-- **⚠ The base-offset trap that cost a session — now resolved.** `com_flat.bin`
+- **⚠ The base-offset trap that cost a session — now resolved.** `ceaa-07xx_vE_260214.bin`
   loads at **base `0x08000000`** (file offset `0x5000` = App `0x08005000`). An
   earlier pass disassembled with the base set to `0x08005000` (off by `0x5000`),
   which produced a cascade of **false** conclusions that were recorded here and

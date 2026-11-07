@@ -46,7 +46,7 @@ def _parse(argv):
     if positional:
         image = positional[0]
     image = image or os.environ.get("LXP_FACTORY_BIN") \
-        or os.path.join(ROOT, "reference", "com_flat.bin")
+        or os.path.join(ROOT, "reference", "ceaa-05xx_com_vE_250325.bin")
     return image, ours_bin, ours_elf
 
 

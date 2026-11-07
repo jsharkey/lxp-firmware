@@ -24,7 +24,7 @@ The six power-path relay pins from docs/16 are driven by four logic functions:
 > stood here).** An earlier "correction" in this spot was itself an artifact of a
 > disassembler base off by `0x5000` (see [`docs/19`](19-gpio-test-harness.md) §T02)
 > and got the addresses backwards. The verified facts for `ceaa-07xx_vE_260214`
-> (`reference/com_flat.bin`):
+> (`reference/ceaa-07xx_vE_260214.bin`):
 > - The telemetry bank **is `0x2000ce5c`** (22 literal refs); `0x20009e54` is the
 >   one with **zero** refs (docs/22, docs/33).
 > - **IR_STATE is the byte at `0x2000d0e4 + 0xa0`** — confirmed because the PC6/PB2

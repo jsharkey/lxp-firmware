@@ -130,8 +130,8 @@ HR 11.) The tasks below are what close them.
 > the USART3 register model it serves is the same, so it is a valid oracle
 > meanwhile (and probing UART5 on the factory is avoided — its ISR disturbs
 > persistence). `make test-sim` green for both images (common 9/9 each, verified
-> on the `ceaa-07xx` image from `lxp-factory`; the committed `reference/com_flat.bin`
-> is the 05-series and answers on USART3 the same way). DE sequencing pinned by
+> on the committed `reference/ceaa-07xx_vE_260214.bin` — the 07-series factory
+> oracle). DE sequencing pinned by
 > `test_modbus_de_toggles_around_tx`. Docs: README port note, [`docs/04`](04-modbus.md),
 > [`docs/wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md). The full UART5
 > oracle for the factory is a **T02 follow-up**.
@@ -713,8 +713,9 @@ discharge/AC-charge-SOC inert on `com_flat.bin`; need a ceaa-07xx image).
 
 **Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
 schedule features' "active now" verdicts are computed by one combined ARM
-evaluator `sub_0801ed28` (on `com_flat.bin`), writing three bytes
-`0x2000aa5f/60/61` (AC-charge / charge-priority / forced-discharge), gated by a
+evaluator `sub_0801ed28` (decoded on the **05-series** image; the committed 07
+image's AC-charge window evaluator is `0x08034590`), writing three bytes
+`0x2000aa5f/60/61` (05-image addresses; AC-charge / charge-priority / forced-discharge), gated by a
 per-feature master-enable (`settings+0x23`), the HR 120 mode bits (`settings+0x33`),
 the window, and SOC/limit/status inputs — i.e. literally **window × SOC × V**. But:
 - Driven in isolation, the AC-charge verdict `0xaa5f` tracks the **feature-enable**,
@@ -731,9 +732,10 @@ the inert/DSP-gated paths.
 
 **Done this pass:**
 - Fixed `tests/timewindow_contract.py` so the `acchg` micro-test **skips cleanly**
-  (was reported as ERROR) on images without its evaluator — its evaluator
-  (`0x08034590`) is for the `ceaa-07xx_vE_260214` build, **not** `com_flat.bin`
-  (which is a 07-layout image at the "ceaa05" App addresses).
+  (was reported as ERROR) on images without its evaluator. Its evaluator
+  (`0x08034590`) is present in the committed `ceaa-07xx_vE_260214.bin`, where the
+  test **passes** (`test_acchg_factory_*`); it is absent from the older 05-series
+  image, where the test skips.
 
 **Hand-offs (see [`docs/41`](41-charge-discharge-schedule-gates.md) §Hand-offs):**
 - The evaluator likely reads the **committed slot records** (`0x2000a330…`), not raw
