@@ -312,7 +312,7 @@ from the committed set, so new work turning `ours-red → match` is caught.
   second seeded pass to tell constant-vs-wired apart rides along with it.
 
 ### T24 — Write-semantics sweep across the whole HR surface (extends T04)
-**Status:** ⬜ `[ ]` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
+**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
 
 T04 built the mechanism but its `WRITE_VECTORS` cover only **six** registers
 (HR 9, 15, 20, 66, 101, 105). Generate vectors for **every** writable HR in the
