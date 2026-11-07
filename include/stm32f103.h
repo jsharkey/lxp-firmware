@@ -52,6 +52,7 @@ typedef struct {
 #define RCC_APB2ENR_IOPEEN   (1UL << 6)
 #define RCC_APB2ENR_SPI1EN   (1UL << 12)
 #define RCC_APB2ENR_USART1EN (1UL << 14)
+#define RCC_APB1ENR_USART2EN (1UL << 17)
 #define RCC_APB1ENR_USART3EN (1UL << 18)
 #define RCC_APB1ENR_UART5EN  (1UL << 20)
 
@@ -78,6 +79,7 @@ typedef struct {
     __IO uint32_t CR1; __IO uint32_t CR2; __IO uint32_t CR3; __IO uint32_t GTPR;
 } USART_TypeDef;
 #define USART1 ((USART_TypeDef *)(APB2PERIPH_BASE + 0x3800UL)) /* 0x40013800 */
+#define USART2 ((USART_TypeDef *)(APB1PERIPH_BASE + 0x4400UL)) /* 0x40004400 */
 #define USART3 ((USART_TypeDef *)(APB1PERIPH_BASE + 0x4800UL)) /* 0x40004800 */
 #define UART5  ((USART_TypeDef *)(APB1PERIPH_BASE + 0x5000UL)) /* 0x40005000 */
 #define UART5  ((USART_TypeDef *)(APB1PERIPH_BASE + 0x5000UL)) /* 0x40005000 */
@@ -156,6 +158,7 @@ typedef struct {
 
 /* ---- external IRQ numbers (STM32F103 high-density) ---- */
 #define USB_LP_CAN1_RX0_IRQn  20
+#define USART2_IRQn           38
 #define USART3_IRQn           39
 #define UART5_IRQn            53
 

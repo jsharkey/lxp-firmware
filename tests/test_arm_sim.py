@@ -236,6 +236,49 @@ def test_can_battery_telemetry_reaches_modbus():
     assert blk[20] == T_DC,    "temperature -> IR 103: got %r" % (blk[20],)
 
 
+def test_usart2_safety_frame_reaches_modbus():
+    """Safety-CPU USART2 frame on the wire -> Modbus input registers (docs/33, T05).
+    The redundant CPU streams an EG4 type-1 frame (SOF 0x49, big-endian, CRC-16)
+    on USART2; each firmware receives it on its own RXNE-interrupt path, decodes
+    the frame into its telemetry bank, and serves the measurements over Modbus. The
+    SAME raw bytes feed both images and each must serve the identical input
+    registers -- the factory-vs-ours oracle for the wire ingest.
+
+    A "tag 2" record (grid/EPS/inverter block, docs/33 §1a) carries, big-endian at
+    the given frame offsets, values that land at these registers (the measurement
+    tags are published on every valid frame, so no link warm-up is needed):
+
+        frame +0x17 -> IR 12  grid voltage R        +0x1d -> IR 23  EPS frequency
+        frame +0x19 -> IR 15  grid frequency        +0x21 -> IR 18  inverter current (x10)
+        frame +0x1b -> IR 20  EPS voltage R         +0x23 -> IR 13  grid voltage S
+                                                     +0x25 -> IR 122 generator frequency
+
+    Black box on both images: the wire feeder (Usart2SafetyWire) only serves SR/DR
+    and pends the USART2 NVIC line, so every byte travels each firmware's real RX
+    ISR; the Modbus master reads the served registers. Neither a symbol nor an
+    internal function is named."""
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    GRID_R, GRID_F, EPS_R, EPS_F, I_INV, GRID_S, GEN_F = 2401, 5001, 2399, 5000, 1234, 2402, 6000
+
+    sim = _sim()
+    mb = _mb(sim)                              # boots the image + installs UART hooks
+    wire = Usart2SafetyWire(sim, boot=False)   # share that boot; add the USART2 wire
+    assert wire.rx_is_interrupt_driven(), \
+        "USART2 RX is not RXNE-interrupt-driven (CR1 RXNEIE / CR3 DMAR)"
+
+    frame = build_frame({0x14: (2, 1),
+                         0x17: (GRID_R, 2), 0x19: (GRID_F, 2), 0x1b: (EPS_R, 2),
+                         0x1d: (EPS_F, 2), 0x21: (I_INV, 2), 0x23: (GRID_S, 2),
+                         0x25: (GEN_F, 2)})
+    got = wire.feed(frame)
+    assert got == len(frame), "only %d/%d USART2 bytes received on the wire" % (got, len(frame))
+
+    for ir, exp in ((12, GRID_R), (15, GRID_F), (20, EPS_R), (23, EPS_F),
+                    (18, I_INV * 10), (13, GRID_S), (122, GEN_F)):
+        rd = mb.read_input(ir)
+        assert rd == [exp], "fed USART2 frame -> IR %d = %r, expected [%d]" % (ir, rd, exp)
+
+
 def test_bms_charge_volt_ref_clamps_to_setting():
     """Working charge-V derivation (docs/39 T11a): the inverter serves IR 83 =
     min(0x351 charge-V limit, HR 99 ChargeVoltRef), not the pack's limit raw.

@@ -105,6 +105,8 @@ test:
 	@./$(BUILD)/test_telemetry
 	$(HOSTCC) $(HOSTFLAGS) src/dsp/dsp_rx.c tests/test_dsp_rx.c -o $(BUILD)/test_dsp_rx
 	@./$(BUILD)/test_dsp_rx
+	$(HOSTCC) $(HOSTFLAGS) src/safety/safety_rx.c src/modbus/modbus.c tests/test_safety_rx.c -o $(BUILD)/test_safety_rx
+	@./$(BUILD)/test_safety_rx
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.

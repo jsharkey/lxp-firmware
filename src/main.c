@@ -31,6 +31,7 @@
 #include "inv/telemetry.h"
 #include "inv/settings_validate.h"
 #include "inv/dsp_rx.h"
+#include "inv/safety_rx_port.h"
 
 /* Holding registers that persist to the SPI config flash (docs/23 field map,
  * table in include/inv/settings_map.h). The wire value is scaled to the on-flash
@@ -303,6 +304,7 @@ int main(void) {
     systick_init_1ms();
     mb_port_init(&g_mb);                 /* dongle Modbus slave on UART5 (docs/26) */
     dsp_link_port_init(19200U);          /* USART3 is the DSP link's alone now */
+    safety_rx_port_init(19200U);         /* safety-CPU telemetry on USART2 (RS-485 19200, docs/30/33, T05) */
     bms_can_init(&g_bms);
     can_port_init();                    /* battery BMS bus on CAN1 (docs/20) */
     relay_init();
@@ -345,9 +347,15 @@ int main(void) {
             energy_rollover(g_rtc.day);
             inv_telemetry_runtime_tick(&g_telemetry, (uint8_t)g_rt.input_reg[IR_STATE]);
         }
-        /* Publish the safety CPU's decoded USART2 telemetry (grid/PV/bus V,
-         * frequency, temps, inverter current) into the register image before
-         * serving Modbus, so the dongle sees the latest values (docs/30/33). */
+        /* Receive the safety CPU's USART2 frames: drain the RX ring and decode any
+         * complete frames into g_safety_bank + the operating mode / relayed
+         * fault+warn words (T05). Then publish the decoded telemetry (grid/PV/bus V,
+         * frequency, temps, inverter current) into the register image before serving
+         * Modbus, so the dongle sees the latest values (docs/30/33). */
+        safety_rx_port_poll(g_ticks);
+        g_state_in.mode_byte     = safety_rx_mode();
+        g_state_in.relayed_fault = safety_rx_fault();
+        g_state_in.relayed_warn  = safety_rx_warn();
         safety_cpu_publish(g_rt.input_reg, 160);
         inv_telemetry_publish(g_rt.input_reg, &g_telemetry);  /* ARM-computed powers / Seps / runtime (T07) */
         state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */

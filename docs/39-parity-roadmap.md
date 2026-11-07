@@ -307,23 +307,31 @@ clamp, or store verbatim.
 ## P1 — the live data path (telemetry, state, faults)
 
 ### T05 — USART2 safety-CPU receiver: wire frame → bank
-**Status:** `[ ]` · **Layer:** host (parser) + sim (wire e2e, needs T02) · **Depends:** T02 for the factory e2e half
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** host (parser) + sim (wire e2e) · **Depends:** T02 (landed)
 
-We have the bank → IR half (`src/safety/safety_cpu.c`), but **nothing fills the
-bank from the wire**. The frame (SOF `0x49`, type-1, big-endian, tag
-sub-records, CRC-16) is laid out in [`docs/33`](33-usart2-telemetry-bank.md) §1
-and [`wiring/ARM-USART2-safety`](wiring/ARM-USART2-safety.md).
-- **Ours first is OK here.** A host-tested parser (`src/safety/safety_rx.c`)
-  with frames built from the docs/33 layout: good CRC, bad CRC, truncated,
-  unknown tag, resync after garbage. Add a USART2 driver (RS-485, check docs/16
-  for the DE pin). **Correction (T02 harness RE, docs/19):** the factory USART2
-  RX is **RXNE-interrupt-driven, not DMA** (`CR1=0x20AC` RXNEIE set, `CR3` DMAR
-  clear), so our RXNE driver matches it; a harness feeds it like `ModbusDongle`
-  feeds USART3, pending vector `16+38`.
-- **Oracle:** once T02 lands, a common sim test feeds the **same raw bytes** to
-  both images and compares the served IRs. Until then, the existing bank-level
-  common test is the oracle for the serve half.
-- Record `rx-timeout → fault` behaviour for T08.
+**Done.** Our firmware now fills the telemetry bank from the wire and serves it,
+byte-for-byte compatible with the factory (the same raw USART2 bytes produce the
+same Modbus input registers on both images).
+- **Parser** (`src/safety/safety_rx.c`, `inv/safety_rx.h`): a pure, host-tested
+  byte-stream state machine for the EG4 type-1 frame (SOF `0x49`, `frame[3]`=len,
+  total `len`+6 capped `<0x40`, CRC-16/MODBUS big-endian). It validates the CRC and
+  type, distributes the header (mode / relayed fault+warn / etc.) and the tag
+  sub-record (docs/33 §1a, tags 0/1/2) into the bank (native LE, as
+  `safety_cpu_publish` reads it), and resynchronises past garbage. Host test
+  `tests/test_safety_rx.c` (37 checks): good/bad CRC, wrong type, truncated,
+  unknown tag, resync after junk, and each tag's field map.
+- **Driver** (`src/uart/uart2.c`, `inv/uart2.h`): RXNE-interrupt USART2 (PA2/PA3,
+  RS-485 direction PC2, docs/16), matching the factory (RXNE, not DMA — docs/19
+  T02). The glue `src/safety/safety_rx_port.c` drains the RX ring, feeds the parser
+  into `g_safety_bank`, and exposes the decoded mode/fault/warn to the classifier
+  (wired into `main.c`; `state_publish` now flows the real mode/fault/warn out).
+- **Oracle:** the common sim test `test_usart2_safety_frame_reaches_modbus`
+  (tests/test_arm_sim.py) feeds the **same raw tag-2 frame** to both images and
+  asserts IR 12/15/20/23/18/13/122 — ours (UART5 Modbus) and the factory (USART3,
+  via the T02 USART2 wire feeder) serve identical values. Both green.
+- **rx-timeout → fault (for T08):** `safety_rx_last_frame_ms()` /
+  `safety_rx_link_ok(now, timeout)` expose link liveness; T08 maps a stale link to
+  the comms-loss fault (E017). Left as the hook, not the policy, per T08's scope.
 
 ### T06 — Operating-state classifier + fault/warning composer (`sub_0801b480`)
 **Status:** split → **T06a `[x]`** (ours + host), **T06b `[ ]`** (factory oracle, blocked) · claude 2026-11-06 · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
