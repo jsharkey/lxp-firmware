@@ -190,9 +190,8 @@ def test_usart2_frame_reaches_modbus():
 # reach naturally -- docs/39 T02b); we seed that counter to the warm state (as
 # test_safety_cpu_telemetry_reaches_modbus seeds the bank) so the test is fast,
 # while the mode byte still travels the full real path (RX ISR -> assembler -> CRC
-# -> distributor -> classifier). (A clean mode->PC6 is NOT reachable from USART2
-# alone: PC6 blinks whenever ARM-local warnings are present, and those gate on the
-# whole-inverter status struct 0x2000d890 the USART2 peer can't clear -- docs/39.)
+# -> distributor -> classifier). This is the classifier half; the full mode->PC6
+# relay path (needs the inverter healthy first) is test_usart2_mode_drives_pc6 below.
 def test_usart2_mode_reaches_ir_state():
     """A USART2 operating-mode byte fed on the wire reaches the factory's state
     classifier: IR_STATE (0x2000d0e4+0xa0) tracks the fed mode across run and
