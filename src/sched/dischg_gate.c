@@ -18,3 +18,14 @@ bool inv_dischg_volt_gate(bool active, uint16_t vbat_bank,
         return v >= (int32_t)stop_v;    /* stay on until V drops below stop */
     return v >= (int32_t)start_v;       /* turn on once V reaches start     */
 }
+
+bool inv_dischg_soc_gate(bool active, uint8_t soc,
+                         uint8_t start_soc, uint8_t stop_soc)
+{
+    /* The SOC sibling (07 block 0x08035616, verdict 0x2000dbc4): the factory reads
+     * the SOC byte and the two 1-byte thresholds and compares UNSIGNED (blo/bhs) --
+     * same latched hysteresis as the voltage gate. */
+    if (active)
+        return soc >= stop_soc;         /* stay on until SOC drops below stop */
+    return soc >= start_soc;            /* turn on once SOC reaches start      */
+}

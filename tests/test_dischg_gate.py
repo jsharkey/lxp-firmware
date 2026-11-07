@@ -22,7 +22,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
-from dischg_gate_contract import VECTORS, predict, FactoryBackend  # noqa: E402
+from dischg_gate_contract import (VECTORS, predict, FactoryBackend,   # noqa: E402
+                                  SOC_VECTORS, soc_predict)
 
 FACTORY_IMAGE = (sys.argv[1] if len(sys.argv) > 1 else None) \
     or os.environ.get("LXP_FACTORY_BIN") \
@@ -52,6 +53,23 @@ def test_factory_matches_spec():
         if got != expected:
             fails.append("%-24s prev=%d V=%d -> %s, expected %s"
                          % (label, prev, vbat, got, expected))
+    assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
+def test_factory_soc_matches_spec():
+    """The factory discharge-by-SOC sibling gate (DischgCtrlType=1, verdict
+    0x2000dbc4) follows the same latched hysteresis on the SOC byte (on at
+    SOC>=start, off at SOC<stop) on every vector, and the vectors' `expected`
+    agrees with soc_predict(). Ours' inv_dischg_soc_gate() is held to the same
+    vectors by tests/test_dischg_gate.c."""
+    fb = _factory_or_skip()
+    fails = []
+    for label, prev, soc, expected in SOC_VECTORS:
+        assert soc_predict(prev, soc) == expected, "vector self-check: %s" % label
+        got = fb.soc_verdict(prev, soc)
+        if got != expected:
+            fails.append("%-24s prev=%d SOC=%d -> %s, expected %s"
+                         % (label, prev, soc, got, expected))
     assert not fails, "factory\n        " + "\n        ".join(fails)
 
 

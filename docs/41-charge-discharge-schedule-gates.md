@@ -46,7 +46,7 @@ code addresses shift (05 equivalents in the last column).
 |---|---|---|
 | voltage-gate block | **`0x080355c2 … 0x08035608`** (inside the discharge-gate evaluator at `0x08035474`) | high (disasm + dynamic); 05 `sub_0801ed28` |
 | verdict byte | **`0x2000dbc3`** (discharge-by-voltage "active now") | high; 05 `0x2000aa5f` |
-| sibling verdicts | `0x2000dbc4/c5/c6` (SOC / combined sub-verdicts) | medium; 05 `0x2000aa60/61` |
+| sibling verdicts | `0x2000dbc4` (SOC, **cracked** — see "The SOC half"), `0x2000dbc5/c6` (combined sub-verdicts) | SOC high; combined medium; 05 `0x2000aa60/61` |
 | settings base | **`0x2000c85c`** | 05 `0x20009854` |
 | safety bank base | **`0x2000ce5c`** | 05 `0x20009e54` |
 | mode selector | **DischgCtrlType** = `settings+0x33` bits 4-5 (HR 120, [`HR120`](wiring/ARM-UART5-dongle/HR120-SysEnable.md)): 0 voltage, 1 SOC, 2 both | high |
@@ -54,9 +54,42 @@ code addresses shift (05 equivalents in the last column).
 | consumer | the main power-control function reads the verdict bytes (literal-pool xref; 05 `sub_0801f438`) | high |
 | preconditions (07) | the full evaluator gates the block on a health bit (`0x2000d890` bit 24) + mode + flags before reaching it; the block itself is self-contained given `r1` = settings base | medium (disasm) |
 
-So the gate is genuinely **"V / SOC with hysteresis"** as T15 anticipated — the
-voltage half is closed; the SOC half (mode 1) reads the derived battery-limit
-struct and is the T11-dependent remainder.
+So the gate is genuinely **"V / SOC with hysteresis"** as T15 anticipated — and
+**both halves are now closed**.
+
+## The SOC half (DischgCtrlType = 1) — cracked
+
+The SOC sibling is the **same latched hysteresis** on the battery SOC byte, in a
+self-contained block right after the voltage block, gated by `DischgCtrlType == 1`:
+
+```
+soc = battery SOC byte (relayed struct 0x2000d7b0 +0)
+active = active ? (soc >= stop) : (soc >= start)      # UNSIGNED byte compares (blo/bhs)
+```
+
+turn **on** once SOC reaches `start` (settings `+0x4a`), stay on until SOC drops
+**below** `stop` (settings `+0x4b`), latched in the band.
+
+| item | 07 (canonical) | confidence |
+|---|---|---|
+| SOC-gate block | **`0x08035616 … 0x08035662`** (after the `DischgCtrlType==1` test at `0x08035608`) | high (disasm + dynamic) |
+| verdict byte | **`0x2000dbc4`** (discharge-by-SOC "active now"; sibling of `0x2000dbc3`) | high |
+| SOC source | **`0x2000d7b0 +0`** (relayed battery SOC byte; `+0x13` bit 0 = precondition) | high |
+| SOC thresholds | **start `settings+0x4a`**, **stop `settings+0x4b`** (1-byte, unsigned) | high (factory-verified) |
+
+**Correction:** an earlier draft said "the SOC half reads the derived battery-limit
+struct (T11)". That is **wrong** for the mode-1 verdict `0x2000dbc4`: its thresholds
+are **settings `+0x4a/+0x4b`** and the SOC value is the relayed byte at `0x2000d7b0`
+— no T11 battery-limit struct involved. (A separate, earlier limit-struct SOC/V
+check in the evaluator does read `batt_limit+0x78`, but that writes a different
+status word, not this gate's verdict.) So the SOC gate has **no T11 dependency**.
+
+Our firmware now has the pure reimplementation `inv_dischg_soc_gate()`
+([`src/sched/dischg_gate.c`](../src/sched/dischg_gate.c)), host-tested
+([`test_dischg_gate.c`](../tests/test_dischg_gate.c)) and **verified byte-for-byte
+against the factory** ([`test_dischg_gate.py`](../tests/test_dischg_gate.py)
+`test_factory_soc_matches_spec` + [`dischg_gate_contract.py`](../tests/dischg_gate_contract.py)
+`soc_verdict`, on the canonical 07 image).
 
 ### How it was verified
 

@@ -42,6 +42,38 @@ OFF_VBAT   = 0x0a             # bank offset: inverter battery voltage (0.1 V)
 
 START, STOP = 480, 460       # deadband used by the vectors
 
+# --- discharge-by-SOC sibling gate (DischgCtrlType = 1, verdict 0x2000dbc4) -------
+# The SAME latched hysteresis on the battery SOC byte: 07 block 0x08035616..0x08035662
+# reads the SOC byte (relayed struct 0x2000d7b0+0), its +0x13 precondition flag, and
+# two 1-byte thresholds settings+0x4a (start) / +0x4b (stop), compared UNSIGNED.
+SOC_BLOCK      = 0x08035616   # SOC-gate block entry (after the DischgCtrlType==1 test)
+SOC_STOP_AFTER = 0x08035662   # block exit (verdict written by here)
+SOC_VERDICT    = 0x2000dbc4   # discharge-by-SOC "active now" byte
+SOC_SRC        = 0x2000d7b0   # relayed struct: SOC at +0, precondition flag at +0x13
+OFF_SSTART     = 0x4a         # settings offset: SOC turn-ON threshold
+OFF_SSTOP      = 0x4b         # settings offset: SOC turn-OFF threshold
+
+SSTART, SSTOP = 50, 40       # SOC deadband used by the vectors
+
+SOC_VECTORS = [
+    ("off 39 < start",        False, 39, False),
+    ("off 49 < start",        False, 49, False),
+    ("off 50 == start -> on", False, 50, True),
+    ("off 60 > start -> on",  False, 60, True),
+    ("off 45 in band",        False, 45, False),
+    ("on 60 stays",           True,  60, True),
+    ("on 50 stays",           True,  50, True),
+    ("on 40 == stop stays",   True,  40, True),
+    ("on 39 < stop -> off",   True,  39, False),
+    ("on 30 < stop -> off",   True,  30, False),
+    ("on 45 in band stays",   True,  45, True),
+]
+
+
+def soc_predict(prev, soc):
+    """The pure SOC hysteresis spec both sides must satisfy."""
+    return (soc >= SSTOP) if prev else (soc >= SSTART)
+
 # (label, prev_active, vbat_divided, expected_active). vbat is in the DIVIDED units
 # the gate compares (the bank word fed is vbat*10). Hysteresis: on at >=START from
 # off, off at <STOP from on, latched in the 460..480 band.
@@ -99,3 +131,19 @@ class FactoryBackend:
         with contextlib.redirect_stdout(io.StringIO()):
             e.call(BLOCK, args=(0, SETTINGS))      # r1 = settings base
         return e.rbytes(VERDICT, 1)[0] != 0
+
+    def soc_verdict(self, prev, soc, start=SSTART, stop=SSTOP):
+        """Drive the discharge-by-SOC sibling block once; return its latched verdict."""
+        from emu import Emu
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(SETTINGS + OFF_SSTART, bytes([start & 0xFF]))
+        e.uc.mem_write(SETTINGS + OFF_SSTOP, bytes([stop & 0xFF]))
+        e.uc.mem_write(SOC_SRC, bytes([soc & 0xFF]))        # battery SOC byte
+        e.uc.mem_write(SOC_SRC + 0x13, bytes([1]))          # precondition flag set
+        e.uc.mem_write(SOC_VERDICT, bytes([1 if prev else 0]))
+        e.stop_at.add(SOC_STOP_AFTER)
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            e.call(SOC_BLOCK, args=(0, SETTINGS))  # r1 = settings base
+        return e.rbytes(SOC_VERDICT, 1)[0] != 0

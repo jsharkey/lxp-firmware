@@ -36,6 +36,21 @@ int main(void)
     CHECK(inv_dischg_volt_gate(false, 4799, START, STOP) == false, "off: bank 4799 -> 479 -> off");
     CHECK(inv_dischg_volt_gate(false, 4800, START, STOP) == true,  "off: bank 4800 -> 480 -> on");
 
+    /* --- discharge-by-SOC gate (same hysteresis on the SOC byte; verdict 0x2000dbc4) */
+    const uint8_t SSTART = 50, SSTOP = 40;    /* SOC deadband 40..50 */
+    /* From OFF: turn on only at/above start. */
+    CHECK(inv_dischg_soc_gate(false, 39, SSTART, SSTOP) == false, "soc off: 39 < start -> off");
+    CHECK(inv_dischg_soc_gate(false, 49, SSTART, SSTOP) == false, "soc off: 49 < start -> off");
+    CHECK(inv_dischg_soc_gate(false, 50, SSTART, SSTOP) == true,  "soc off: 50 == start -> on");
+    CHECK(inv_dischg_soc_gate(false, 60, SSTART, SSTOP) == true,  "soc off: 60 > start -> on");
+    CHECK(inv_dischg_soc_gate(false, 45, SSTART, SSTOP) == false, "soc off: 45 in band -> stays off");
+    /* From ON: stay on until SOC drops below stop. */
+    CHECK(inv_dischg_soc_gate(true, 60, SSTART, SSTOP) == true,  "soc on: 60 -> stays on");
+    CHECK(inv_dischg_soc_gate(true, 50, SSTART, SSTOP) == true,  "soc on: 50 -> stays on");
+    CHECK(inv_dischg_soc_gate(true, 40, SSTART, SSTOP) == true,  "soc on: 40 == stop -> stays on");
+    CHECK(inv_dischg_soc_gate(true, 39, SSTART, SSTOP) == false, "soc on: 39 < stop -> off");
+    CHECK(inv_dischg_soc_gate(true, 45, SSTART, SSTOP) == true,  "soc on: 45 in band -> stays on");
+
     printf("%s: %d/%d checks passed\n", g_fail ? "FAILED" : "OK", g_run - g_fail, g_run);
     return g_fail ? 1 : 0;
 }

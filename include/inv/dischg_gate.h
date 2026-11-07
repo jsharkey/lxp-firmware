@@ -42,4 +42,25 @@
 bool inv_dischg_volt_gate(bool active, uint16_t vbat_bank,
                           uint16_t start_v, uint16_t stop_v);
 
+/*
+ * One hysteresis step of the discharge-by-SOC gate (DischgCtrlType = 1, "by SOC").
+ * The SOC sibling of the voltage gate: the SAME latched hysteresis, on the battery
+ * state-of-charge byte instead of voltage. RE-pinned (T15) on the canonical 07
+ * image as the self-contained block `0x08035616…0x08035662` whose verdict byte is
+ * `0x2000dbc4` (the sibling of the voltage verdict `0x2000dbc3`):
+ *
+ *     active = active ? (soc >= stop_soc) : (soc >= start_soc)   // unsigned bytes
+ *
+ * turn **on** once SOC reaches `start_soc` (settings `+0x4a`), stay on until SOC
+ * falls **below** `stop_soc` (settings `+0x4b`), then turn off. The
+ * factory compares the battery SOC byte (relayed struct `0x2000d7b0+0`) unsigned
+ * (blo/bhs) against the two 1-byte thresholds. Pure/latched like the voltage gate.
+ *   active     - previous latched verdict (false = discharge gate open)
+ *   soc        - battery state of charge, 0-100 (%)
+ *   start_soc  - turn-ON threshold  (settings +0x4a)
+ *   stop_soc   - turn-OFF threshold (settings +0x4b); start_soc > stop_soc = deadband
+ */
+bool inv_dischg_soc_gate(bool active, uint8_t soc,
+                         uint8_t start_soc, uint8_t stop_soc);
+
 #endif /* INV_DISCHG_GATE_H */

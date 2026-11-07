@@ -432,7 +432,7 @@ missing:
 > debounce *sequencing* are the remaining pieces, with PC5/PD11 next.
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
-**Status:** 🚧 `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+**Status:** 🚧 `[~] claude 2026-11-07` — **discharge-by-voltage AND discharge-by-SOC hysteresis gates cracked + reimplemented + factory-verified**; discharge-controller wiring + HR 64-89 window schedules remain ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
 
 **Done (voltage gate, 2026-11-07).** The discharge-control gate (HR 120
 **DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
@@ -456,10 +456,24 @@ mode before reaching it). Same hysteresis, same offsets (`+0x46/+0x48/+0x0a`); t
 earlier run used the ambiguous `com_flat.bin` (05-style addresses). Verified
 byte-for-byte on the 07 image.
 
-**Remaining (handed off):** discharge-by-**SOC** (DischgCtrlType mode 1) reads the
-battery-limit struct → **T11**; wiring the gate into a discharge controller (none
-yet in ours); the HR 64-89 **time-window** schedules (charge-priority/forced-
-discharge/AC-charge-SOC inert; need the features exposed).
+**Done (SOC gate, 2026-11-07).** The discharge-by-**SOC** path (DischgCtrlType mode 1)
+is the **same latched hysteresis** on the battery SOC byte — `active = active ? (soc
+>= stop) : (soc >= start)`, unsigned, thresholds `settings+0x4a/+0x4b`, SOC from the
+relayed struct `0x2000d7b0+0`, verdict `0x2000dbc4` (the sibling of the voltage
+verdict `0x2000dbc3`). Self-contained block `0x08035616…0x08035662`. Reproduced as
+[`inv_dischg_soc_gate()`](../src/sched/dischg_gate.c) (host
+[`test_dischg_gate.c`](../tests/test_dischg_gate.c), 24 checks) and **verified
+byte-for-byte** against the factory (`test_dischg_gate.py` `test_factory_soc_matches_spec`).
+**Correction:** the mode-1 gate does **not** read the T11 battery-limit struct (an
+earlier note's claim) — it uses settings thresholds + the relayed SOC byte, so it has
+no T11 dependency (docs/41 "The SOC half").
+
+**Remaining:** wiring the gate verdicts into a discharge controller (none yet in
+ours — the factory consumer is the main power-control function; overlaps T14/relay +
+BMS-switch control); the HR 64-89 **time-window** schedules (charge-priority /
+forced-discharge / AC-charge-SOC are **inert / not dongle-writable** on this image,
+so they can't be configured or oracled here — blocked pending the features being
+exposed).
 
 **Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
 schedule features' "active now" verdicts are computed by one combined ARM
