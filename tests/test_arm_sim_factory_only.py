@@ -209,6 +209,44 @@ def test_usart2_mode_reaches_ir_state():
                              "(expected 0x%02x)" % (mode, got, mode))
 
 
+# --- the classifier is a PURE PASS-THROUGH (T06b) ------------------------------
+# The two points docs/22 left open (read from a 05-series image) are now pinned on
+# the 07 oracle: (1) a NON-CANONICAL mode byte is NOT canonicalised -- it appears at
+# IR_STATE verbatim; (2) a relayed FAULT does NOT override IR_STATE -- it flows to
+# the FaultCode (STATE+0x98) while IR_STATE stays the mode byte. A fresh boot per
+# case avoids the assembler ready-flag wedge that builds up after ~8 frames in one
+# boot (docs/39 T02b harness gotcha).
+def _factory_ir_state_and_fault(mode, fault=0):
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    TRUST_CTR = 0x2000da3e
+    STATE = 0x2000d0e4
+    wire = Usart2SafetyWire(_factory())
+    sim = wire.sim
+    sim.w32(TRUST_CTR, (sim.r32(TRUST_CTR) & ~0xFFFF) | 0x54)
+    sim.set_input("PD8", 1)
+    f = {0x04: (mode, 1), 0x0d: (mode, 1)}
+    if fault:
+        f[0x05] = (fault, 4)                          # frame+5 -> bank+0xd0 (FaultCode)
+    wire.feed_frame(f)
+    sim.run(6_000_000)
+    return sim.r32(STATE + 0xa0) & 0xFF, sim.r32(STATE + 0x98)   # IR_STATE, FaultCode
+
+
+def test_usart2_classifier_is_pure_passthrough():
+    """The 07 state classifier (sub_0801a678) is a pure pass-through, pinning the two
+    points docs/22 left open (T06b): a non-canonical mode byte appears at IR_STATE
+    verbatim (no canonicalisation to 0x08), and a relayed fault flows to the FaultCode
+    without changing IR_STATE (no 0x02 override). Fresh boot per case. Factory-only."""
+    # non-canonical bytes pass through unchanged
+    for mode in (0x55, 0xff):
+        st, _ = _factory_ir_state_and_fault(mode)
+        assert st == mode, "non-canonical mode 0x%02x -> IR_STATE 0x%02x (expected pass-through)" % (mode, st)
+    # a relayed fault leaves IR_STATE = the mode byte, and composes into the FaultCode
+    st, fcode = _factory_ir_state_and_fault(0x04, fault=0x00000002)
+    assert st == 0x04, "fault changed IR_STATE to 0x%02x (expected 0x04 pass-through)" % st
+    assert (fcode & 0x2) != 0, "relayed fault 0x2 did not reach the FaultCode (got 0x%x)" % fcode
+
+
 # --- USART2 operating-mode -> PC6 run-enable relay (T02b, docs/18, docs/39) -----
 # The full state->relay path, driven black-box: the operating-mode byte fed on the
 # wire flows classifier sub_0801a678 -> IR_STATE (0x2000d0e4+0xa0) -> relay decider

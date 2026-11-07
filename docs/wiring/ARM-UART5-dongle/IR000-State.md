@@ -13,14 +13,20 @@
 **The USART2 bank, and it is the one DSP-originated field in that bank.** The DSP
 computes the real-time working-state byte; it hands it to the **safety CPU** over
 SCI-C, which relays it to the ARM in the USART2 telemetry frame at **`BANK+0`**
-(frame offset `+4`). The ARM's classifier `sub_0801b480` canonicalizes it into
-`IR_STATE`, served to the dongle by the getter `sub_0803289c`.
+(frame offset `+4`). The ARM's classifier `sub_0801a678` writes it to `IR_STATE`
+**verbatim** — a pure pass-through, no canonicalisation and no fault override
+(pinned on the 07 oracle, docs/39 T06b) — served to the dongle by the getter
+`sub_0803289c`. The DSP itself encodes Fault (`0x01`) / Standby (`0x00`) into the
+mode byte, so the ARM does not re-derive the state; a relayed fault appears in the
+FaultCode ([`IR060_063`](IR060_063-FaultCode_WarningCode.md)), not here.
 
 - Bank/relay path: [`docs/33`](../../33-usart2-telemetry-bank.md),
   [`docs/wiring/ARM-USART2`](../../wiring/ARM-USART2-safety.md),
   [`docs/wiring/DSP-SCI-C`](../../wiring/DSP-SCI-C-safety.md).
 - ARM/DSP responsibility split: [`docs/22`](../../22-arm-dsp-core-split.md)
-  (`IR_STATE` = byte at `0x2000a0d8+0x90`, getter `sub_0803289c`).
+  (07 image: `IR_STATE` = byte at `0x2000d0e4+0xa0`, classifier `sub_0801a678`,
+  getter `sub_0803289c`; the `0x2000a0d8+0x90` / `sub_0801b480` in older notes are
+  05-series).
 
 The same `IR_STATE` value also **gates the power-path relays** inside the ARM
 (run-enable follows the mode) — see [`docs/18`](../../18-power-path-relays.md). That
@@ -61,5 +67,6 @@ DATA MENU **Other tab**: `Status` = current status, `NextStatus` = next status. 
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-- **State classifier:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` — canonical mode pass-through (Table 9 + LCD Bypass 0x11/0x19), non-canonical → Standby, and the fault/not-running override (docs/22, T06a). `main.c` publishes IR 0 via `state_publish()`. Factory-oracle parity is T06b (docs/22 "07-series re-pin").
+- **State classifier:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` — IR 0 is a **pure pass-through** of the mode byte (canonical, LCD 0x11/0x19, and non-canonical bytes alike), and a relayed/local fault composes into the FaultCode without changing IR 0 (docs/22, T06a/T06b). `main.c` publishes IR 0 via `state_publish()`.
+- **Factory oracle + ours e2e (T06b):** [`test_arm_sim_factory_only.py`](../../../tests/test_arm_sim_factory_only.py) `test_usart2_classifier_is_pure_passthrough` + `test_usart2_mode_reaches_ir_state` (mode byte on the USART2 wire → IR_STATE verbatim; fault → FaultCode, not IR 0); ours [`test_arm_sim_self_only.py`](../../../tests/test_arm_sim_self_only.py) `test_usart2_mode_classified_passthrough_e2e`.
 - **IR 0 (State):** engine read path — [`test_modbus.c`](../../../tests/test_modbus.c) reads `IR_STATE`. Also the run-enable relay contract: [`arm_sim_contract.py`](../../../tests/arm_sim_contract.py) `RUN_STATES`/`NONRUN_STATES` drive PC6 from the State value, held by `test_relay_follows_working_mode` in [`test_arm_sim_self_only.py`](../../../tests/test_arm_sim_self_only.py) / [`test_arm_sim_factory_only.py`](../../../tests/test_arm_sim_factory_only.py).

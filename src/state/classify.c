@@ -1,10 +1,10 @@
 /*
  * Operating-state classifier + fault/warning composer -- see inv/classify.h.
  *
- * docs/22 (the ARM/DSP split) establishes the shape: the ARM mostly PASSES
- * THROUGH the received mode byte as IR 0, with a not-running/fault override and
- * a canonicalisation of non-standard bytes; and it MERGES the relayed 32-bit
- * fault/warn words with a few ARM-local bits for IR 60-63.
+ * docs/22 (the ARM/DSP split) establishes the shape, refined by the 07 oracle
+ * (docs/39 T06b): the ARM PASSES THROUGH the received mode byte to IR 0
+ * verbatim (no canonicalisation, no fault override), and it MERGES the relayed
+ * 32-bit fault/warn words with a few ARM-local bits for IR 60-63.
  */
 #include "inv/classify.h"
 #include "inv/states.h"
@@ -59,23 +59,18 @@ inv_class_t inv_classify(uint8_t mode_byte, uint32_t relayed_fault,
     if (local_flags & INV_LOCAL_WARN_W008)
         out.warn |= (1u << INV_WARN_BIT_W008);
 
-    /* --- State (IR 0): canonicalised pass-through with a fault override -----
-     * Documented behaviour (docs/22): a fault / not-running condition overrides
-     * the mode, and a non-canonical byte is canonicalised. We report a fault
-     * condition as STATE_FAULT and a non-canonical byte as STATE_STANDBY.
-     *
-     * NOT-YET-ORACLE-VERIFIED (docs/39 T06b): docs/22's prose gives the override
-     * target as 0x02 and a canonicalisation default of 0x08, but those were read
-     * from a 05-series image whose addresses have drifted; the 07 classifier is
-     * not re-pinned yet, so the exact override code and unknown-byte default are
-     * provisional. The composition above and the pass-through of canonical modes
-     * are solid; these two choices are the open points for the factory oracle. */
-    if ((out.fault != 0u) || (local_flags & INV_LOCAL_NOT_RUNNING))
-        out.state = (uint16_t)STATE_FAULT;
-    else if (inv_state_is_canonical(mode_byte))
-        out.state = mode_byte;
-    else
-        out.state = (uint16_t)STATE_STANDBY;
+    /* --- State (IR 0): a PURE PASS-THROUGH of the relayed mode byte ---------
+     * ORACLE-PINNED (docs/39 T06b, 07 image): the classifier writes IR_STATE
+     * (0x2000d0e4+0xa0) as the received mode byte, VERBATIM -- there is no
+     * canonicalisation and no fault override. Proven on the factory by feeding a
+     * mode byte on the USART2 wire and reading IR_STATE back: every byte
+     * 0x00-0xFF appears unchanged (canonical, LCD 0x11/0x19, and arbitrary bytes
+     * like 0x55/0xFF alike), and a relayed fault flows to the FaultCode (IR 60/61,
+     * below) WITHOUT changing IR_STATE. The DSP itself encodes Fault (0x01) /
+     * Standby (0x00) in the mode byte it relays, so the ARM need not re-derive it.
+     * (This CORRECTS docs/22's 05-series guesses of a 0x02 fault-override target
+     * and a 0x08 non-canonical default -- neither exists on the 07 image.) */
+    out.state = mode_byte;
 
     return out;
 }

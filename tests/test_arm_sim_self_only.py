@@ -215,6 +215,31 @@ def test_hr11_resetsetting_is_one_shot_command():
     assert mb.read_holding(HR_RESET_SETTING) == [0], "HR 11 did not read back 0 (should be one-shot)"
 
 
+def test_usart2_mode_classified_passthrough_e2e():
+    """End-to-end on ours: a USART2 safety frame's mode byte is served at IR 0
+    verbatim (pure pass-through, no canonicalisation) and a relayed fault composes
+    into the FaultCode (IR 60/61) WITHOUT changing IR 0 -- the classifier contract
+    pinned against the 07 factory (docs/39 T06b). Fed on the real USART2 RX wire
+    (T05) and read over the dongle; mirrors the factory oracle
+    test_usart2_classifier_is_pure_passthrough."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    IR_STATE, IR_FAULT_L, IR_FAULT_H = 0, 60, 61
+    sim = _ours()
+    mb = ModbusDongle(sim)
+    wire = Usart2SafetyWire(sim, boot=False)
+    # Non-canonical mode 0x55 + a relayed fault bit 22 (0x00400000).
+    wire.feed(build_frame({0x04: (0x55, 1), 0x0d: (0x55, 1), 0x05: (0x00400000, 4)}))
+    st = mb.read_input(IR_STATE)
+    assert st == [0x55], "non-canonical mode 0x55 not passed through to IR 0 (got %r)" % st
+    lo = mb.read_input(IR_FAULT_L); hi = mb.read_input(IR_FAULT_H)
+    assert lo and hi, "FaultCode not served (%r / %r)" % (lo, hi)
+    fault = lo[0] | (hi[0] << 16)
+    assert (fault & 0x00400000) != 0, "relayed fault bit did not reach FaultCode (0x%x)" % fault
+    # IR 0 unchanged by the fault.
+    assert mb.read_input(IR_STATE) == [0x55], "fault changed IR 0 (should stay the mode byte)"
+
+
 def test_w008_tracks_relayed_peer_identity():
     """W008 (FW-version mismatch) is sourced from the peer identity the safety CPU
     relays into the telemetry bank (bank+3..6): it is raised at boot and clears once a

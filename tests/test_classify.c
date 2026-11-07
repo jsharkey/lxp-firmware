@@ -1,14 +1,10 @@
 /* Host tests for the operating-state classifier + fault/warn composer.  make test
  *
- * Covers the parts pinned by the Modbus spec / IR060_063 doc (fault & warn bit
- * composition: relayed word + ARM-local E000/E017/W008, E027 pass-through) and
- * the state pass-through / canonicalisation (Table 9 modes + LCD Bypass codes,
- * non-canonical -> Standby, fault override). docs/22, docs/39 T06.
- *
- * NB the exact STATE override code and unknown-byte default are provisional
- * pending the factory 07 oracle (docs/39 T06b); the vectors here assert the
- * behaviour this implementation commits to, and the deterministic fault/warn
- * composition, not factory parity on those two open points.
+ * Covers the fault & warn bit composition (relayed word + ARM-local
+ * E000/E017/W008, E027 pass-through) and the state pass-through. State is a PURE
+ * PASS-THROUGH of the relayed mode byte -- no canonicalisation, no fault override
+ * -- pinned against the factory 07 oracle (docs/39 T06b; the wire-fed factory and
+ * ours sim checks are in test_arm_sim_*.py). docs/22, docs/39 T06.
  */
 #include "inv/classify.h"
 #include "inv/states.h"
@@ -31,21 +27,27 @@ int main(void)
         CHECK(inv_state_is_canonical(modes[i]), "canonical set membership");
     }
 
-    /* --- state: non-canonical bytes canonicalise to Standby --------------- */
+    /* --- state: non-canonical bytes ALSO pass through verbatim ------------
+     * The 07 classifier does no canonicalisation (docs/39 T06b): an arbitrary
+     * byte appears at IR_STATE unchanged. (inv_state_is_canonical() remains a
+     * query helper for the documented mode set, but it does NOT gate IR_STATE.) */
     const uint8_t junk[] = {0x03,0x05,0x07,0x0D,0x13,0x21,0x7F,0xAA,0xFF};
     for (unsigned i = 0; i < sizeof(junk); i++) {
-        CHECK(!inv_state_is_canonical(junk[i]), "non-canonical rejected");
+        CHECK(!inv_state_is_canonical(junk[i]), "non-canonical not in documented set");
         r = inv_classify(junk[i], 0, 0, 0);
-        CHECK(r.state == STATE_STANDBY, "non-canonical -> Standby");
+        CHECK(r.state == junk[i], "non-canonical byte passes through verbatim");
     }
 
-    /* --- state: fault / not-running override ------------------------------ */
-    r = inv_classify(STATE_PV_ONGRID, 0, 0, INV_LOCAL_NOT_RUNNING);
-    CHECK(r.state == STATE_FAULT, "NOT_RUNNING overrides a running mode");
+    /* --- state: a relayed/local fault does NOT change State ----------------
+     * The fault flows to the FaultCode (IR 60/61); IR_STATE stays the mode byte
+     * (the DSP itself encodes Fault 0x01 / Standby 0x00 into the mode). */
     r = inv_classify(STATE_BAT_ONGRID, (1u << 19), 0, 0);    /* E019 relayed */
-    CHECK(r.state == STATE_FAULT, "a relayed fault overrides the mode");
+    CHECK(r.state == STATE_BAT_ONGRID, "a relayed fault does NOT override state");
+    CHECK(r.fault == (1u << 19), "...it composes into the FaultCode instead");
+    r = inv_classify(STATE_PV_ONGRID, 0, 0, INV_LOCAL_FAULT_E000);
+    CHECK(r.state == STATE_PV_ONGRID, "an ARM-local fault does NOT override state");
     r = inv_classify(STATE_BAT_ONGRID, 0, 0xFFFFFFFFu, 0);   /* warnings only */
-    CHECK(r.state == STATE_BAT_ONGRID, "warnings alone do NOT override state");
+    CHECK(r.state == STATE_BAT_ONGRID, "warnings alone do NOT change state");
 
     /* --- FaultCode composition (IR 60/61) --------------------------------- */
     r = inv_classify(STATE_STANDBY, 0, 0, 0);
@@ -77,7 +79,7 @@ int main(void)
                      INV_LOCAL_FAULT_E000 | INV_LOCAL_WARN_W008);
     CHECK(r.fault == ((1u<<22)|(1u<<0)), "fault word independent of warn");
     CHECK(r.warn  == ((1u<<25)|(1u<<8)), "warn word independent of fault");
-    CHECK(r.state == STATE_FAULT, "fault present -> state override even w/ warn");
+    CHECK(r.state == STATE_AC_CHARGE, "state stays the mode byte regardless of fault/warn");
 
     printf("test_classify: %d checks, %d failed\n", g_run, g_fail);
     return g_fail ? 1 : 0;

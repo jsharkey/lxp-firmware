@@ -96,7 +96,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | Settings persistence | 56 HRs pinned in slots 0/5 ([`docs/23`](23-arm-config-writer.md)) | **62** persisted via `include/inv/settings_map.h` (T03): docs/23's 56 + 6 AC-First windows, cross-image green | gated schedules (74, 76-89), Q(V)/PF block — need a precondition |
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
-| State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | **`inv_classify()`** publishes IR 0 + IR 60-63 (`src/state/classify.c`, T06a) | factory oracle (T06b) blocked on 07 re-pin; mode byte source is USART2 (T05) |
+| State / fault classifier | `sub_0801a678` ([`docs/22`](22-arm-dsp-core-split.md)) | **`inv_classify()`** publishes IR 0 + IR 60-63 (`src/state/classify.c`); **pure pass-through pinned on the 07 oracle (T06b)** — IR 0 = mode byte verbatim, fault/warn compose to IR 60-63; fed live from USART2 (T05) | — (closed) |
 | ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (source is the **USART2** safety-CPU bank, T05 — *not* a USART3 `0x49`; corrected by T09). IR 19 PF + IR 107 now served from the bank (T07b); IR 77/64/67 are **not** bank-relayed (corrected T07b) |
 | DSP link RX (USART3) | **Modbus-slave + bootloader demux** (`sub_0801c3e6`); NOT a `0x49` parser — that's USART2 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **demux + Modbus-serve done** (`src/dsp/dsp_rx.c` + `dsp_rx_port.c`, T09) | **closed (T09)**; link-loss supervision is T08 |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
@@ -333,8 +333,8 @@ same Modbus input registers on both images).
   `safety_rx_link_ok(now, timeout)` expose link liveness; T08 maps a stale link to
   the comms-loss fault (E017). Left as the hook, not the policy, per T08's scope.
 
-### T06 — Operating-state classifier + fault/warning composer (`sub_0801b480`)
-**Status:** split → **T06a `[x]`** (ours + host), **T06b `[ ]`** (factory oracle, blocked) · claude 2026-11-06 · **Layer:** **micro** (classic case) + sim e2e · **Unblocks:** T13, T14
+### T06 — Operating-state classifier + fault/warning composer (`sub_0801a678`)
+**Status:** split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
 
 - **T06a `[x]` — our classifier + host oracle (done).** Pure
   `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
@@ -346,18 +346,22 @@ same Modbus input registers on both images).
   `main.c`: IR 0 + IR 60-63 are now published **through the classifier** instead
   of a hard-seeded Standby (`state_publish()`), so the real mode/fault/warn flow
   out to Modbus as soon as the USART2 ingest feeds them.
-- **T06b `[ ]` — factory oracle (blocked on the 07 re-pin).** The micro-test
-  sweep against the factory classifier can't be built yet: docs/22's addresses
-  are **05-series** and don't hold on the 07 oracle — the classifier isn't at
-  `sub_0801b480`, the telemetry bank base `0x20009e54` / `IR_STATE 0x2000a168`
-  are referenced nowhere in the 07 image, and the getter's reg-0 reads land in
-  Modbus frame buffers; dynamically the classifier only reclassifies on a USART2
-  frame ingest (needs **T02**). This is the same "retracted phantom" re-pin the
-  relay tests (docs/18) and the (currently red) safety-telemetry test wait on.
-  Precise hand-off — what to find and the test scaffolding to add — is in
-  [`docs/22`](22-arm-dsp-core-split.md) "07-series re-pin". The two unverified
-  points in `inv_classify` (state override target; non-canonical default) are
-  flagged in-code for when the oracle lands.
+- **T06b `[x]` — factory oracle (done, T02b-unblocked).** With the USART2 wire
+  running (T02b) the classifier is pinned on the 07 image: **IR 0 is a pure
+  pass-through of the relayed mode byte** — no canonicalisation, no fault override.
+  Proven by feeding mode bytes on the wire and reading IR_STATE (`0x2000d0e4+0xa0`):
+  every byte 0x00–0xFF appears verbatim (canonical, LCD 0x11/0x19, and arbitrary
+  bytes 0x55/0xFF alike), and a relayed fault flows to the FaultCode (IR 60/61)
+  **without** changing IR_STATE. This **corrected both of docs/22's 05-series
+  guesses** (no 0x02 override target, no 0x08 non-canonical default) and
+  `inv_classify` was fixed to match (canonicalisation + override removed, the
+  `INV_LOCAL_NOT_RUNNING` flag dropped). Classifier = `sub_0801a678`, bank base
+  `0x2000ce5c`, all re-pinned in T02a/T02b. Tests: `test_usart2_classifier_is_pure_passthrough`
+  + `test_usart2_mode_reaches_ir_state` (factory), `test_usart2_mode_classified_passthrough_e2e`
+  (ours), `test_classify.c` (host). The isolated-call `ClassifyBackend` the card
+  envisioned proved unnecessary (the deciders fault when called in isolation —
+  docs/18); the wire-fed e2e is the oracle. See [`docs/22`](22-arm-dsp-core-split.md)
+  "T06b RESOLVED".
 
 [`docs/22`](22-arm-dsp-core-split.md) says the ARM's mode module is a
 **classifier, not a power FSM**:

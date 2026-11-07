@@ -244,20 +244,36 @@ the fed mode. So the classifier, IR_STATE, decider and health inputs are all pin
 closing what was
 a prerequisite shared by T06b (the classifier oracle), the relay tests, and the
 safety-telemetry test, and is adjacent to T02 (running the USART2-ingest/
-classifier task in the sim). Until then, our `inv_classify()`
-(`src/state/classify.c`) is grounded in the **documented** behaviour (this doc +
-the IR000 / IR060_063 register docs) and host-tested (`tests/test_classify.c`),
-with the two unverified points flagged in-code: the fault/not-running **state
-override target** and the **non-canonical-byte default**.
+classifier task in the sim). Our `inv_classify()` (`src/state/classify.c`) is
+host-tested (`tests/test_classify.c`) and now pinned against the 07 oracle.
 
-### What a re-pinner needs to find (for T06b)
-1. The 07 **telemetry bank base** (where the getter sources IR 1/2/12-14 etc.) —
-   start from `sub_0803373c`'s func-4 path and follow the getter's reg→RAM reads
-   for a *measurement* register (not reg 0, which hits the frame buffer).
-2. The 07 **IR_STATE byte** (getter reg-0 source).
-3. The **classifier** = the one function that writes that byte from a received
-   mode byte; expect it near the 05 site (the `0x0801b4xx–0x0801b9xx` cluster).
-4. Then add a `ClassifyBackend` to a `tests/classify_contract.py` (seed the mode
-   byte + fault flags, call the classifier in isolation, read IR_STATE/60-63) and
-   an `OursBackend` (call `inv_classify` by symbol, like `timewindow_contract.py`),
-   and sweep mode bytes 0x00–0xFF × fault conditions as the shared vectors.
+### T06b RESOLVED — the classifier is a pure pass-through
+
+Both points that were open (read from a 05-series image) are now pinned on the 07
+oracle by feeding a mode byte on the USART2 wire and reading IR_STATE
+(`0x2000d0e4+0xa0`) and the FaultCode (`STATE+0x98`) back (fresh boot per case, to
+avoid the assembler-ready-flag wedge that builds after ~8 frames in one boot):
+
+- **Non-canonical-byte default → there is none: the byte passes through verbatim.**
+  0x55 → IR_STATE 0x55, 0xFF → 0xFF, 0x03 → 0x03, 0x11/0x19 → themselves. The
+  classifier does **no** canonicalisation (docs/22's 05-series guess of a `0x08`
+  default was wrong).
+- **Fault-override target → there is none: a relayed fault does not change
+  IR_STATE.** mode 0x04 + fault 0x2 → IR_STATE 0x04 with FaultCode bit 1 set;
+  mode 0x10 + fault 0x100 → IR_STATE 0x10 with FaultCode bit 8 set. The fault flows
+  to the FaultCode (IR 60/61) only (docs/22's 05-series guess of a `0x02` override
+  was wrong). The DSP itself encodes Fault (0x01) / Standby (0x00) into the mode
+  byte it relays, so the ARM need not re-derive the state.
+
+So **IR 0 = the relayed mode byte, verbatim**, and the fault/warn words compose into
+IR 60-63 (relayed word + ARM-local E000/E017/W008). `inv_classify()` was corrected
+to match (the canonicalisation and the fault/not-running override were removed; the
+`INV_LOCAL_NOT_RUNNING` flag was dropped). Tests: factory oracle
+`test_usart2_classifier_is_pure_passthrough` + `test_usart2_mode_reaches_ir_state`
+(`tests/test_arm_sim_factory_only.py`); ours e2e
+`test_usart2_mode_classified_passthrough_e2e` (`tests/test_arm_sim_self_only.py`);
+host `tests/test_classify.c`. Items 1-3 of the earlier re-pin checklist were
+resolved during T02a/T02b (bank base `0x2000ce5c`, IR_STATE `0x2000d0e4+0xa0`,
+classifier `sub_0801a678`); item 4's isolated-call `ClassifyBackend` proved
+unnecessary — the deciders fault when called in isolation (docs/18), so the oracle
+is the wire-fed e2e above instead.
