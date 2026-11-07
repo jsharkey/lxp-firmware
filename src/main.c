@@ -295,9 +295,10 @@ int main(void) {
     }
     /* FW-version read-back (HR 9/10, docs/32 / T12): report ours. HR9 low =
      * redundant CPU (0 on the 12000XP), HR9 high = this ARM comms-CPU version;
-     * HR10 low = DSP version (relayed over USART2 when that RX lands, 0 until
-     * then), HR10 high = FW-version code. W008 (version mismatch) stays clear
-     * until a remote version is actually received (docs/31). */
+     * HR10 low = DSP version (relayed over USART2, refreshed live in the loop),
+     * HR10 high = FW-version code. W008 tracks the relayed peer-identity compare
+     * in the loop (bank+3..6 vs our model code, docs/31/32/33). The HR10 seed
+     * below is the pre-link value (DSP version 0 until the safety CPU reports). */
     g_rt.holding_reg[HR_SLAVE_COM_VER] = (uint16_t)(OSS_ARM_COMMS_VER << 8);
     g_rt.holding_reg[HR_CNTL_FW_VER]   = (uint16_t)(OSS_FW_VERSION_CODE << 8);
 
@@ -358,6 +359,16 @@ int main(void) {
         g_state_in.relayed_warn  = safety_rx_warn();
         safety_cpu_publish(g_rt.input_reg, 160);
         inv_telemetry_publish(g_rt.input_reg, &g_telemetry);  /* ARM-computed powers / Seps / runtime (T07) */
+        /* Identity/version relayed by the safety CPU (docs/32/33, T12): HR 10 low =
+         * the DSP FW version (bank+2); W008 is raised while the peer identity
+         * (bank+3..6) does not match our model code -- clears once the safety link
+         * reports the matching identity (factory sub_0801a93a vs "ceaa", T02b). */
+        g_rt.holding_reg[HR_CNTL_FW_VER] =
+            (uint16_t)((OSS_FW_VERSION_CODE << 8) | safety_cpu_dsp_version());
+        if (safety_cpu_fw_mismatch())
+            g_state_in.local_flags |= INV_LOCAL_WARN_W008;
+        else
+            g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_WARN_W008;
         state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 

@@ -101,7 +101,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | DSP link RX (USART3) | **Modbus-slave + bootloader demux** (`sub_0801c3e6`); NOT a `0x49` parser — that's USART2 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **demux + Modbus-serve done** (`src/dsp/dsp_rx.c` + `dsp_rx_port.c`, T09) | **closed (T09)**; link-loss supervision is T08 |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
-| Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | **HR 11 one-shot dispatch** (`src/state/command.c`: energy-clear, BMS switch, real reboot; defaults/adj/fault/monitor accepted-ignored), **HR 15 live address change** (after reply, loaded on boot), HR 9/10 own-version read-back; `check_sn=false` (T12) | defaults/adj/fault/monitor record ops; wrong-SN factory behaviour (T02) |
+| Command registers | HR 11 reset / defaults / reboot, HR 15 addr, SN | **HR 11 one-shot dispatch** (`src/state/command.c`: energy-clear, BMS switch, real reboot; defaults/adj/fault/monitor accepted-ignored), **HR 15 live address change** (after reply, loaded on boot), HR 9 own-version read-back, **HR 10 low live DSP version** + **W008 identity compare** (vs "ceaa", latched; `src/safety/safety_cpu.c`); `check_sn=false` (T12, W008/HR10 pinned by T02b) | defaults/adj/fault/monitor record ops; health-bit→WarningCode gating for W008 (T06b); wrong-SN factory behaviour (factory-dongle UART5 harness) |
 | Schedules | AC-First + AC-charge windows evaluated ARM-side | AC-First window verdict only (`src/sched/acfirst.c`); optchg is dormant in the factory too (Q5) | charge/discharge/gen schedules + SOC/V gates |
 | Relays | driven by the mode task `sub_0801b3dc` ([`docs/18`](18-power-path-relays.md)) | `src/relay.c` mirrors 2 contracts | sequencing under the live mode |
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
@@ -581,10 +581,11 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
 **Status:** `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
 
 Done — HR 11 command dispatch, HR 15 live address change, HR 9/10 own-version
-read-back, and the SN/W008 behaviour decisions are implemented and tested. The
-items below record what is proven vs. what is pinned by decision because the
-factory behaviour is not observable in this harness (its UART5 path is a
-non-NVIC task, T02).
+read-back + live DSP version, and W008 (identity compare) are implemented and
+tested. W008 and the DSP-version read-back were pinned and proven once the USART2
+wire ran (T02b); the HR 15 timing and wrong-SN behaviour remain decisions because
+they live on the factory's **dongle UART5** slave task, which the sim does not
+schedule (a separate factory-dongle harness — not T02, which is done).
 
 - **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
   [`docs/23`](23-arm-config-writer.md) §Reset-to-default): **done.**
@@ -598,18 +599,26 @@ non-NVIC task, T02).
 - **HR 15 ComAddr:** **done.** Ours adopts the new address after the write's own
   reply (deferred one transaction so the ACK lands on the old address), and loads
   the stored value on boot — no reboot. Address-0 broadcast and the factory's exact
-  apply-moment are **not observable** here (T02); our contract is "immediate, after
-  the reply". Test: `test_comaddr_changes_slave_address_live`.
+  apply-moment are **not observable** here (factory-dongle UART5 task, not scheduled
+  — not T02); our contract is "immediate, after the reply". Test:
+  `test_comaddr_changes_slave_address_live`.
 - **SN (HR 2-6):** persisted via T03 (`0x10` write-multiple); ours runs
   `check_sn=false` (SN echoed, not required to match). Whether the factory drops or
-  excepts a wrong-SN frame is **not observable** (sim-blocked, T02); decision in
-  docs/31 is to serve any correctly addressed frame rather than risk stranding a
-  dongle.
-- **HR 9-10 versions + W008:** **done.** Ours seeds HR 9 high / HR 10 high from its
-  own build constants (`OSS_ARM_COMMS_VER`, `OSS_FW_VERSION_CODE`), keeps HR 10 low
-  as the live relayed DSP byte, and holds **W008 clear** until a real relayed version
-  arrives (the version-compare feed is T02-blocked) rather than firing on placeholder
-  constants. Decisions recorded in [`docs/31`](31-factory-quirks.md).
+  excepts a wrong-SN frame is **not observable** (factory-dongle UART5 task, not
+  scheduled — not T02); decision in docs/31 is to serve any correctly addressed frame
+  rather than risk stranding a dongle.
+- **HR 9-10 versions + W008:** **done, and pinned by T02b.** Ours seeds HR 9 high /
+  HR 10 high from its own build constants (`OSS_ARM_COMMS_VER`, `OSS_FW_VERSION_CODE`)
+  and now serves **HR 10 low live from the relayed DSP version** (`bank+2`), proven on
+  the factory (`test_usart2_dsp_version_reaches_hr10_low`). **W008 is a model-IDENTITY
+  compare** (not a numeric version compare): the classifier matches the relayed peer
+  identity (bank+3..6) against "ceaa" and sets the version-OK health bit `0x2000d890`
+  bit 10 — proven both directions (`test_usart2_identity_drives_version_health_bit`).
+  Ours implements the same case-insensitive compare vs `model_code`, latched, raising
+  W008 while unmatched (`src/safety/safety_cpu.c`; host `test_w008.c`, ours
+  `test_w008_tracks_relayed_peer_identity`). **Open (→ T06b):** how that health bit
+  gates into the Modbus WarningCode is not yet pinned (it does not surface in the bare
+  harness). Decisions recorded in [`docs/31`](31-factory-quirks.md).
 
 ### T13 — HMI status dashboard (overview screen; no editors)
 **Status:** `[ ]` · **Layer:** sim (panel framebuffer) + host (layout) · **Soft-depends:** T06/T07 for real values (works with injected values earlier)

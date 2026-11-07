@@ -258,6 +258,75 @@ def test_usart2_mode_drives_pc6():
                             % (mode, kind, got, exp))
 
 
+# --- USART2 peer identity -> W008, DSP version -> HR 10 low (T12, docs/32/33) ---
+# W008 (FW-version mismatch) is the classifier's verdict on the peer identity the
+# safety CPU relays in its tag-0 record (frame +0x15..+0x18 -> bank +3..6): the
+# classifier (sub_0801a93a) case-insensitively compares those 4 bytes against the
+# model code "ceaa" and sets health 0x2000d890 bit 10 (-> W008 clear) only on a
+# match. The relayed DSP FW version (frame +0x19 -> bank +2) is served as HR 10's
+# low byte (docs/32). These are the register-level facts T12 parked as "not
+# observable" until the USART2 wire ran (T02); now they are. Factory-only.
+def _factory_version_health_bit10(ident):
+    """Boot a fresh factory, warm the safety link, feed a tag-0 safety frame whose
+    identity bytes (+0x15..+0x18) spell `ident`, and return bit 10 of the health word
+    0x2000d890 (the "version OK" bit the classifier's identity compare sub_0801a93a
+    drives; docs/39 T02b). A fresh boot per identity keeps the two directions
+    independent."""
+    from arm_sim_usart2 import Usart2SafetyWire
+    TRUST_CTR = 0x2000da3e
+    HEALTH = 0x2000d890
+    wire = Usart2SafetyWire(_factory())
+    sim = wire.sim
+    sim.w32(TRUST_CTR, (sim.r32(TRUST_CTR) & ~0xFFFF) | 0x54)    # warm the frame-trust counter
+    sim.set_input("PD8", 1)                                      # safety-link detect present
+    f = {0x14: (0, 1), 0x19: (0x05, 1), 0x29: (0x1234, 2)}
+    for i, b in enumerate(ident):
+        f[0x15 + i] = (b, 1)
+    wire.feed_frame(f)
+    wire.feed_frame({0x14: (2, 1), 0x11: (0, 1), 0x12: (0, 1)})  # a clean measurement frame
+    sim.set_input("PD8", 1)
+    sim.run(6_000_000)                                          # health evaluation runs
+    return (sim.r32(HEALTH) >> 10) & 1
+
+
+def test_usart2_identity_drives_version_health_bit():
+    """W008 (FW-version mismatch) is sourced from a model-IDENTITY compare, not a
+    numeric version compare: the classifier case-insensitively compares the relayed
+    peer identity (tag-0 +0x15..+0x18 -> bank+3..6) against "ceaa" (sub_0801a93a) and
+    sets the "version OK" bit (0x2000d890 bit 10) only on a match -- a non-matching
+    identity leaves it clear. This is the pinned mechanism behind W008 (docs/39 T12,
+    T02b). Each direction is a fresh boot. Factory-only.
+
+    NOTE (open, T06b-adjacent): in this bare harness the health bit does NOT surface
+    as a WarningCode bit at STATE+0x9c (it stays 0 either way), so how the version-OK
+    bit gates into the Modbus WarningCode is not yet pinned -- only the identity->
+    health-bit step is proven here."""
+    assert _factory_version_health_bit10(b"ceaa") == 1, \
+        "version-OK health bit not set for a matching peer identity 'ceaa'"
+    assert _factory_version_health_bit10(b"zzzz") == 0, \
+        "version-OK health bit set for a non-matching peer identity 'zzzz'"
+
+
+def test_usart2_dsp_version_reaches_hr10_low():
+    """The DSP firmware version the safety CPU relays (tag-0 frame +0x19 -> bank+2)
+    is served as HR 10's low byte (docs/32). Feed a tag-0 frame carrying a version
+    byte and read HR 10 back over Modbus. Factory-only (docs/39 T12)."""
+    from arm_sim_usart2 import Usart2SafetyWire
+    from arm_sim_modbus import ModbusDsp
+    HR_CNTL_FW_VER = 10
+    sim = _factory()
+    mb = ModbusDsp(sim)                               # boots the RTOS + config flash
+    wire = Usart2SafetyWire(sim, boot=False)          # share that one boot
+    sim.w32(0x2000da3e, (sim.r32(0x2000da3e) & ~0xFFFF) | 0x54)
+    # tag-0 with identity "ceaa" and DSP version 0x2a at frame +0x19.
+    wire.feed_frame({0x14: (0, 1), 0x15: (ord('c'), 1), 0x16: (ord('e'), 1),
+                     0x17: (ord('a'), 1), 0x18: (ord('a'), 1), 0x19: (0x2a, 1)})
+    sim.run(2_000_000)
+    rd = mb.read_holding(HR_CNTL_FW_VER)
+    assert rd is not None and (rd[0] & 0xFF) == 0x2a, \
+        "relayed DSP version 0x2a did not reach HR 10 low (got %r)" % rd
+
+
 # --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------
 # The firmware has a per-pack register bank: the parser sub_080205d4 stores CAN
 # frames (id = 0x400 | (subtype<<5) | pack) into a per-pack array (0x2000691c,

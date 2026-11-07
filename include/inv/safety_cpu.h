@@ -17,6 +17,7 @@
 #define INV_SAFETY_CPU_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define SAFETY_BANK_SIZE 256u
 
@@ -26,6 +27,13 @@ extern uint8_t g_safety_bank[SAFETY_BANK_SIZE];
 
 /* Byte offsets of each telemetry field within g_safety_bank (docs/33). */
 enum {
+    /* Header / identity (tag-0, docs/33 §"Mode / identity / status"):
+     *   +0x02      Control-CPU (DSP) FW version  -> HR 10 low (docs/32)
+     *   +0x03..06  peer identity bytes           -> W008 compare (vs model_code) */
+    SAFETY_OFF_DSP_VER   = 0x02,
+    SAFETY_OFF_IDENT     = 0x03,  /* 4 bytes */
+    SAFETY_IDENT_LEN     = 4,
+
     SAFETY_OFF_PV1      = 0x4c,
     SAFETY_OFF_PV2      = 0x4e,
     SAFETY_OFF_VAC_R    = 0x20,
@@ -48,5 +56,23 @@ enum {
 /* Publish the decoded telemetry into the Modbus input-register image
  * (`input_reg`, length `n`), applying the EG4 scaling. Safe to call every loop. */
 void safety_cpu_publish(uint16_t *input_reg, uint16_t n);
+
+/* Control-CPU (DSP) firmware version the safety CPU relays at bank+2 (docs/32).
+ * This is HR 10's low byte; HR 10 high is our own FW-version code. */
+uint8_t safety_cpu_dsp_version(void);
+
+/* inv_fw_ident_matches: the stateless 4-char case-insensitive identity compare the
+ * factory classifier does (sub_0801a93a vs "ceaa"; T02b). Returns true when the
+ * relayed identity matches the model code. A NULL/short model_code never matches.
+ * `model_code` is the expected 4-char identity (normally inv_variant()->model_code). */
+bool inv_fw_ident_matches(const uint8_t ident[SAFETY_IDENT_LEN], const char *model_code);
+
+/* W008 (FW-version mismatch): true while ours should raise W008. It is LATCHED like
+ * the factory's version-OK health bit (0x2000d890 bit 10): present from boot (bare
+ * bank, no safety link yet) until a matching peer identity is relayed, then cleared
+ * for the rest of the run. (The peer identity is constant per boot on hardware, so
+ * the latch is only observable across boots -- it keeps a bring-up garbage frame
+ * from flapping W008.) Stateful: reads the live g_safety_bank identity. */
+bool safety_cpu_fw_mismatch(void);
 
 #endif /* INV_SAFETY_CPU_H */

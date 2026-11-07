@@ -215,6 +215,43 @@ def test_hr11_resetsetting_is_one_shot_command():
     assert mb.read_holding(HR_RESET_SETTING) == [0], "HR 11 did not read back 0 (should be one-shot)"
 
 
+def test_w008_tracks_relayed_peer_identity():
+    """W008 (FW-version mismatch) is sourced from the peer identity the safety CPU
+    relays into the telemetry bank (bank+3..6): it is raised at boot and clears once a
+    matching identity ("ceaa", case-insensitive) is relayed -- the same compare the
+    factory classifier does (sub_0801a93a) and, like the factory health bit, LATCHED
+    (a later mismatch does not re-raise it). HR 10 low mirrors the relayed DSP version
+    (bank+2). Ours sources both live in the loop (src/main.c, src/safety/safety_cpu.c)."""
+    from arm_sim_modbus import ModbusDongle
+    IR_WARNCODE_L, HR_CNTL_FW_VER = 62, 10
+    W008 = 1 << 8
+    OFF_DSP_VER, OFF_IDENT = 0x02, 0x03       # safety-bank offsets (safety_cpu.h)
+    sim = _ours()
+    mb = ModbusDongle(sim)
+    bank = sim.sym("g_safety_bank")
+
+    def poke(ident, dsp_ver):
+        sim.uc.mem_write(bank + OFF_IDENT, ident)
+        sim.uc.mem_write(bank + OFF_DSP_VER, bytes([dsp_ver]))
+
+    # A non-matching identity leaves W008 raised (and HR 10 low still tracks bank+2).
+    poke(b"zzzz", 0x2a)
+    warn = mb.read_input(IR_WARNCODE_L)
+    assert warn and (warn[0] & W008) != 0, "W008 not raised on a mismatched peer identity (%r)" % warn
+    hr10 = mb.read_holding(HR_CNTL_FW_VER)
+    assert hr10 and (hr10[0] & 0xFF) == 0x2a, "HR 10 low did not mirror the relayed DSP version (%r)" % hr10
+
+    # A case-insensitive match clears W008 (latches OK).
+    poke(b"CEAA", 0x2a)
+    warn = mb.read_input(IR_WARNCODE_L)
+    assert warn and (warn[0] & W008) == 0, "W008 not cleared by a matching peer identity (%r)" % warn
+
+    # Latched: a later mismatch does not re-raise it (factory parity).
+    poke(b"zzzz", 0x2a)
+    warn = mb.read_input(IR_WARNCODE_L)
+    assert warn and (warn[0] & W008) == 0, "W008 re-raised after a match (should latch) (%r)" % warn
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]

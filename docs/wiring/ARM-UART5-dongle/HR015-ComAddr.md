@@ -19,8 +19,10 @@ no reboot. If the slave switched mid-transaction, its own ACK would leave on the
 new address and the requester (still on the old one) would never see it; so the
 change is deferred by one transaction (`g_pending_com_addr`, applied in the main
 loop after `mb_port_poll`). On boot the stored value (1..150) is loaded as the live
-address. The factory's exact apply-moment is not observable in this harness (its
-UART5 path is a non-NVIC task, T02); "immediate, after the reply" is our contract.
+address. The factory's exact apply-moment is not observable in this harness: the
+factory answers on USART3 (`ModbusDsp`) while its **dongle UART5** slave task is not
+scheduled by the sim — a separate factory-dongle harness, not the T02 USART2 work
+(which is done). "Immediate, after the reply" is our contract.
 See [`docs/31`](../../31-factory-quirks.md) "OSS behaviour decisions".
 
 ## Test coverage

@@ -97,6 +97,8 @@ test:
 	@./$(BUILD)/test_classify
 	$(HOSTCC) $(HOSTFLAGS) src/state/command.c tests/test_command.c -o $(BUILD)/test_command
 	@./$(BUILD)/test_command
+	$(HOSTCC) $(HOSTFLAGS) src/safety/safety_cpu.c src/variant.c tests/test_w008.c -o $(BUILD)/test_w008
+	@./$(BUILD)/test_w008
 	$(HOSTCC) $(HOSTFLAGS) src/energy/energy.c tests/test_energy.c -o $(BUILD)/test_energy
 	@./$(BUILD)/test_energy
 	$(HOSTCC) $(HOSTFLAGS) src/settings/settings_validate.c tests/test_settings_validate.c -o $(BUILD)/test_settings_validate

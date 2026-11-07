@@ -4,8 +4,51 @@
  */
 #include "inv/safety_cpu.h"
 #include "inv/modbus_map.h"
+#include "inv/variant.h"
 
 uint8_t g_safety_bank[SAFETY_BANK_SIZE];
+
+/* ASCII lowercase, locale-independent (the factory compare is case-insensitive,
+ * sub_0801a93a). */
+static char to_lower(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (char)(c + ('a' - 'A')) : c;
+}
+
+/* W008: does the relayed peer identity match the expected model code? A 4-char
+ * case-insensitive compare (docs/32, docs/33 §tag-0; factory vs "ceaa"). A NULL or
+ * short model_code never matches (-> W008 raised), which is the safe default. */
+bool inv_fw_ident_matches(const uint8_t ident[SAFETY_IDENT_LEN], const char *model_code)
+{
+    if (!ident || !model_code)
+        return false;
+    for (unsigned i = 0; i < SAFETY_IDENT_LEN; i++) {
+        if (model_code[i] == '\0')
+            return false;  /* model_code shorter than 4 chars */
+        if (to_lower((char)ident[i]) != to_lower(model_code[i]))
+            return false;
+    }
+    return true;
+}
+
+uint8_t safety_cpu_dsp_version(void)
+{
+    return g_safety_bank[SAFETY_OFF_DSP_VER];
+}
+
+bool safety_cpu_fw_mismatch(void)
+{
+    /* Latched, like the factory's version-OK health bit (0x2000d890 bit 10,
+     * T02b): W008 is present from boot until a matching peer identity is seen,
+     * then stays cleared for the rest of the run. The relayed identity is constant
+     * per boot on real hardware, so the latch is never observable mid-run -- it
+     * only keeps a transient garbage frame during link bring-up from flapping W008
+     * once the peer has identified itself. */
+    static bool fw_ok;
+    if (inv_fw_ident_matches(&g_safety_bank[SAFETY_OFF_IDENT], inv_variant()->model_code))
+        fw_ok = true;
+    return !fw_ok;
+}
 
 /* Read a native little-endian u16 field from the bank (as the USART2 parser
  * stores it). Signed variant for temperatures. */

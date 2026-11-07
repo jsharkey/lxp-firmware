@@ -275,24 +275,39 @@ matches them deliberately:
 Not factory quirks; these are **our** firmware's chosen behaviour for the
 identity/command registers (docs/39 T12), recorded so they are deliberate:
 
-- **W008 (FW-version mismatch).** W008 is ARM-computed from a version compare
-  ([`HR009_010`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md)). **Ours leaves
-  W008 clear until it has actually received a remote (DSP) version to compare** —
-  i.e. once the USART2 ingest lands (T05) and HR 10 low is populated. Rationale: a
-  version source of 0 at boot must not raise a spurious mismatch warning. The
-  classifier already accepts the bit (`INV_LOCAL_WARN_W008`, `inv_classify`), so
-  only the compare needs wiring when the version source exists.
+- **W008 (FW-version mismatch) — RESOLVED to a model-IDENTITY compare (T02b).** The
+  earlier T12 note ("leave W008 clear until a remote DSP *version* is received")
+  was based on the wrong model. Once the USART2 wire ran (T02), the real mechanism
+  was pinned ([`HR009_010`](wiring/ARM-UART5-dongle/HR009_010-FW-versions.md)): the
+  classifier (`sub_0801a93a`) case-insensitively compares the **peer identity** the
+  safety CPU relays (tag-0 frame `+0x15..+0x18` → bank `+3..6`) against the model
+  code **"ceaa"**, setting the "version-OK" health bit `0x2000d890` **bit 10** only
+  on a match. Proven both directions on the factory (match → bit 10 set, mismatch →
+  clear; `test_usart2_identity_drives_version_health_bit`). **Ours implements this**
+  (`src/safety/safety_cpu.c`, `inv_fw_ident_matches` vs `inv_variant()->model_code`):
+  W008 (`INV_LOCAL_WARN_W008`) is raised while the relayed identity has not matched
+  and **latched** clear once it does — mirroring the factory's latched health bit (a
+  later mismatch does not re-raise it; the peer identity is constant per boot, so the
+  latch is never observable mid-run). **Open (T06b-adjacent):** in the bare harness
+  the health bit does not surface as a WarningCode bit at `STATE+0x9c`, so the factory's
+  gating of that bit into the Modbus WarningCode is unconfirmed; ours surfaces W008 in
+  the WarningCode per spec (`WARN_FW_VERSION_MISMATCH`), which may differ from the
+  factory in states where it suppresses the warning.
 - **HR 9/10 versions.** Ours reports its own build versions as read-back
   (`OSS_ARM_COMMS_VER` → HR 9 high, `OSS_FW_VERSION_CODE` → HR 10 high; HR 9 low =
-  0 redundant CPU, HR 10 low = DSP version when relayed). Read-only — a write
-  draws exception (T04).
+  0 redundant CPU). **HR 10 low (DSP version) is now live**: refreshed each loop from
+  the relayed safety-bank byte `bank+2`, proven to reach HR 10 over Modbus on the
+  factory (`test_usart2_dsp_version_reaches_hr10_low`). Read-only — a write draws
+  exception (T04).
 - **Request-SN checking (HR 2-6).** Ours runs with **`check_sn = false`**: it does
   **not** reject a dongle frame whose 10-byte SN differs from ours; the SN is
   echoed, not matched. Rationale: maximise interop with monitoring tools that do
   not know the unit's SN. (What the *factory* replies to a wrong SN — silence vs
-  an exception — is **not observable in this harness**: the dongle/UART5 path is a
-  non-NVIC task that needs T02, and the factory's provisioned SN in the sim is not
-  its real one. Open; see HR002_006-SN.)
+  an exception — is **not observable in this harness**: the factory answers the
+  harness on USART3 (`ModbusDsp`), while the request-SN check, if any, sits on the
+  **dongle UART5** slave task, which the sim does not schedule — a separate
+  factory-dongle harness, **not** the T02 USART2 work, which is done. The factory's
+  provisioned SN in the sim is also not its real one. Open; see HR002_006-SN.)
 - **HR 11 ResetSetting is one-shot.** Ours applies each set bit as an action and
   reads the register back as 0 (never stored) — `src/state/command.c`,
   dispatching: bit 0 → clear energy/runtime counters, bit 7 → `SCB->AIRCR`
