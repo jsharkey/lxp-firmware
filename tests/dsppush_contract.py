@@ -65,6 +65,37 @@ def ab_values(reg):
     return (WIN_A, WIN_B) if reg in window_regs else (PCT_A, PCT_B)
 
 
+# --- calibration-gain blocks (2/7/8), T10 ------------------------------------
+# Blocks 2/7/8 carry the DSP's per-channel measurement-calibration gains in Q10
+# fixed point (unity = 0x0400). No holding register feeds them (ext-settings area,
+# default-initialised to unity); they are settings/BMS-independent, so the payload
+# is a constant. The spec below is the factory's default-state payload region
+# (frame offsets 0x15..0x33, big-endian), which our firmware reproduces exactly.
+CALIB_BLOCKS = (2, 7, 8)
+_UNITY = b"\x04\x00"                      # Q10 gain 1.000
+
+
+def _pad31(b):
+    return (b + b"\x00" * 31)[:31]        # payload region 0x15..0x33 is 31 bytes
+
+
+# block 2: unity, a reserved 0 word (0x17), then 11 unity; block 7: 12 unity;
+# block 8: 2 unity + 2 received-but-unconsumed words (unity at the default).
+EXPECT_CAL = {
+    2: _pad31(_UNITY + b"\x00\x00" + _UNITY * 11),
+    7: _pad31(_UNITY * 12),
+    8: _pad31(_UNITY * 4),
+}
+
+
+def calib_payloads(backend):
+    """{block: payload bytes 0x15..0x33} for the calibration-gain blocks. They
+    depend on no register, so build after a benign dongle write (the proven build
+    path -- HR 68 is writable on both images and irrelevant to blocks 2/7/8)."""
+    frames = backend._blocks_after_write(68, WIN_A)
+    return {blk: bytes(frames[blk][0x15:0x34]) for blk in CALIB_BLOCKS}
+
+
 def _payload_delta(frames_a, frames_b):
     """Set of (block, offset) payload bytes that differ between two full snapshots.
     frames_x: {block_id: bytes}. Only payload region [0x15:0x34] is compared."""

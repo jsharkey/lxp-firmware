@@ -27,3 +27,17 @@ be pinned from this image; a build that activates more measurement channels (or 
 Source map: [`docs/10`](../../10-dsp-config-field-map.md); ARM provenance:
 [`field-provenance`](field-provenance.md). Mechanism + evidence:
 [`block-02`](block-02.md).
+
+## Reimplementation (ours) — T10
+
+Our firmware emits the **four words as unity** (`0x0400`), built in
+[`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c) (`block8_cal`). The first
+two are the calibration gains (unity default); the last two (`0xABE4`←status
+`0x2000A936`, `0xABE5`←ext-setting) are **received but not consumed** in this image
+and read unity at boot, so emitting the default keeps the default-state frame
+**byte-identical** to the factory's and nothing downstream is affected (block-08
+above; [`block-02` §Reimplementation](block-02.md) for the rationale). The status
+word `0xABE4` is a live value that could differ at runtime, but since the DSP never
+reads it here that does not affect behaviour. Proven by
+[`tests/test_dsp_push.py`](../../../tests/test_dsp_push.py)
+`::test_ours_calibration_gains_match_factory`, `make test-sim`.

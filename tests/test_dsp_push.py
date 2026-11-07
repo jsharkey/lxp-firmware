@@ -25,7 +25,8 @@ sys.path.insert(0, HERE)
 
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
 from dsppush_contract import (DSP_PUSH, WRITABLE_64_89, INERT_64_89,
-                              ab_values, FactoryBackend, OursBackend)  # noqa: E402
+                              ab_values, CALIB_BLOCKS, EXPECT_CAL, calib_payloads,
+                              FactoryBackend, OursBackend)  # noqa: E402
 
 
 def _parse(argv):
@@ -140,6 +141,33 @@ def test_factory_schedule_writability():
         if fb.writable(reg, a):
             bad.append("HR %d should be inert but stored a write" % reg)
     assert not bad, "factory\n        " + "\n        ".join(bad)
+
+
+def test_factory_calibration_gains_unity():
+    """Factory: the calibration-gain blocks (2/7/8) are Q10 unity-gain (0x0400)
+    tables -- the uncalibrated default, fed by no holding register (block-02/07/08
+    + field-provenance). This is the byte spec our firmware reproduces."""
+    fb = _factory_or_skip()
+    got = calib_payloads(fb)
+    fails = []
+    for blk in CALIB_BLOCKS:
+        if got[blk] != EXPECT_CAL[blk]:
+            fails.append("block %d\n          got :%s\n          want:%s"
+                         % (blk, got[blk].hex(" "), EXPECT_CAL[blk].hex(" ")))
+    assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
+def test_ours_calibration_gains_match_factory():
+    """Our blocks 2/7/8 payloads are byte-identical to the factory's -- same unity
+    calibration defaults (T10). Independent of settings/BMS, so one build suffices."""
+    fb, ob = _factory_or_skip(), _ours_or_skip()
+    fp, op = calib_payloads(fb), calib_payloads(ob)
+    fails = []
+    for blk in CALIB_BLOCKS:
+        if fp[blk] != op[blk]:
+            fails.append("block %d\n          FAC :%s\n          OURS:%s"
+                         % (blk, fp[blk].hex(" "), op[blk].hex(" ")))
+    assert not fails, "\n        " + "\n        ".join(fails)
 
 
 def test_push_tracks_changes_over_time():

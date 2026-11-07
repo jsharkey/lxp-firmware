@@ -44,6 +44,14 @@
 
 #define DSP_FRAME_MAX           128     /* generous; real blocks are << this */
 
+/* The type-1 config frame is a FIXED length on the wire: header (0x00..0x13),
+ * block id (0x14), a fixed payload region (0x15..0x33), then a 2-byte CRC at
+ * 0x34..0x35 -- total 0x36 bytes, the length byte the factory frame carries.
+ * The per-block filler writes only its own fields into the payload region and
+ * leaves the rest zero, so every block's frame is the same size. */
+#define DSP_PAYLOAD_END         0x34    /* one past the last payload byte       */
+#define DSP_FRAME_LEN           0x36    /* total frame length incl. CRC         */
+
 /* Everything the push needs from the rest of the system. The config values are
  * read from the same holding-register model the HMI/Modbus layers use, so an
  * HMI edit or a dongle write is picked up by the next snapshot automatically. */

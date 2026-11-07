@@ -203,7 +203,36 @@ the RTC, docs/07); the window **times** themselves travel to the DSP.
 - **Open (one layer):** the derived regions the committer trace can't see because
   they are **not** in the canonical settings struct — the schedule **power/SOC** (HR
   66/67) and the **charge-priority / forced-discharge** features (HR 74–89), plus the
-  **battery limits** and **ext-settings** areas. These need the intermediate writers
+  **battery limits** area. These need the intermediate writers
   traced or a **live USART3 capture** (write a holding reg over the dongle, watch which
   `0x41`-frame byte changes) — the definitive method, since the push is not
   scheduler-driven in the `arm_sim` harness.
+
+## Reimplementation status (ours) — T10
+
+Our packer ([`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c)) now emits a
+**fixed-length frame** (payload `0x15..0x33`, CRC at `0x34..0x35`, total `0x36` —
+the factory's length byte) so the payload region is directly comparable byte-for-byte.
+Per block, against the factory oracle ([`tests/test_dsp_push.py`](../../../tests/test_dsp_push.py)):
+
+| block | ours | parity |
+|---|---|---|
+| **2, 7, 8** (calibration gains) | **done** — constant unity defaults | **byte-identical** (any state) ✓ |
+| 4, 5 (schedule windows) | done (slot-committer) | window region `0x17..0x22` ✓; the rest of the slot record (power/V/SOC) still empty |
+| 0 | best-effort stub (ours' own layout: priority @`0x15`) | **not** byte-identical — needs the grid-charge slot-record derivation |
+| 3, 6 | empty | needs the grid-charge slot-record derivation (`0x2000a330…a360`) |
+| 1 | empty (matches only at the no-BMS boot state) | **blocked on T11** (battery-limit struct `0x2000a68c…`) |
+
+**Hand-offs** (what each remaining block needs):
+- **Block 1** → the battery-limit working struct `0x2000a68c…0x2000a69f`, computed
+  from BMS + settings — that derivation is **T11**.
+- **Blocks 0, 3, 6** → the full grid-charge **slot-record** derivation
+  (`0x2000a330…0x2000a360`): the slot-committer (`src/dsp/dsp_slots.c`) currently
+  commits only the time-**window** fields (blocks 4/5); the slot power/voltage/SOC
+  fields are the "open one layer" above and need their writers traced or a live
+  capture.
+- **Header parity (separate task):** ours' frame header is still the earlier
+  SN+timestamp layout; the factory header is `[0]=0x41`, `[1]=1`, `[3]=0x36` len,
+  status `[5:8]` (the real builder `sub_080258ca`). The payload region is now exact,
+  but the header bytes are not — a [`frame-header`](frame-header.md) follow-up, not
+  part of the block-payload work.

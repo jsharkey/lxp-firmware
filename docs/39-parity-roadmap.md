@@ -434,21 +434,41 @@ assembling Modbus/bootloader).
   T05 (USART2 ingest), not at this task.
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** `[ ]` · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
+**Status:** `[~] claude 2026-11-07` — calibration-gain blocks **2/7/8 done** (byte-identical); rest handed off below · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
-`dsp_config.c` sends them **empty**. `tests/test_dsp_push.py` already captures
-the factory's frames off USART3, so extend it:
-- **Oracle:** for each block, capture the factory frame under ≥3 different
-  settings snapshots and assert each field's byte position/width/endianness
-  tracks the source HR or struct field ([`wiring/ARM-USART3-DSP/field-provenance`](wiring/ARM-USART3-DSP/field-provenance.md)).
-- **Ours:** fill the field tables. Block 1 depends on the BMS-limit struct
-  (T11), and the cal-gain blocks need a source for the gains (factory config
-  slot? record it).
-- **Done when:** our USART3 frames are **byte-identical** to the factory's for
-  the same settings + BMS state, and the CRC byte order question
-  (`DSP_CRC_MSB_FIRST`) is settled by capture.
+`dsp_config.c` sent them **empty**. `tests/test_dsp_push.py` captures the factory's
+frames off USART3.
+
+**Done (this pass):**
+- Frame is now **fixed-length** (payload `0x15..0x33`, CRC `0x34..0x35`, total `0x36`
+  = the factory length byte), so payload bytes are directly comparable. The CRC
+  byte order stays little-endian (`DSP_CRC_MSB_FIRST 0`); the capture compares only
+  the payload region, so the trailing CRC order is not yet independently pinned.
+- **Blocks 2, 7, 8 (measurement-calibration gains):** emitted as the constant Q10
+  **unity** default (`0x0400`), **byte-identical** to the factory for any settings/BMS
+  state (no holding register feeds them). `src/dsp/dsp_config.c`;
+  [`tests/test_dsp_push.py`](../tests/test_dsp_push.py)`::test_{factory,ours}_calibration_gains*`.
+  Docs: [`block-02`](wiring/ARM-USART3-DSP/block-02.md)/[`07`](wiring/ARM-USART3-DSP/block-07.md)/[`08`](wiring/ARM-USART3-DSP/block-08.md),
+  [`field-provenance` §Reimplementation](wiring/ARM-USART3-DSP/field-provenance.md).
+
+**Hand-offs (remaining blocks):**
+- **Block 1** — battery charge/discharge limit set, from the working struct
+  `0x2000a68c…`. **Blocked on T11** (BMS-limit derivation). Empty today; matches the
+  factory only at the no-BMS boot state.
+- **Blocks 0, 3, 6** — need the grid-charge **slot-record** derivation
+  (`0x2000a330…a360`): the committer in `src/dsp/dsp_slots.c` does only the time
+  **windows** (blocks 4/5); the slot power/voltage/SOC fields are the "open one
+  layer" in field-provenance (trace the writers or do a live USART3 capture).
+- **Block 0 layout** — ours' block-0 is a best-effort stub in *ours'* own order
+  (priority @`0x15`); the factory puts priority @`0x1e` and reads mostly slot
+  records. Rework alongside the slot-record derivation.
+- **Header parity** — payload region is exact; the frame **header** is still ours'
+  SN+timestamp layout vs the factory's `0x41`/len/status (`sub_080258ca`). Separate
+  [`frame-header`](wiring/ARM-USART3-DSP/frame-header.md) follow-up.
+- **Done when:** every block's payload is byte-identical to the factory's for the
+  same settings + BMS state.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
 **Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**

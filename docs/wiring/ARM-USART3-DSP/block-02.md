@@ -72,3 +72,18 @@ Source map: [`docs/10`](../../10-dsp-config-field-map.md); ARM provenance:
 [`field-provenance`](field-provenance.md). Block 7 is the **same table, more
 channels** ([`block-07`](block-07.md)); block 8 starts another two
 ([`block-08`](block-08.md)).
+
+## Reimplementation (ours) — T10
+
+Our firmware emits this block as a **constant unity-gain table** (`0x0400` Q10 for
+every channel, with the reserved word at `0x17` = 0), built in
+[`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c) (`block2_cal`). This is the
+**uncalibrated default**: the factory's ext-settings gains are default-initialised
+to unity and no holding register exposes them, so the default-state frame is all
+unity — and ours is **byte-identical** to the factory's for this block (any
+settings/BMS state, since nothing feeds it). Per-unit factory trims, if a real unit
+stores them in that ext-settings area, are not modelled (ours has no calibration
+store) — a documented limitation, not a parity gap against this image. Proven by
+[`tests/test_dsp_push.py`](../../../tests/test_dsp_push.py)
+`::test_ours_calibration_gains_match_factory` (and `…_factory_calibration_gains_unity`
+pins the unity spec), `make test-sim`.

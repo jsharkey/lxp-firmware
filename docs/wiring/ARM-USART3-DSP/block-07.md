@@ -40,3 +40,13 @@ would name every gain in blocks 2 & 7 at once.
 Source map: [`docs/10`](../../10-dsp-config-field-map.md); ARM provenance:
 [`field-provenance`](field-provenance.md). Mechanism + evidence:
 [`block-02`](block-02.md).
+
+## Reimplementation (ours) — T10
+
+Our firmware emits this block as **12 contiguous unity gains** (`0x0400` each),
+built in [`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c) (`block7_cal`) —
+the uncalibrated default, **byte-identical** to the factory's block-7 payload (see
+[`block-02` §Reimplementation](block-02.md) for the full rationale and the
+limitation on per-unit trims). Proven by
+[`tests/test_dsp_push.py`](../../../tests/test_dsp_push.py)
+`::test_ours_calibration_gains_match_factory`, `make test-sim`.
