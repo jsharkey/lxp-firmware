@@ -451,7 +451,7 @@ the factory's frames off USART3, so extend it:
   (`DSP_CRC_MSB_FIRST`) is settled by capture.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** `[ ]` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
 
 - **Limits.** The factory derives a working charge-V / charge-I / discharge-I
   from **BMS 0x351 + settings** (HR 99-102, 147-148, EOD 105) into the struct
