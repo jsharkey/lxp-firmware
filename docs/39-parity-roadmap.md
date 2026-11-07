@@ -677,7 +677,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
+**Status:** `[ ]` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state) · **+ a prerequisite surfaced below (T14a: relay-enable derivation)**
 
 [`docs/18`](18-power-path-relays.md) names 6 relay pins and 4 logic functions;
 we mirror 2 contracts (run-enable PC6, manual override PA12/PB3). The rest is
@@ -689,6 +689,30 @@ missing:
 - **Oracle:** with T02 in place, drive state transitions through the bank and
   capture GPIO edge timestamps on the factory. Assert ordering and timing
   within tolerance.
+
+> **Hand-off — executed investigation 2026-11-07 (`claude/019chjb`), then released.**
+> I claimed T14, drove the real relay task under the RTOS (T02), and found the
+> transfer-pair oracle is **gated behind a relay-enable derivation that must be RE'd
+> first** — a prerequisite the card didn't anticipate. Verified on `ceaa-07xx`:
+> - **`sub_08018a7c` (PA12/PB3 AC-transfer) is reached but always takes its
+>   *disabled* branch** (opens both) — never the grid-eval path — so seeding the
+>   grid-qualified bits (`0x2000ce5c+0xbc` bit20 / bits29-30) **does not** switch the
+>   pair. Confirmed by code-exec hooks: enter→`0x08018b96` (disabled) every pass;
+>   `0x08018afc` (grid-eval) never entered. Full executed decode of the function is
+>   in [`docs/18`](18-power-path-relays.md) (PA12+PB3), including the three independent
+>   50-tick debounces `0x2000dba4/5/6` where the sequencing/break-before-make timing
+>   lives — unreachable while the pair is disabled.
+> - **The enable gate** is `0x2000d9ca` bit3 (the only enable that isn't also a grid
+>   disqualifier). It reads 0 and is **re-derived every scheduler pass** by
+>   **`sub_0801887c`** (5 stores to `0x2000d9ca`; `ramxref`), so poking it does not
+>   stick (cleared within ~500k insns). `sub_0801887c` derives it from the config word
+>   **`0x2000d0e4+4` bit9** and the DSP grid state (`0x2000ce5c+0xbc`) — another layer.
+> - **Next step = T14a (prerequisite): RE `sub_0801887c`** — find which config
+>   (likely `HR_FUNC_EN` 21 / `HR_LINE_MODE` 146) + operating-state + grid combination
+>   sets `0x2000d9ca` bit3, drive it so the transfer pair is *enabled*, and only then
+>   oracle the PA12/PB3 switching and its debounce sequencing. PC5 (gen/AC-couple) and
+>   PD11 (dry-contact) likely have analogous enable gates (`0x2000d9ca` bits 1/3) — check
+>   them in the same pass. Released ([`docs/18` "How to finish"](18-power-path-relays.md)).
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
 **Status:** `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**

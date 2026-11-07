@@ -176,3 +176,23 @@ reproducible routes, both using the committed harness:
 
 Tools used: `tools/disres.py` (resolving disassembler — dumps each logic
 function's RAM fields), `tools/gpio_map.py`, `tools/periph_map.py`.
+
+> **Executed finding (T14 attempt, 2026-11-07): route 1 is blocked by a relay-ENABLE
+> gate that must be RE'd first.** Running the real relay task under the RTOS (T02) on
+> `ceaa-07xx` and watching PA12/PB3: `sub_08018a7c` is reached every pass but **always
+> branches to its disabled path** (`0x08018b96`, opens both) — `0x08018afc` (grid-eval)
+> is *never* entered — so seeding the grid-qualified bits (`0x2000ce5c+0xbc`) does not
+> switch the pair. The gate is the enable term `0x2000d9ca` bit3 (the one enable that
+> is not also a grid disqualifier): it reads 0 and is **re-derived every scheduler pass
+> by `sub_0801887c`** (5 stores to `0x2000d9ca`, via `ramxref`), so a poke is cleared
+> within ~500k instructions. `sub_0801887c` in turn derives it from the config word
+> **`0x2000d0e4+4` bit9** and the DSP grid state. So the register-driven *state→relay*
+> map (and the transfer **sequencing**: the three independent 50-tick debounces
+> `0x2000dba4`/`5`/`6` in `sub_08018a7c`) cannot be oracled until `sub_0801887c` is
+> decoded and its enable inputs are driven. **Next step (roadmap T14a):** RE
+> `sub_0801887c` — pin which `HR_FUNC_EN` (21) / `HR_LINE_MODE` (146) / operating-state
+> / grid combination sets `0x2000d9ca` bit3, drive it to *enable* the pair, then resume
+> route 1. PC5/PD11 likely gate on `0x2000d9ca` bits 1/3 the same way — check together.
+> (The **manual/AutoTest override** path of `sub_08018a7c` — `+0xa9==1` →
+> PB3←`0x2000da6c` bit0, PA12←bit1 — needs no enable and is already the contract we
+> mirror; it is the *normal*-path transfer that is gated.)
