@@ -48,7 +48,11 @@ read back what it produced — see each entry's *How found*.
   IR 101.
 - **How found:** `CanBattery.send_soc_soh(77, 96)` then read IR 101 off the
   factory image → `7700` (= SOC×100). Baseline (no frame) reads `0`.
-- **Status:** confirmed.
+- **Status:** confirmed. **Test (T11c):** the factory reproduces it in
+  [`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py)
+  `test_bms_frame_misfiling_quirks_q1_q2` (IR 101 = 7700); ours does not
+  ([`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py)
+  `test_bms_frame_misfiling_quirks_not_reproduced`, IR 101 = 0).
 
 ## Q2 — the `0x359` `"PN"` marker lands in the battery-capacity register
 
@@ -64,7 +68,10 @@ read back what it produced — see each entry's *How found*.
 - **How found:** inject `0x359` with bytes `… 'P' 'N' …`; read IR 97 off the
   factory → `0x4E50`. (The adjacent byte `[4]` = module count → IR 96
   `BatParallelNum` is handled correctly, so this is specifically the marker.)
-- **Status:** confirmed.
+- **Status:** confirmed. **Test (T11c):** same pair as Q1 —
+  `test_bms_frame_misfiling_quirks_q1_q2` asserts the factory's IR 97 = 0x4E50
+  (20048) while IR 96 module count is correct; `..._not_reproduced` asserts ours
+  leaves IR 97 = 0 and still publishes IR 96.
 
 ## Q3 — `0x35A` alarms are received but never surface on Modbus
 
@@ -84,7 +91,11 @@ read back what it produced — see each entry's *How found*.
 - **How found:** inject only `0x35A` with distinctive words; read all input
   registers (groups 0-39/40-79/80-119/120-159) off the factory → no change.
   Confirmed the bytes *are* in RAM (staging), so it is received, not dropped.
-- **Status:** confirmed (for this image / `P07-LUX` preset).
+- **Status:** confirmed (for this image / `P07-LUX` preset). **Test (T11c):** the
+  factory side [`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py)
+  `test_bms_alarm_b_reaches_no_register_q3` (inject only 0x35A → no IR 81-106 moves);
+  ours [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py)
+  `test_bms_alarm_b_not_decoded`.
 
 ## Q4 — `0x356` battery current may reach IR 98 with a 10× unit mismatch
 
@@ -109,7 +120,12 @@ read back what it produced — see each entry's *How found*.
   the resolution above.
 - **How found:** cross-checking the Modbus PDF (IR 98 = 0.01 A) against
   `bms_can_map.h` (0x356 current = 0.1 A) while sweeping the BMS block.
-- **Status:** suspected.
+- **Status:** suspected. **Test (T11c):** no new test — this is a unit-label
+  question, not a value bug. The **1:1 pass-through** both images perform (IR 98 =
+  raw 0x356 current) is already locked for both by
+  [`test_arm_sim.py`](../tests/test_arm_sim.py)
+  `test_can_battery_telemetry_reaches_modbus`. Which physical unit is correct
+  (0.01 A vs 0.1 A) stays open pending a live-bus reading; no scale is asserted.
 
 ## Q5 — `OptimalChg_DisChg` (HR 126-131) is defined but never evaluated
 

@@ -519,7 +519,7 @@ frames off USART3.
   same settings + BMS state.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** split → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[ ]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+**Status:** `[x]` (all three) → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[x]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
 
 Split after the T11a oracle came back much smaller than the card assumed: the
 only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
@@ -564,14 +564,20 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
   [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
 
 #### T11c — BMS quirks Q1-Q4 as committed tests
-**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
+**Status:** `[x] claude/019chjb 2026-11-07` ([`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py), [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py), [`docs/31`](31-factory-quirks.md) Q1-Q4) · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
 
-- Lock in [`docs/31`](31-factory-quirks.md) **Q1-Q4** (`0x355` hi-res SOC →
-  IR 101, `0x359` "PN" → IR 97, `0x35A` dropped, IR 98 10× unit). The verdicts are
-  already written in docs/31; what is missing is a committed test per quirk — a
-  factory-green probe that reproduces the bug (Q1/Q2), a sweep showing it is
-  dropped (Q3), and an explicit "ours does not reproduce it" assertion. The CAN
-  harness (`arm_sim_can.py`) + `ModbusDsp` already do everything these need.
+- **Done.** Each [`docs/31`](31-factory-quirks.md) verdict is now a committed test,
+  factory-oracled on ceaa-07xx and asserted clean on ours:
+  - **Q1** (`0x355` hi-res SOC → IR 101) + **Q2** (`0x359` "PN" → IR 97):
+    `test_bms_frame_misfiling_quirks_q1_q2` reproduces them on the factory
+    (IR 101 = 7700, IR 97 = 0x4E50, IR 96 module count correct);
+    `test_bms_frame_misfiling_quirks_not_reproduced` asserts ours leaves IR 97/101
+    at 0 while still publishing IR 96.
+  - **Q3** (`0x35A` dropped): `test_bms_alarm_b_reaches_no_register_q3` (factory) /
+    `test_bms_alarm_b_not_decoded` (ours) — inject only 0x35A, no IR 81-106 moves.
+  - **Q4** (IR 98 unit): no new test — a unit-label question, not a value bug; the
+    1:1 pass-through both images perform is already locked by
+    `test_can_battery_telemetry_reaches_modbus`. Physical unit stays open (docs/31).
 
 ---
 

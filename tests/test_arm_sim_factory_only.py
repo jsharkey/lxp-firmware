@@ -377,6 +377,47 @@ def test_per_pack_telemetry_reaches_modbus():
         "per-pack registers did not track a change: IR 5000/5001 = %r" % (q0[:2],)
 
 
+# --- BMS CAN -> Modbus misfiling quirks (docs/31 Q1-Q4, T11c) ----------------
+# The factory reproduces these; our firmware deliberately does not (asserted in
+# test_arm_sim_self_only.py). Oracled black-box on ceaa-07xx: these tests ARE the
+# factory spec for each quirk, so docs/31's verdicts are enforced, not just prose.
+def test_bms_frame_misfiling_quirks_q1_q2():
+    """Q1: the 0x355 high-res SOC word [4:5] (=SOC x100) bleeds into IR 101
+    MaxCellVolt_BMS (the real cell-V source frame 0x373 is never wired up). Q2: the
+    fixed "PN" ASCII marker in 0x359 [5:6] lands in IR 97 BatCapacity. The adjacent
+    0x359 module count -> IR 96 is handled correctly, isolating Q2 to the marker."""
+    from arm_sim_modbus import ModbusDsp
+    from arm_sim_can import CanBattery
+    sim = _factory()
+    bat = CanBattery(sim)
+    mb = ModbusDsp(sim)
+    bat.send_soc_soh(77, 96)                 # hi-res SOC = 7700
+    bat.send_alarms(0x0102, 0x0408, pack_count=3)
+    bat.settle()
+    blk = mb.read_input(96, 6) or [None] * 6     # IR 96,97,...,101
+    assert blk[1] == 0x4E50, "Q2: 0x359 'PN' -> IR 97 = %r, expected 0x4E50 (20048)" % (blk[1],)
+    assert blk[5] == 7700,   "Q1: 0x355 hi-res SOC -> IR 101 = %r, expected 7700" % (blk[5],)
+    assert blk[0] == 3,      "sanity: 0x359 module count -> IR 96 = %r, expected 3" % (blk[0],)
+
+
+def test_bms_alarm_b_reaches_no_register_q3():
+    """Q3: the 0x35A alarm frame is received and staged but surfaces on NO Modbus
+    input register. Snapshot IR 81-106, inject only 0x35A with distinctive bytes,
+    and confirm nothing in the BMS block moved."""
+    from arm_sim_modbus import ModbusDsp
+    from arm_sim_can import CanBattery
+    sim = _factory()
+    bat = CanBattery(sim)
+    mb = ModbusDsp(sim)
+    bat.settle()
+    before = mb.read_input(81, 26) or [None] * 26    # IR 81..106
+    bat.send(0x35A, bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22]))
+    bat.settle()
+    after = mb.read_input(81, 26) or [None] * 26
+    diff = [(81 + i, before[i], after[i]) for i in range(26) if before[i] != after[i]]
+    assert not diff, "Q3: 0x35A changed BMS registers (should reach none): %s" % diff
+
+
 # --- RTC software calendar: walk the clock forward (docs/36) ----------------
 # The factory's 1 s RTC tick/calendar-advance is sub_08018bc0; the calendar is a
 # 7-byte struct at 0x2000d850 (+0 s,+1 min,+2 hr,+3 day,+4 mon,+5 yr,+6 wd) and a

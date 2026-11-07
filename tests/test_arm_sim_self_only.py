@@ -252,6 +252,45 @@ def test_w008_tracks_relayed_peer_identity():
     assert warn and (warn[0] & W008) == 0, "W008 re-raised after a match (should latch) (%r)" % warn
 
 
+# --- BMS CAN -> Modbus misfiling quirks: NOT reproduced (docs/31 Q1-Q4, T11c) --
+# The factory misfiles these frames (reproduced in test_arm_sim_factory_only.py);
+# our decoder (src/can/bms_can.c, src/main.c on_can_frame) deliberately does not.
+def test_bms_frame_misfiling_quirks_not_reproduced():
+    """Q1: the 0x355 high-res SOC does NOT bleed into IR 101 (we leave MaxCellVolt
+    alone -- no bogus 7.7 V cell). Q2: the 0x359 "PN" marker does NOT land in IR 97
+    BatCapacity. The real datum we do publish from 0x359 -- the module count -> IR 96
+    -- is still correct."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_can import CanBattery
+    sim = _ours()
+    bat = CanBattery(sim)
+    mb = ModbusDongle(sim)
+    bat.send_soc_soh(77, 96)
+    bat.send_alarms(0x0102, 0x0408, pack_count=3)
+    bat.settle()
+    blk = mb.read_input(96, 6) or [None] * 6         # IR 96,97,...,101
+    assert blk[1] == 0, "Q2 reproduced: IR 97 BatCapacity = %r, ours should leave it 0" % (blk[1],)
+    assert blk[5] == 0, "Q1 reproduced: IR 101 MaxCellVolt = %r, ours should leave it 0" % (blk[5],)
+    assert blk[0] == 3, "IR 96 module count = %r, expected 3 (we publish this one)" % (blk[0],)
+
+
+def test_bms_alarm_b_not_decoded():
+    """Q3: our firmware does not decode 0x35A at all -- injecting it changes no BMS
+    input register (matching the factory, which stages but never publishes it)."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_can import CanBattery
+    sim = _ours()
+    bat = CanBattery(sim)
+    mb = ModbusDongle(sim)
+    bat.settle()
+    before = mb.read_input(81, 26) or [None] * 26
+    bat.send(0x35A, bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22]))
+    bat.settle()
+    after = mb.read_input(81, 26) or [None] * 26
+    diff = [(81 + i, before[i], after[i]) for i in range(26) if before[i] != after[i]]
+    assert not diff, "Q3: 0x35A changed BMS registers (ours should ignore it): %s" % diff
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
