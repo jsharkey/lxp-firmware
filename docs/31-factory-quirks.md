@@ -377,3 +377,74 @@ identity/command registers (docs/39 T12), recorded so they are deliberate:
   are the ones most likely to be precondition-gated — flagged for T24b.
 - **Status:** confirmed (ceaa-07xx, black-box, cold-boot). Oracle committed; ours
   parity gap recorded.
+
+## Q12 — the dongle read path ignores the 40-register group rule
+
+- **Area:** dongle Modbus read (`0x03/0x04`) (`docs/44`, `docs/04`, `docs/25`)
+- **Observed:** the EG4 spec says a query spans **≤ 40 registers** and must not
+  cross a 40-register group boundary (`0-39`, `40-79`, …); a violation should
+  return exception `0x02`. The `ceaa-07xx` read path (`sub_0801ef68`) enforces
+  **neither**. It serves 41 registers from `start 0`, serves `start 39, count 2`
+  (which straddles the 39/40 boundary), and serves up to **127** registers in
+  one response. The only limits are a hard **count ≥ 128 → exception** and a
+  func-`0x03` guard that rejects `start+count` in `[0x0FFF, 0x1388)`.
+- **Expected:** per the published rule, >40 or a boundary-crossing read → `0x02`.
+- **Evidence (confirmed):** static read of the count check in `sub_0801ef68`
+  (`cmp #0x80`, no 40-group test) plus dynamic injection against the factory
+  image — `read_holding(0,41)`, `read_holding(39,2)`, `read_holding(0,127)` all
+  return data; `read_holding(0,128)` returns an exception
+  ([`docs/44`](44-dongle-modbus-crash-surface.md)).
+- **Our firmware:** **diverges deliberately** — `query_span_ok()` enforces the
+  ≤40 + no-boundary-cross rule and returns exception `0x02`
+  ([`docs/04`](04-modbus.md)). A monitoring tool written to the factory's
+  leniency (one >40 read) would get a `0x02` from us. Decision point: keep the
+  stricter spec-correct behaviour (current) or relax to match the factory.
+- **Status:** confirmed. Not a crash — a response-shape/compat deviation.
+
+## Q13 — a truncated frame transiently deafens the register channel
+
+- **Area:** dongle Modbus frame assembler (`docs/44`)
+- **Observed:** the frame assembler (`sub_0801b6be`, struct `@0x2000a304`) holds
+  a partial frame by position until its declared length arrives. If a frame is
+  cut off after a **valid** function byte (so the length is already latched) and
+  the bus then goes quiet, the **next** frame's bytes append onto the stale
+  prefix instead of starting fresh → that frame fails CRC and is lost. A stream
+  of partial frames can keep the channel unresponsive.
+- **Expected:** a clean RTU slave resyncs on the inter-frame gap (t3.5), so a
+  truncated frame costs at most itself.
+- **Evidence (confirmed, self-healing):** the processor `sub_0802d9b2`
+  increments a stall counter `[@0x2000a304+0x456]` each comms-task cycle it runs
+  without a complete frame and, at **10** cycles, resets the assembler
+  (`[+0x44e]/[+0x452]/[+0x458] = 0`) — a software stand-in for the gap flush.
+  Dynamically: `truncated-half-frame → valid-read` fails to answer across a short
+  idle but **recovers** once the idle gap is long enough for the flush to fire
+  (~10 cycles) ([`docs/44`](44-dongle-modbus-crash-surface.md)). Garbage and
+  bad-CRC floods recover immediately (an invalid function byte resyncs at once).
+- **Our firmware:** the transport layer should resync on the RTU inter-frame
+  gap so a partial frame never consumes the next one; verify our `modbus_port.c`
+  gap handling does this (it is framing-timeout based, not a 10-cycle counter).
+  No crash either way — an availability quirk, worst case a self-healing channel
+  stall under a sustained partial-frame flood.
+- **Status:** confirmed (transient; self-heals on an idle gap).
+
+## Q14 — HR 11 / HR 15 are dongle-reachable disruption commands (by design, but note them)
+
+- **Area:** dongle Modbus write (`0x06`) (`docs/44`,
+  `docs/wiring/ARM-UART5-dongle/HR011-ResetSetting.md`, `docs/wiring/ARM-UART5-dongle/HR015-ComAddr.md`)
+- **Observed:** these are not bugs but they are the *only* way a frame on this
+  bus visibly disrupts the inverter, so they are recorded here deliberately.
+  **HR 11** is a command bitfield a single `0x06` write triggers — bit 7
+  `InvReboot` (restart), bit 1 `AlltoDefault` (wipe settings to default + persist
+  to flash), bits 5/6 the BMS charge/discharge switches. **HR 15** moves the
+  inverter's own Modbus slave address; after the write it answers only on the new
+  address, orphaning a master that keeps polling the old one.
+- **Evidence:** dynamic — every HR 11 bit (incl. 7 and 1) echoes and the ARM
+  **stays alive** in the RTOS emulation (the reboot did not manifest as a crash
+  in-emu); HR 15 ← 2 then reads on addr 1 stop and reads on addr 2 answer
+  ([`docs/44`](44-dongle-modbus-crash-surface.md)).
+- **Our firmware:** treat HR 11/HR 15 as privileged commands behind an explicit
+  writable-register allow-list; don't expose a bare "any holding register is
+  writable" surface. A reboot/defaults/address-change command should be gated
+  (and ideally rate-limited), not a reflexive side-effect of a register write.
+- **Status:** confirmed (intended behaviour; logged as a remote-disruption
+  surface, not a firmware defect).

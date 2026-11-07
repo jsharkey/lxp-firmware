@@ -72,6 +72,12 @@ A request may span at most **40 registers** and must **not cross a 40-register
 group boundary** (groups 0–39, 40–79, 80–119, …). Violations return exception
 `0x02` (illegal address). Enforced in `query_span_ok()`.
 
+> **Factory divergence (we are stricter).** The `ceaa-07xx` read path does **not**
+> enforce this rule — it serves >40 registers and boundary-crossing reads, capping
+> only at 128 registers. We keep the spec-correct `0x02` behaviour; the mismatch
+> and the decision are logged in [`docs/31` Q12](31-factory-quirks.md) /
+> [`docs/44`](44-dongle-modbus-crash-surface.md).
+
 ## Status & TODO
 
 - [x] ✅ CRC-16, frame parse/validate, address + optional SN filter

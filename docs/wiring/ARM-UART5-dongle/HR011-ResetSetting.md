@@ -41,6 +41,15 @@ BMS charge/discharge switch requests, bit 7 → `SCB->AIRCR` reboot. Bits 1/2/3/
 (docs/23 open items) rather than faked. See [`docs/31`](../../31-factory-quirks.md)
 "OSS behaviour decisions".
 
+> **Crash/freeze surface (confirmed).** This is the dongle's main remote-disruption
+> lever, so it was checked for wedge/crash behaviour: a `0x06` write of **any** HR 11
+> bit pattern — including bit 7 `InvReboot` and bit 1 `AlltoDefault` — echoes and
+> leaves the ARM responsive in the RTOS emulation (no fault, no hang; the reboot did
+> not manifest as a crash in-emu). It is a *command* register, not a stored value, so
+> our reimplementation gates it behind an explicit writable-register allow-list rather
+> than a plain write. Full audit: [`docs/44`](../../44-dongle-modbus-crash-surface.md),
+> [`docs/31` Q14](../../31-factory-quirks.md).
+
 ## Test coverage
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
