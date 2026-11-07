@@ -270,7 +270,7 @@ excluded. Every real field above was confirmed by single-write capture.
   same settings + BMS state.
 
 ### T23 — Whole-surface read sweep: every register, both images, one diff
-**Status:** ⬜ `[ ]` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
+**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
 
 Most registers are tested one at a time, on the path some feature happened to
 need. Nothing yet checks the **whole map**. Add one common sim test (warm once,
