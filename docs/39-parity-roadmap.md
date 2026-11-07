@@ -342,7 +342,7 @@ The test pins the factory verdicts (a re-pin/image change fails it) and checks
   flagged in Q11 for T24b.
 
 #### T24b — tighten ours to the factory write bounds + SN 0x10 round-trip
-**Status:** ⬜ `[ ]` · **Layer:** micro + sim · **Depends:** T24 (the oracle)
+**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** micro + sim · **Depends:** T24 (the oracle)
 
 Implement the factory's per-register validation in `settings_validate` so
 `OURS_DEVIATIONS` (58 vectors) empties, and add the SN write-multiple round-trip
