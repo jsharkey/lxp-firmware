@@ -309,20 +309,33 @@ file gets a coverage line.
   uncovered.
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
-**Status:** ⬜ `[ ]` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
+**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
 
 For most settings HRs, only *storage* is tested (T03). Whether a dongle write
-actually **reaches the DSP** is not. For example, HR 90/91 EPS V/f note "the
-dongle-side write/push is not yet covered", and HR 16, 22-62, 103, 110,
-146-148 have no push test at all. For each writable HR, write a distinct value
-on the factory image, capture the next full block rotation off USART3, and
-record which block/offset changed (or "none: ARM-local only"). Then run the
-same sweep on ours.
-- This turns [`hr-controlled-fields`](wiring/ARM-USART3-DSP/hr-controlled-fields.md)
-  from a per-field confidence table into a tested matrix. It also hands T10 an
-  exact field list per block.
-- Registers whose effect is evaluated ARM-side (windows, gates) are expected to
-  show "none" here. Their behaviour test lives in T15/T16.
+actually **reaches the DSP** is not. **Now mapped live:**
+[`tools/dsp_push_matrix.py`](../tools/dsp_push_matrix.py) sweeps every writable HR
+(two distinct values, **separate fresh boots** so the modbus-residue false positive
+that the `push_delta` double-write produces cannot occur) and records which
+block·offset each moves, or `none (ARM-local only)`. Output committed:
+[`hr-push-matrix.md`](wiring/ARM-USART3-DSP/hr-push-matrix.md).
+
+**Found (factory):** 29 of 59 push to a block. New vs. the old static table —
+block 6 carries the **generator-charge** set (HR 194–198) and lead-acid
+charge/discharge (HR 99/101/102); block 0 carries **packed enable bytes** (HR 20,
+21, 90/91 shared, 110/112 shared, 120); HR 112 is multi-target (block 0 + block 3).
+This supersedes `hr-controlled-fields`' old "live capture impossible" note (that was
+a **broken-oracle** symptom — the 05-era filler address — not a real limitation).
+
+**Done:** the factory matrix + the T10-relevant fields (blocks 3 & 6 scalars +
+generator-charge) decoded and locked ours==factory in `test_dsp_push.py`
+(`GRID_PUSH`). **Remaining:** decode the packed block-0 enable bytes
+(`0x19/0x1a/0x1c`) and emit them in ours; a full ours-side matrix sweep; and the
+`1-value` registers (145/146/100/113/16/23/61 — only one value stores in the
+default boot) need a storing value pair or static confirmation.
+- Registers whose effect is evaluated ARM-side (windows aside, which *do* push)
+  show `none` here — their behaviour test lives in T15/T16.
+- The full sweep (~4 min, needs the proprietary image) is a tool, not a CI test;
+  the decoded subset is locked by the fast `test_dsp_push.py` cases.
 
 ---
 

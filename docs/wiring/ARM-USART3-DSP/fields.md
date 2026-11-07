@@ -83,6 +83,8 @@ the **same spec against both images**: [`tests/test_dsp_push.py`](../../../tests
 
 **Which fields a dongle holding register controls** (end-to-end, both factory
 images, with confidence): [`hr-controlled-fields.md`](hr-controlled-fields.md).
+The **live-capture map** of every writable HR → block·offset (which settings reach
+the DSP vs. stay ARM-local) is [`hr-push-matrix.md`](hr-push-matrix.md) (T25).
 
 ## Index — other frames on this wire
 

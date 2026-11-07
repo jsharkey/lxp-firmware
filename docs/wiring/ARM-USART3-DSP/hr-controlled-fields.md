@@ -27,17 +27,24 @@ only when independent evidence from **both** images lines up *and* the engineeri
 **medium** = role clear, exact HR↔field not individually pinned ·
 **low** = plausible guess.
 
-## Honest limitation of the live-capture path
+## The live-capture path now works (earlier limitation was a broken oracle)
 
-The differential capture method (write a dongle HR, rebuild the block, diff bytes —
-`tests/dsppush_contract.py`) only moves bytes for fields the builder reads
-**directly** from the canonical settings struct. For this image a bare dongle
-write does **not** propagate to the block even after pumping the main loop: the
-`HR-shadow → settings-struct → slot/limit working-struct` sync needs an
-apply/mode event a lone `write_single` doesn't trigger (verified: writes read back
-via `fn_ceaa` but no struct/block byte moves). So the ARM→block half rests on
-**static builder emulation** (field-provenance), not a live diff; the live run is
-retained for the **writability** facts below, which it does establish cleanly.
+An earlier revision of this doc said a bare dongle write does **not** propagate to
+the block, so the ARM→block half rested on static builder emulation only. That was
+a symptom of a **broken oracle**, not a real limitation: `dsppush_contract.py`
+called the per-block filler at a **05-era address** (`sub_08024dfc`) that lands
+mid-function in this 07 flat image and wrote nothing, so every live capture came
+back empty. With the filler re-pinned to `0x08026830` (flat base `0x08000000`) and
+the RTOS engine quiesced around the `sim.call`, a lone `write_single` **does** move
+the block bytes for every directly-serialised field. The whole
+[HR → DSP push matrix](hr-push-matrix.md) (T25) is a live single-write diff, and
+the T10 grid-charge scalars are emitted byte-for-byte by our firmware off it.
+
+One real caveat survives: use **two fresh single-write captures** (write A on one
+boot, B on another), not the `push_delta` A-then-B double write on one sim — the
+latter's modbus-transaction residue is a false positive (it is what once "proved"
+HR 75 → block 4 `0x26`; single writes show that byte is constant). See the matrix
+doc's method note.
 
 ---
 
