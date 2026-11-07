@@ -272,6 +272,33 @@ def test_safety_link_loss_raises_e017():
     assert (fault_word() & E017) == 0, "E017 did not clear after the link recovered"
 
 
+def test_dsp_link_loss_raises_e000():
+    """DSP-link (USART3) comms-loss supervision (docs/39 T08): the DSP polls us as a
+    Modbus master on USART3, so a served poll is the liveness signal; once one has
+    been seen, E000 (FaultCode bit 0, "Internal communication fault 1" — RE-confirmed
+    as the DSP link, docs/30) is raised if no poll arrives within the timeout and
+    clears on the next poll. Each ModbusDsp read IS a DSP poll, so the clock is
+    advanced by poking g_ticks between reads. The factory threshold is sim-blocked, so
+    ours uses a conservative default."""
+    from arm_sim_modbus import ModbusDsp
+    IR_FAULT_L, E000 = 60, 1 << 0
+    sim = _ours()
+    dsp = ModbusDsp(sim)                        # the DSP master on USART3
+
+    # a first poll establishes liveness -> E000 clear
+    f = dsp.read_input(IR_FAULT_L)
+    assert f is not None and (f[0] & E000) == 0, "E000 set while the DSP link is alive (%r)" % f
+
+    # go quiet past the timeout -> the next poll's reply shows E000 raised
+    sim.w32(sim.sym("g_ticks"), 5_000_000)     # >> DSP_LINK_TIMEOUT_MS since the last poll
+    f = dsp.read_input(IR_FAULT_L)
+    assert f is not None and (f[0] & E000) != 0, "E000 not raised after the DSP link went quiet (%r)" % f
+
+    # that poll restored liveness -> E000 clears again (recovery)
+    f = dsp.read_input(IR_FAULT_L)
+    assert f is not None and (f[0] & E000) == 0, "E000 did not clear after the DSP link recovered (%r)" % f
+
+
 def test_bms_link_loss_raises_w000():
     """BMS/CAN comms-loss supervision (docs/39 T08): once a recognised pack frame has
     been seen, W000 (WarningCode bit 0, "Battery communication failure") is raised if

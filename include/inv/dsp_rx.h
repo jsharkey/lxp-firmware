@@ -50,4 +50,13 @@ dsp_rx_class_t inv_dsp_rx_classify(uint8_t first, uint8_t func, uint8_t dev_addr
  * map the dongle slave uses. */
 void inv_dsp_rx_poll(const mb_config_t *mb, uint32_t now_ms);
 
+/* DSP-link liveness for the comms-loss watchdog (E000, T08). The DSP polls the ARM
+ * as a Modbus master on USART3; a served poll stamps the link alive. */
+uint32_t dsp_rx_requests(void);          /* count of DSP Modbus polls served      */
+/* True if a DSP poll has been served within `timeout_ms` of `now_ms`. A false
+ * result once the DSP has ever been seen is the comms-loss condition that raises
+ * E000 ("Internal communication fault 1" — the DSP/USART3 link; docs/30, RE: the
+ * factory sets E000 in the DSP config-push builder gated on DSP-link health). */
+bool     dsp_rx_link_ok(uint32_t now_ms, uint32_t timeout_ms);
+
 #endif /* INV_DSP_RX_H */

@@ -163,11 +163,10 @@ already exist**, so the gap list overstated what was untested. **Done:**
 ## P1 — the live data path (telemetry, state, faults)
 
 ### T08 — Peer-link supervision: comms-loss faults, timeouts, recovery
-**Status:** 🚧 split → **safety-link `[x]`** + **BMS `[x]`** (ours wired + tested, 2026-11-07), **DSP (USART3) `[ ]`** (inference-gated) · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
+**Status:** `[x]` — all three peer legs wired + tested (safety/E017, BMS/W000, DSP/E000), 2026-11-07 · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
 
-What happens when the DSP, safety CPU or BMS goes quiet? The **safety-CPU (USART2)**
-and **BMS (CAN)** legs are done; the **DSP (USART3)** leg is held pending a confirmed
-fault-bit assignment (below):
+What happens when the DSP, safety CPU or BMS goes quiet? Each peer leg raises its
+comms-loss code and recovers on the next good frame/poll:
 
 - **Safety link → E017 (done).** Peer-comms-loss on USART2 sets **E017** (FaultCode
   bit 17, `0x20000`) — the ARM-local peer-comms-loss bit the factory also uses
@@ -194,16 +193,21 @@ fault-bit assignment (below):
   Tested e2e on CAN1: `test_bms_link_loss_raises_w000` (`tests/test_arm_sim_self_only.py`)
   — alive → clear, quiet past the timeout → set, fresh pack frame → clears. Host:
   `test_classify.c` W000 composition. (Factory threshold sim-blocked, as for E017.)
-- **DSP (USART3) link → E000 — held (inference-gated).** By elimination the ARM's
-  *other* local internal-comm fault bit (the classifier keeps exactly bits 0 and 17;
-  17 = USART2/safety, proven) is **E000** ("Internal communication fault 1"), which
-  would be the **USART3/DSP** peer. But that is an inference, **not** oracle-proven,
-  and — unlike USART2 (whose driver keeps a frame-health counter, docs/30) — no
-  equivalent USART3-poll liveness mechanism has been located in the image, and the
-  threshold is sim-blocked anyway. Rather than wire a live fault on a guess (a wrong
-  bit would raise a fault the factory doesn't), this leg stays open until E000's
-  source is confirmed by RE or a bench capture. The hook would mirror the others (a
-  `last_rx` on `dsp_rx_port`'s Modbus-request path → `INV_LOCAL_FAULT_E000`).
+- **DSP (USART3) link → E000 (done, RE-confirmed).** **E000** ("Internal
+  communication fault 1") is now confirmed by static RE (not just elimination) to be
+  the **DSP/USART3** internal-comm fault — see [`docs/30`](30-safety-cpu-arm-handoff.md)
+  "E000 = DSP link (07 RE)". In the 07 image (`com_flat.bin`) the ARM-local fault
+  accumulator is `0x2000d808` (07 twin of 05's `0x2000a6c4`; the classifier
+  `sub_0801a678` keeps bits 0 and 17 of it), and **E000 (bit 0) is set inside the DSP
+  config-push builder `sub_080273b4`** (at `0x080276f8`, `[0x2000d808] |= 1`), gated on
+  DSP-link health (health words `0x2000d9c8` bit 10 / `0x2000d890` bit 13); the
+  DSP-RX reset handler `sub_080359b8` arms a ~300-unit timeout and sets the health
+  bits. Ours: the DSP polls us as a Modbus master on USART3, so a served poll is the
+  liveness signal; once one has been seen, the loop raises E000 when
+  `dsp_rx_link_ok(now, DSP_LINK_TIMEOUT_MS)` goes false and clears it on the next poll
+  (`src/main.c`; hooks added to `dsp_rx_port.c`). Tested e2e: `test_dsp_link_loss_raises_e000`
+  (`tests/test_arm_sim_self_only.py`) — alive → clear, quiet past the timeout → set,
+  next poll → clears. (Factory threshold sim-blocked, as for E017/W000.)
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3/6 scalars + block-0 enable core + generator charge)` — blocks **1/2/7/8** byte-identical; **every HR-driven field in blocks 0, 3, 4, 5, 6 now emitted byte-faithful ours==factory** (grid-charge + generator-charge scalars, schedule windows, and block-0 packed enable/priority core). What remains is the **non-HR constant templates** (block 0 identity/version, block 4/5 `0x23+` tails) which need the init/config-flash source traced · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block)

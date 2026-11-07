@@ -191,6 +191,13 @@ static void apply_if_time_reg(uint16_t reg) {
  * gap is a real loss; conservative (the factory threshold is sim-blocked). */
 #define BMS_LINK_TIMEOUT_MS 5000u
 
+/* DSP-link (USART3) comms-loss timeout -> E000 (Internal communication fault 1,
+ * T08). RE (docs/30): the factory sets E000 in the DSP config-push builder
+ * (sub_080273b4) gated on DSP-link health, and its DSP-RX reset handler arms a
+ * ~300-unit timeout; the exact threshold is sim-blocked, so this is a conservative
+ * default. The DSP polls us as a Modbus master, so "alive" = a poll was served. */
+#define DSP_LINK_TIMEOUT_MS 2000u
+
 static mb_config_t g_mb;   /* defined below; forward tentative decl for mb_wr_hold */
 static volatile uint16_t g_pending_com_addr;  /* HR 15: new slave addr to adopt after the reply (0 = none) */
 
@@ -409,6 +416,15 @@ int main(void) {
             g_state_in.local_flags |= INV_LOCAL_WARN_W000;
         else
             g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_WARN_W000;
+        /* DSP-link comms-loss -> E000 (Internal communication fault 1, T08): once
+         * the DSP has polled us on USART3, raise E000 if no poll arrives within the
+         * timeout; clears on the next served poll. (USART3 is serviced later in this
+         * loop by inv_dsp_rx_poll, so this reads the previous pass's stamp.) */
+        if (dsp_rx_requests() > 0 &&
+            !dsp_rx_link_ok(g_ticks, DSP_LINK_TIMEOUT_MS))
+            g_state_in.local_flags |= INV_LOCAL_FAULT_E000;
+        else
+            g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_FAULT_E000;
         state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 

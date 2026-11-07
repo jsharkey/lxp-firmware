@@ -196,6 +196,35 @@ semantics, docs/29).
     bookkeeping runs in the unscheduled periodic USART2 task — so our timeout is a
     conservative default pending a bench capture; the mechanism is as pinned above.
 
+### E000 = the DSP (USART3) link (07 RE, T08)
+
+The two ARM-local internal-comm fault bits the classifier keeps (mask `0x00020001` of
+the local accumulator) are **E017** (bit 17 = USART2/safety, above) and **E000**
+(bit 0). E000 is now confirmed by static RE of the 07 image (`com_flat.bin`) to be the
+**DSP/USART3** link fault, not just an elimination guess:
+
+- The 07 ARM-local fault accumulator is **`0x2000d808`** (the 07 twin of 05's
+  `0x2000a6c4`); the re-pinned classifier `sub_0801a678` reads it with the same
+  `0x00020001` keep-mask that `sub_0801b480` used in the 05 image.
+- **E000 (bit 0) is set inside the DSP config-push frame builder `sub_080273b4`** — the
+  function that assembles the 9-block config the ARM sends the DSP over USART3 (T10).
+  At `0x080276f4..fc` it does `r0 = &0x2000d808; [r0] |= 1`, i.e. raises E000, gated on
+  DSP-link health: `0x2000d9c8` bit 10 (`0x080276c6`) and `0x2000d890` bit 13
+  (`0x080276e6`, the same health word whose bit 10 drives W008). That E000 is asserted
+  on the **DSP-push path**, from DSP-link health, is what ties bit 0 to USART3.
+- The **DSP-RX reset/timeout handler `sub_080359b8`** zeroes the DSP frame-buffer
+  struct at `0x2000d7b0`, arms a `0x12c` (300) reload counter, and sets a health bit —
+  the link-reset bookkeeping behind the health words above.
+
+**Ours (T08).** The DSP polls the ARM as a Modbus master on USART3 (T09), so a served
+poll is our liveness signal. `dsp_rx_port.c` stamps the last served poll and exposes
+`dsp_rx_requests()` / `dsp_rx_link_ok(now, timeout)`; once a poll has been seen,
+`src/main.c` raises **E000** (`INV_LOCAL_FAULT_E000`) when none arrives within
+`DSP_LINK_TIMEOUT_MS` and clears it on the next poll. Tested e2e by
+`test_dsp_link_loss_raises_e000` (`tests/test_arm_sim_self_only.py`). The exact factory
+threshold is sim-blocked (the `0x12c` counter runs in an unscheduled periodic task),
+so the timeout is a conservative default; the bit and behaviour are as pinned above.
+
 ### Note on the reg-9 pointer (Lead 1)
 
 The hand-off's "reg 9 via `sub_0803289c`" is imprecise for this image: input reg 9 is

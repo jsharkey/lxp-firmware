@@ -27,7 +27,13 @@ static uint16_t s_len;                 /* bytes buffered so far               */
 static uint32_t s_last_ms;             /* arrival time of the last RX byte    */
 static int      s_have_last;           /* s_last_ms valid (first byte seen)   */
 
-static void dsp_rx_dispatch(const mb_config_t *mb, const uint8_t *f, uint16_t n)
+/* DSP-link liveness for the E000 comms-loss watchdog (T08). */
+static uint32_t s_req_count;           /* DSP Modbus polls served             */
+static uint32_t s_last_req_ms;         /* tick of the last served poll        */
+static int      s_req_seen;            /* a DSP poll has been served          */
+
+static void dsp_rx_dispatch(const mb_config_t *mb, const uint8_t *f, uint16_t n,
+                            uint32_t now_ms)
 {
     if (n < 2) return;                 /* too short to carry address + func */
     switch (inv_dsp_rx_classify(f[0], f[1], mb->address)) {
@@ -35,6 +41,9 @@ static void dsp_rx_dispatch(const mb_config_t *mb, const uint8_t *f, uint16_t n)
         uint8_t resp[MB_FRAME_MAX];
         size_t rn = inv_modbus_process(mb, f, n, resp, sizeof resp);
         if (rn) dsp_link_tx(resp, rn);     /* answer the DSP on USART3 */
+        s_req_count++;                     /* a served DSP poll -> link alive */
+        s_last_req_ms = now_ms;
+        s_req_seen = 1;
         break;
     }
     case DSP_RX_BOOTLOADER:
@@ -51,7 +60,7 @@ void inv_dsp_rx_poll(const mb_config_t *mb, uint32_t now_ms)
 {
     /* A buffered frame with no new byte for the inter-frame gap is complete. */
     if (s_len && s_have_last && (uint32_t)(now_ms - s_last_ms) >= DSP_RX_IFG_MS) {
-        dsp_rx_dispatch(mb, s_buf, s_len);
+        dsp_rx_dispatch(mb, s_buf, s_len, now_ms);
         s_len = 0;
     }
     /* Drain everything received since the last pass (reading DR clears RXNE). */
@@ -64,4 +73,13 @@ void inv_dsp_rx_poll(const mb_config_t *mb, uint32_t now_ms)
         if (s_len < sizeof s_buf)
             s_buf[s_len++] = b;            /* overflow: keep the head, drop the rest */
     }
+}
+
+uint32_t dsp_rx_requests(void) { return s_req_count; }
+
+bool dsp_rx_link_ok(uint32_t now_ms, uint32_t timeout_ms)
+{
+    if (!s_req_seen)
+        return false;                       /* no DSP poll ever: link not up */
+    return (uint32_t)(now_ms - s_last_req_ms) <= timeout_ms;
 }
