@@ -116,21 +116,24 @@ shows as the low byte of a BE16 word:
 First is ANDed with, above) — reached from `SET_SYSTEM_TYPE` bit0. The bit `0x08` on
 `0x19`'s word (`0xAD83`) is the EPS **60 Hz** flag.
 
-\* **`0x1c` is best-effort, not byte-exact.** Its clean bits (`0x80`/`0x10`/`0x20`
-from `FUNCTION_EN1`, `0x08` from `SET_SYSTEM_TYPE`) are reproduced, but the `0x02`
-base bit has an **uncracked combinational dependency on HR 20/21**: with 110/112 set,
-writing PV-mode (HR 20) and FuncEn (HR 21) to configured values *clears* the `0x02`
-(e.g. `0x9a`→`0x98`). The single-write matrix can't see this (it moves one register);
-only the absolute cross-image check surfaced it. So `0x1c` is excluded from the
-byte-exact `ABS_OFFSETS` set and our firmware emits it best-effort.
+\* **`0x1c`'s `0x02` bit is a "FuncEn-not-yet-configured" latch** — set at boot and
+cleared the first time **HR 21 (`FUNC_EN`) is written, to any value (even 0)**; HR 20
+and the others do not affect it. The single-write matrix couldn't see this (it moves
+one register from a clean boot); only the absolute cross-image check surfaced it, and
+pinning it down showed HR 21 is the sole trigger. Our firmware always has a live,
+configured FuncEn, so it is in the cleared state from boot and **omits `0x02`** — which
+makes `0x1c` **byte-exact ours==factory in the configured state** (the operating
+state, and the one the ABS check exercises, since it writes HR 21). The clean bits
+are `0x80`/`0x10`/`0x20` from `FUNCTION_EN1` and `0x08` (AC-charge-enable) from
+`SET_SYSTEM_TYPE`.
 
 **Our firmware** emits these bytes in `src/dsp/dsp_config.c` `dsp_build_block0()`.
 Routing (which register moves which byte) is verified ours==factory by
 [`test_dsp_push.py`](../../../tests/test_dsp_push.py)
-`test_{factory,ours}_grid_push_matches_spec`; the HR-driven bytes **except `0x1c`**
-are additionally verified **byte-exact ours==factory** by the absolute cross-image
-check `test_ours_matches_factory_absolute`; the transforms are locked by the host
-test [`test_dsp_config.c`](../../../tests/test_dsp_config.c). The surrounding
+`test_{factory,ours}_grid_push_matches_spec`; all six HR-driven bytes are
+additionally verified **byte-exact ours==factory** by the absolute cross-image check
+`test_ours_matches_factory_absolute` (`0x1c` in the configured state); the transforms
+are locked by the host test [`test_dsp_config.c`](../../../tests/test_dsp_config.c). The surrounding
 identity/version template (`0x15–0x18`, `0x1b`, `0x1d`, `0x1f–0x27`, `0x29–0x2e`) is
 **not** driven by any holding register. Decoded (T10): it is boot-**computed** into
 the settings working struct `0x2000c8xx` (zero pre-boot, written during boot — not a

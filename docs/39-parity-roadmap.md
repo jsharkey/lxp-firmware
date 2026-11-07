@@ -258,9 +258,10 @@ and — stronger — an **absolute cross-image check** (`test_ours_matches_facto
 drives both images to the same register state and requires every HR-driven byte to be
 **byte-identical ours==factory** (not just that it moves). That check caught two real
 encoding bugs (a wrong block-0 `0x1c` bit-map; it also forced the per-block, fresh-backend
-write grouping to stay within the factory's dongle-transaction budget). The one byte it
-does **not** assert byte-exact is block-0 `0x1c`, whose `0x02` base has an uncracked
-HR 20/21 interaction (clean bits + AC-charge-enable are reproduced; emitted best-effort).
+write grouping to stay within the factory's dongle-transaction budget). `0x1c` is now
+byte-exact too: its `0x02` bit turned out to be a "FuncEn-not-configured" latch the
+factory clears on the first HR 21 write — ours is always configured so it omits `0x02`,
+matching the factory's configured (operating) state.
 
 **Methodology correction — beware the differential double-write.** `push_delta`
 writes A, builds, writes B, builds. A byte that only changes because the *second*

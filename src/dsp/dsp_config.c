@@ -47,13 +47,12 @@ typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp
  *
  *   0x19 (hi of DSP 0xAD83)  = HR 120 SYS_ENABLE & 0xFE
  *   0x1a (lo of 0xAD83)      = EPS-volt enum(HR 90) | (HR 91 == 60 ? 0x08 : 0)
- *   0x1c (lo of 0xAD84 flags)= 0x02 | FUNCTION_EN1(HR 110) remap | (HR 112 bit0 ? 0x08)
+ *   0x1c (lo of 0xAD84 flags)= FUNCTION_EN1(HR 110) remap | (HR 112 bit0 ? 0x08)
  *                              (bit 0x08 here = the DSP's AC-charge-enable, docs/07).
- *                              BEST-EFFORT: the clean bits (0x80/0x10/0x20 from 110,
- *                              0x08 from 112) are exact, but the 0x02 base has an
- *                              uncracked factory interaction with HR 20/21 (it clears
- *                              once PV-mode + FuncEn are configured), so this byte is
- *                              not claimed byte-exact. docs block-00.
+ *                              The factory also carries a 0x02 "FuncEn-unconfigured"
+ *                              latch (set at boot, cleared on the first HR 21 write);
+ *                              we are always configured so we omit it. Byte-exact in
+ *                              the configured state. docs block-00.
  *   0x1e (0xADA8)            = HR 145 OUTPUT_PRIO_CFG (0 Bat/1 PV/2 AC-First; static-
  *                              confirmed — HR 145 stores only its default live, so this
  *                              byte is from the doc/static map, not a live diff)
@@ -214,8 +213,11 @@ static void dsp_build_block0(const dsp_cfg_src_t *src, uint8_t *pl)
     pl[0x19 - 0x15] = (uint8_t)(dsp_rd(src, HR_SYS_ENABLE) & 0xFEu);
     pl[0x1a - 0x15] = (uint8_t)(dsp_eps_volt_sel(dsp_rd(src, HR_EPS_VOLT_SET))
                       | (dsp_rd(src, HR_EPS_FREQ_SET) == 60 ? 0x08u : 0u));
-    pl[0x1c - 0x15] = (uint8_t)(0x02u
-                      | dsp_bit_remap(dsp_rd(src, HR_FUNCTION_EN1), DSP_FUNCEN1_TO_0X1C)
+    /* The factory also sets a 0x02 "FuncEn-not-yet-configured" latch at boot and
+     * clears it the first time HR 21 (FUNC_EN) is written (any value). Our firmware
+     * always has a live, configured FuncEn, so it is in the cleared (configured)
+     * state from boot -- we do not emit 0x02. */
+    pl[0x1c - 0x15] = (uint8_t)(dsp_bit_remap(dsp_rd(src, HR_FUNCTION_EN1), DSP_FUNCEN1_TO_0X1C)
                       | ((dsp_rd(src, HR_SET_SYSTEM_TYPE) & 1u) ? 0x08u : 0u));
     pl[0x1e - 0x15] = (uint8_t)dsp_rd(src, HR_OUTPUT_PRIO_CFG);
     pl[0x28 - 0x15] = (uint8_t)dsp_rd(src, HR_PV_INPUT_MODEL);

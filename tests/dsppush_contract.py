@@ -119,12 +119,12 @@ ABS_WRITES_BY_BLOCK = {
 # template bytes, the modbus residue (0x15/0x16, block 0 0x25/0x26), block 0's 0x1e
 # (OUTPUT_PRIO: not live-settable via the dongle), and block 3's 0x19 (HR 112 parallel
 # -role lookup: ours is non-parallel, intentionally not emitted). docs block-00/03_06.
-# 0x1c is intentionally NOT asserted byte-exact: its clean bits (0x80/0x10/0x20 from
-# FUNCTION_EN1, 0x08 AC-charge-enable from SET_SYSTEM_TYPE) are reproduced, but its
-# 0x02 base bit has an uncracked combinational dependency on HR 20/21 (it clears once
-# PV-mode + FuncEn are configured), so ours emits it best-effort only. docs block-00.
+# 0x1c IS byte-exact once configured: the factory's 0x02 bit is a "FuncEn-not-yet-
+# configured" latch, cleared the first time HR 21 is written (ABS_WRITES_BY_BLOCK[0]
+# writes HR 21, so the factory is in the cleared state here). Our firmware is always
+# configured so it never emits 0x02 -- both sides agree. docs block-00.
 ABS_OFFSETS = {
-    0: [0x19, 0x1a, 0x28, 0x2c],
+    0: [0x19, 0x1a, 0x1c, 0x28, 0x2c],
     3: [0x1b, 0x1c],
     4: [0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22],
     5: [0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22],
