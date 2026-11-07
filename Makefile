@@ -85,6 +85,8 @@ test:
 	@./$(BUILD)/test_variant
 	$(HOSTCC) $(HOSTFLAGS) src/can/bms_can.c tests/test_bms_can.c -o $(BUILD)/test_bms_can
 	@./$(BUILD)/test_bms_can
+	$(HOSTCC) $(HOSTFLAGS) src/bms/bms_limits.c tests/test_bms_limits.c -o $(BUILD)/test_bms_limits
+	@./$(BUILD)/test_bms_limits
 	$(HOSTCC) $(HOSTFLAGS) src/sched/acfirst.c tests/test_acfirst.c -o $(BUILD)/test_acfirst
 	@./$(BUILD)/test_acfirst
 	$(HOSTCC) $(HOSTFLAGS) src/sched/optchg.c tests/test_optchg.c -o $(BUILD)/test_optchg

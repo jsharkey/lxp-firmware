@@ -501,23 +501,50 @@ frames off USART3.
   same settings + BMS state.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+**Status:** split → **T11a `[x]`** (charge-V working limit), **T11b `[ ]`** (inverter→BMS TX), **T11c `[ ]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
 
-- **Limits.** The factory derives a working charge-V / charge-I / discharge-I
-  from **BMS 0x351 + settings** (HR 99-102, 147-148, EOD 105) into the struct
-  that block 1 pushes. Note that it already clamps the charge voltage to a
-  cell-count max of about 57.4 V (comment in `main.c` `on_can_frame`). Oracle
-  the derivation as a micro-test: BMS limit vs. setting vs. clamp, with the
-  boundary at each crossover. Publish the IR 81-106 values it feeds.
-- **TX.** Our keep-alive `0x305`-class frame sends **zeros** ("payload
-  provisional", docs/20). Capture the factory's CAN TX (ids, period, payload
-  under different states) in the sim and match it. Some BMS presets need this
-  to keep the pack's contactor closed.
-- **Alarms / quirks.** Decide [`docs/31`](31-factory-quirks.md) **Q1-Q4**
-  (`0x355` SOC → max-cell-V, `0x359` "PN" → capacity, `0x35A` dropped, IR 98
-  10× unit). Each verdict is either a factory-green test we copy or an explicit
-  "fixed in ours" test, plus a docs/31 entry.
-- Covers the IR 81-106 gaps in the docs/wiring/ARM-UART5-dongle coverage list.
+Split after the T11a oracle came back much smaller than the card assumed: the
+only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
+charge-voltage one, and it is a plain `min` with a setting, not a multi-field
+cell-count computation. The current/discharge fields and the inverter→BMS TX need
+the RTOS tasks (T02) to observe, so they are carried as T11b/T11c.
+
+#### T11a — BMS charge-voltage working limit (IR 83 = min(0x351, HR 99))
+**Status:** `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
+
+- **Finding (corrects the card):** the factory serves `IR 83 = min(0x351 charge-V
+  limit, HR 99 ChargeVoltRef)` — a plain min, oracled black-box on `ceaa-07xx`
+  (sweep `0x351` 0/100/560/600/1000 vs HR 99 520/574/590, all `min`). The
+  "~57.4 V cell-count clamp" in the old `on_can_frame` comment is simply HR 99's
+  power-on **default** (574); HR 99 = 590 raises the ceiling, so there is no
+  separate hard clamp. **IR 81/82/84** (max chg/dis current, discharge cutoff)
+  stay `0` under the same sweep — no reachable publish path; open pending T02.
+- **Done:** pure fn `inv_bms_charge_volt_ref()`; host micro-test sweeps the `min`
+  boundaries (13 checks); sim e2e `test_bms_charge_volt_ref_clamps_to_setting`
+  (setting-wins branch) + the two `*telemetry*` tests (pass-through branch, HR 99
+  raised over the wire) green for **both** images; docs in
+  [`IR081_106-BMS`](wiring/ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a),
+  [`HR099_102`](wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md).
+
+#### T11b — inverter→BMS CAN TX (`0x305` keep-alive + `0x300/0x301/0x400`)
+**Status:** `[ ]` · **Layer:** sim (CAN TX capture) · **Depends:** T02 (TX task)
+
+- Our keep-alive `0x305`-class frame sends **zeros** ("payload provisional",
+  docs/20). Capture the factory's CAN TX (ids, period, payload under different
+  states) in the sim and match it. Some BMS presets need this to keep the pack's
+  contactor closed. **Likely T02-blocked:** the factory builds/sends these from a
+  scheduler task (`sub_0800574c`→`sub_080228c0`), which does not run without the
+  RTOS — confirm, then capture once T02 lands.
+
+#### T11c — BMS quirks Q1-Q4 as committed tests
+**Status:** `[ ]` · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
+
+- Lock in [`docs/31`](31-factory-quirks.md) **Q1-Q4** (`0x355` hi-res SOC →
+  IR 101, `0x359` "PN" → IR 97, `0x35A` dropped, IR 98 10× unit). The verdicts are
+  already written in docs/31; what is missing is a committed test per quirk — a
+  factory-green probe that reproduces the bug (Q1/Q2), a sweep showing it is
+  dropped (Q3), and an explicit "ours does not reproduce it" assertion. The CAN
+  harness (`arm_sim_can.py`) + `ModbusDsp` already do everything these need.
 
 ---
 

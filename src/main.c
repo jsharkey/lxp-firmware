@@ -19,6 +19,7 @@
 #include "inv/relay.h"
 #include "inv/bms_can.h"
 #include "inv/bms_can_map.h"
+#include "inv/bms_limits.h"
 #include "inv/safety_cpu.h"
 #include "inv/config_flash.h"
 #include "inv/settings_map.h"
@@ -118,10 +119,15 @@ static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
         g_rt.input_reg[IR_BMS_CURRENT]    = (uint16_t)g_bms.current_ca;
         g_rt.input_reg[IR_BMS_MAX_CELL_T] = (uint16_t)g_bms.temp_dc;
     }
-    if (g_bms.limits_valid)               /* 0x351 charge voltage limit 0.1 V, 1:1 */
-        /* The factory additionally clamps this to a cell-count-derived max
-         * (~57.4 V on this pack); we report the pack's limit as-is. */
-        g_rt.input_reg[IR_BMS_CHG_VOLT_REF] = g_bms.charge_volt_dv;
+    if (g_bms.limits_valid)               /* 0x351 charge voltage limit 0.1 V */
+        /* Working charge-V reference = min(pack 0x351 limit, ChargeVoltRef HR 99).
+         * Factory-oracled (docs/39 T11a): IR 83 = min(0x351 chg-V, HR 99); the
+         * "~57.4 V" is simply HR 99's power-on default (574), not a cell-count
+         * clamp. (IR 81/82/84 -- BMS max chg/dis current, discharge cutoff -- are
+         * left unpopulated on the factory in the harness; see docs/wiring/ARM-CAN1-BMS.) */
+        g_rt.input_reg[IR_BMS_CHG_VOLT_REF] =
+            inv_bms_charge_volt_ref(g_bms.charge_volt_dv,
+                                    g_rt.holding_reg[HR_CHARGE_VOLT_REF]);
     if (g_bms.alarms_valid) {             /* 0x359 protection/alarm bitfields, 1:1 */
         g_rt.input_reg[IR_BMS_FAULTCODE]    = g_bms.fault_bits;
         g_rt.input_reg[IR_BMS_WARNCODE]     = g_bms.warn_bits;

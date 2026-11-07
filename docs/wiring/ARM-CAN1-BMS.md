@@ -52,6 +52,29 @@ The battery is the TX master of its `0x3xx` telemetry; the inverter transmits
 state RAM and mirrored to Modbus input registers (e.g. `0x355`→IR5, `0x356` V→IR4
 / I→IR98 / T→IR103, `0x351` chg-V→IR83, `0x359`→IR99/100/96).
 
+## Working-limit derivation (T11a)
+
+The `0x351` charge-voltage limit is **not** forwarded raw. The inverter serves the
+**lesser** of the pack's limit and the `ChargeVoltRef` setting (HR 99):
+
+```
+IR 83 (ChargeVoltRef, 0.1 V) = min(0x351 charge-V limit, HR 99)
+```
+
+Factory-oracled black-box on `ceaa-07xx` (sweep `0x351` vs HR 99 → all `min()`).
+The "~57.4 V clamp" once attributed to a cell-count max is just HR 99's power-on
+default (574 = 57.4 V); HR 99 = 590 raises the ceiling to 590, so there is no
+separate hard clamp. Reimplemented as the pure function
+[`inv_bms_charge_volt_ref()`](../../src/bms/bms_limits.c)
+([`include/inv/bms_limits.h`](../../include/inv/bms_limits.h)), wired in `on_can_frame`.
+
+The pack's other `0x351` fields (max charge/discharge current → IR 81/82,
+discharge-voltage limit → IR 84) are **not published** on this image in the harness
+(they stay `0` under the same sweep). Whether that is genuine or a scheduler-task
+publish that needs the full RTOS (**T02**) is unresolved — see
+[`IR081_106-BMS`](ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a).
+The inverter→BMS control-frame TX (`0x305` keep-alive etc.) is **T11b**.
+
 ## Key functions / files
 
 - Factory: init `sub_08022660` (+ filters `sub_080227b6`); RX `sub_08005758` →
@@ -61,9 +84,10 @@ state RAM and mirrored to Modbus input registers (e.g. `0x355`→IR5, `0x356` V�
   @ `0x00031a20`.
 - Reimplementation: [`src/can/can_port.c`](../../src/can/can_port.c)
   (`can_port_init/poll/send`), decoder
-  [`src/can/bms_can.c`](../../src/can/bms_can.c), map
+  [`src/can/bms_can.c`](../../src/can/bms_can.c), working-limit derivation
+  [`src/bms/bms_limits.c`](../../src/bms/bms_limits.c), map
   [`include/inv/bms_can_map.h`](../../include/inv/bms_can_map.h); wired in
-  [`src/main.c`](../../src/main.c) `can_port_init()`.
+  [`src/main.c`](../../src/main.c) `can_port_init()` / `on_can_frame`.
 
 ## Open / unreconciled
 

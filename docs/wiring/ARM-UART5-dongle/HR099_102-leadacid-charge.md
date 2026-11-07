@@ -19,6 +19,14 @@ the charge controller) in the config snapshot over USART3
 equivalent limits are *read from the pack* over CAN1 instead
 ([`IR081_106-BMS`](IR081_106-BMS.md)).
 
+**`HR 99` also caps the BMS charge voltage (T11a).** Even with a BMS pack, the
+served/working charge-V reference is `IR 83 = min(pack 0x351 limit, HR 99)` — so
+`ChargeVoltRef` is the ceiling on the pack's own request, not just a lead-acid
+setpoint. Its power-on default is **574** (57.4 V, per the LCD note below), which is
+what makes an out-of-range pack limit appear to "clamp" at ~57.4 V; writing HR 99
+moves that ceiling. See
+[`IR081_106-BMS` → Working charge-voltage derivation](IR081_106-BMS.md#working-charge-voltage-derivation-t11a).
+
 ## On the LCD (EG4 12000XP manual)
 
 SETTINGS → **Charge tab**: `Lead-Acid Charge Voltage` (**default 57.4V**, HR 99), `Lead-Acid Floating Voltage` (**default 54.0V**, HR 144), `Charge Current Limit` (**default 250A**, HR 101), `Discharge Current Limit` (**default 250A**, HR 102).
@@ -29,4 +37,5 @@ _Tests that exercise these registers. **Keep this list current when you add or c
 
 - **HR 101 (ChargeCurr):** write/read-back [`test_arm_sim.py`](../../../tests/test_arm_sim.py) `test_modbus_charge_current_write_read`; flash persistence `test_settings_persist_across_cold_boot`; cross-image persistence [`test_persist_crossimage.py`](../../../tests/test_persist_crossimage.py); HMI edit [`test_hmi.c`](../../../tests/test_hmi.c) (`HR_CHARGE_CURR`).
 - **Write validation (T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — HR 101 `141` (> spec max 140) is **accepted** (cold default also reads `250`): the factory enforces no upper bound ([`docs/31`](../../31-factory-quirks.md) Q6, replicated for parity). Host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).
-- **HR 99 / 100 / 102 / 144 (ChargeVoltRef / CutVolt / DischgCurr / FloatVolt):** _No automated test exercises this register yet — a focused test is welcome._
+- **HR 99 (ChargeVoltRef):** exercised as the BMS charge-V ceiling (T11a) — `IR 83 = min(0x351, HR 99)`: factory-oracled sim test [`test_arm_sim.py`](../../../tests/test_arm_sim.py) `test_bms_charge_volt_ref_clamps_to_setting` (+ the two `*telemetry*` tests for the pass-through branch), and the pure-function boundary sweep [`test_bms_limits.c`](../../../tests/test_bms_limits.c).
+- **HR 100 / 102 / 144 (CutVolt / DischgCurr / FloatVolt):** _No automated test exercises these registers yet — a focused test is welcome._

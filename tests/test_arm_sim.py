@@ -188,7 +188,8 @@ def test_can_battery_telemetry_reaches_modbus():
         0x356 voltage  -> IR 4   (Vbat; 0.01 V -> 0.1 V, rounded)
         0x356 current  -> IR 98  (BatCurrent_BMS, 0.01 A, signed, 1:1)
         0x356 temp     -> IR 103 (MaxCellTemp_BMS, 0.1 degC, signed, 1:1)
-        0x351 chg Vlim -> IR 83  (ChargeVoltRef, 0.1 V, 1:1 below the pack's clamp)
+        0x351 chg Vlim -> IR 83  (ChargeVoltRef = min(0x351, HR 99); here HR 99 is
+                                  raised above the limit so it passes through 1:1)
         0x359 fault    -> IR 99  (FaultCode_BMS, protection bitfield, 1:1)
         0x359 warn     -> IR 100 (WarningCode_BMS, alarm bitfield, 1:1)
         0x359 modules  -> IR 96  (BatParallelNum, module count)
@@ -200,13 +201,19 @@ def test_can_battery_telemetry_reaches_modbus():
     from arm_sim_can import CanBattery
     SOC, SOH = 77, 96                   # -> IR 5 = (SOH<<8)|SOC
     V_CV, I_CA, T_DC = 5325, 150, 231   # 0x356: 53.25 V, 1.50 A, 23.1 degC
-    CHG_V = 560                         # 0.1 V charge-V limit (below the ~57.4 V clamp)
+    CHG_V = 560                         # 0.1 V charge-V limit (below the HR 99 ceiling)
     FAULT, WARN = 0x0102, 0x0408        # 0x359 protection / alarm bitfields
     MODULES = 3                         # 0x359 [4] pack module count
 
     sim = _sim()
     battery = CanBattery(sim)     # install CAN1 hooks before the image runs
     mb = _mb(sim)        # boots the image + installs the UART hooks
+
+    # IR 83 is the WORKING charge-V reference = min(0x351 limit, HR 99 ChargeVoltRef)
+    # (docs/39 T11a). Raise HR 99 above CHG_V so the pack's limit passes through
+    # here regardless of each image's HR 99 default (factory 574, ours blank);
+    # the setting-wins branch is test_bms_charge_volt_ref_clamps_to_setting.
+    mb.write_single(99, 590)
 
     battery.send_soc_soh(SOC, SOH)
     battery.send_measurements(V_CV, I_CA, T_DC)
@@ -227,6 +234,33 @@ def test_can_battery_telemetry_reaches_modbus():
     assert blk[16] == FAULT,   "fault -> IR 99: got %r"        % (blk[16],)
     assert blk[17] == WARN,    "warn -> IR 100: got %r"        % (blk[17],)
     assert blk[20] == T_DC,    "temperature -> IR 103: got %r" % (blk[20],)
+
+
+def test_bms_charge_volt_ref_clamps_to_setting():
+    """Working charge-V derivation (docs/39 T11a): the inverter serves IR 83 =
+    min(0x351 charge-V limit, HR 99 ChargeVoltRef), not the pack's limit raw.
+
+    Black-box on both images: set HR 99 below the pack's reported limit, inject a
+    0x351 charge-V ABOVE the setting, and confirm the setting clamps IR 83 down to
+    it. Factory-oracled on ceaa-07xx (HR 99 = 550, 0x351 = 600 -> IR 83 = 550); the
+    BMS-wins branch (limit below the setting, passing through) is covered by
+    test_can_battery_telemetry_reaches_modbus. HR 99 is written over the wire so
+    the test does not depend on either image's HR 99 power-on default."""
+    from arm_sim_can import CanBattery
+    SETTING = 550                       # HR 99 ChargeVoltRef (0.1 V)
+    BMS_LIMIT = 600                     # 0x351 charge-V limit (0.1 V), above the setting
+
+    sim = _sim()
+    battery = CanBattery(sim)     # install CAN1 hooks before the image runs
+    mb = _mb(sim)                 # boots the image + installs the UART hooks
+
+    mb.write_single(99, SETTING)
+    battery.send_limits(BMS_LIMIT)
+    battery.settle()
+
+    ir83 = (mb.read_input(83, 1) or [None])[0]
+    assert ir83 == SETTING, \
+        "IR 83 should clamp to HR 99 (%d), got %r" % (SETTING, ir83)
 
 
 def test_modbus_acfirst_window_tracks_rtc():
@@ -415,8 +449,9 @@ def test_bms_telemetry_block_tracks_updates():
     from arm_sim_can import CanBattery
 
     # (voltage_cv, current_ca, temp_dc, soc, soh, chg_v_dv, fault, warn, modules)
-    # charge-V limits stay BELOW the factory's ~57.4 V (574) clamp on IR 83
-    # (docs/31) so both images report them 1:1 and the two sets still differ.
+    # IR 83 = min(0x351 chg-V, HR 99); we raise HR 99 to 590 below (above both
+    # sets' charge-V) so the limits pass through 1:1 on both images and still
+    # differ between the sets (docs/39 T11a).
     SET_A = dict(v=5325, i=250,  t=231,  soc=77, soh=96, chg=560, flt=0x0102, wrn=0x0408, mod=3)
     SET_B = dict(v=5000, i=-100, t=-50,  soc=42, soh=88, chg=552, flt=0x0000, wrn=0x0010, mod=4)
 
@@ -435,6 +470,7 @@ def test_bms_telemetry_block_tracks_updates():
     sim = _sim()
     battery = CanBattery(sim)
     mb = _mb(sim)
+    mb.write_single(99, 590)       # ChargeVoltRef above both sets -> limits pass 1:1
 
     def push_and_read(s):
         battery.send_soc_soh(s["soc"], s["soh"])
