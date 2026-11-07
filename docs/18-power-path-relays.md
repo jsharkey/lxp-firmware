@@ -135,21 +135,32 @@ Driven **together**, which is the signature of the grid/EPS transfer switch.
 - **Name (reasoned):** a **slow AC relay — AC-couple or generator-input
   contactor**, or an anti-island reconnect relay. The generator/AC-couple reading
   fits the deliberate switching and the state-transition trigger.
+- **Executed decode (2026-11-07):** confirmed state-**change**-triggered, not a
+  level map: it reads the IR_STATE-extended dword `0x2000d0e4+0x98`, diffs it
+  against saved copies `0x2000d950`/`0x2000db7b`, gated by `0x2000cd5c+0x6c` bit 16
+  and `0x2000d0e4+0x9c` bit 26, behind the long `0x2000daae` debounce. Like PD11
+  its behavioural content is **change-detection + debounce timing**, not a clean
+  state→relay table — a timing micro-test target, not an oracle-vector target.
 - **Influencing registers:** `IR_STATE` (0); `IR_AC_INPUT_TYPE` (77 grid/gen) and
   the generator-charge HR block if gen-input; AC-couple HRs if AC-couple.
 - **Confidence:** medium-low on the specific role.
 
 ### PD11 — single grid-status bit (`sub_08035ef2`)
 
-- Gates on `0x2000ce5c+0xc4` **bit 1** (a DSP grid/EPS status bit) → sets working
-  flags `0x2000d9c8` bit10 / `0x2000da3a` bit1, then drives `PD11` behind a
-  ~250-iteration debounce (`0x2000daf4`, with 10/25-tick sub-thresholds).
+- Gates on `0x2000ce5c+0xc4` **bit 1** (a DSP grid/EPS status bit) → **latches**
+  working flag `0x2000d9c8` bit 10 (never cleared here) and sets/clears
+  `0x2000da3a` bit 1 = !(d9c8 bit10), then drives `PD11` behind a debounce
+  (`0x2000daf4`, 10/25/250-tick sub-thresholds).
+- **Executed decode (2026-11-07):** driving `sub_08035ef2` in isolation and
+  clocking past the debounce, **PD11 ends *closed* (=1) under both `+0xc4` bit 1
+  set (via the d9c8-bit10 latch, after ~10 ticks) and clear (via the da3a-bit1
+  path, after ~25)** — this function only ever *closes* PD11 (GPIO setter
+  **`sub_08033556`**, GPIOD bit 11, confirmed; the 250-tick cap calls
+  `sub_08035ed2`). So it is **not a clean state→relay map**; its behavioural
+  content is the **debounce timing**, and the *open* path (if any) is elsewhere.
 - **Name (reasoned):** **EPS/backup or load-control relay** — or the user
-  **dry-contact** (docs/16 narrowed the dry contact to PD11/PC5; its single-bit,
-  debounced, independent drive matches a dry contact).
-- **Influencing registers:** `IR_STATE` (0) and the EPS/grid status bits (IR
-  20-27); if it is the dry contact, the HMI "Dry Control" setting.
-- **Confidence:** low-medium.
+  **dry-contact**. Given it only closes here, a normally-closed interpretation fits.
+- **Confidence:** low-medium (role); the debounce structure is pinned.
 
 ## Authoritative summary
 
@@ -199,11 +210,20 @@ function's RAM fields), `tools/gpio_map.py`, `tools/periph_map.py`.
 > ([`test_ac_transfer.c`](../tests/test_ac_transfer.c)) and factory-oracle-checked
 > ([`test_ac_transfer.py`](../tests/test_ac_transfer.py), `make test-sim`).
 >
-> **Still open (the enable *provenance* and the *timing*):** `sub_0801887c` derives
-> `d9ca`/`d810` from the config word `0x2000d0e4+4` bit 9 (sets `d9ca` bit 1) + the DSP
-> grid state, behind debounces — a dynamic sweep shows bit 9 → `d9ca` bit 1 but not
-> bit 3, so the exact input that sets the *AC-transfer* enable (bit 3 / `d810` bit 4)
-> and the **break-before-make sequencing** (the 50-tick debounce ordering) are the
-> remaining T14 decode. The pure decision above is the settled steady state.
-> (The **manual/AutoTest override** path — `+0xa9==1` → PB3←`0x2000da6c` bit0,
-> PA12←bit1 — needs no enable and is the contract we already mirror.)
+> **Sequencing — MEASURED (2026-11-07):** the transfer **PA12** switches behind a
+> **symmetric 50-tick debounce** (`0x2000dba4/5/6`, matching the `0x32` compares):
+> once enabled+settled, flipping the grid qualification takes **exactly 50**
+> `sub_08018a7c` calls to take effect, both qualified→not and not→qualified. Locked
+> by [`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_transfer_debounce_is_50`.
+>
+> **Enable *provenance* — narrowed, still elusive (2026-11-07):** `sub_0801887c`
+> clocked past its own debounce (800 passes) sets `d9ca` **bit 1** from config
+> `0x2000d0e4+4` bit 9 (and `d810` bit 3 = `(d9ca & 3) ? 1 : 0`), but **never** the
+> AC-transfer enable `d9ca` **bit 3** / `d810` **bit 4** for any config+grid input
+> tried. The three other functions that write `d9ca` (`sub_080147ac` boot-init
+> zeroes it; `sub_080358dc` sets bit 7; `sub_0801ef48` is a getter) don't set bit 3
+> either. So the enable that gates the normal grid-eval transfer is set by an
+> as-yet-unidentified condition — **possibly inert on this image** (cf. the T15
+> schedule features), which would make the **manual/AutoTest override** path
+> (`+0xa9==1` → PB3←`0x2000da6c` bit0, PA12←bit1; already mirrored) the operative one
+> here. Pinning it is what remains to wire `inv_ac_transfer_decide()` *live*.

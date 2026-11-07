@@ -25,7 +25,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
-from ac_transfer_contract import VECTORS, predict, FactoryBackend  # noqa: E402
+from ac_transfer_contract import VECTORS, predict, FactoryBackend, B20  # noqa: E402
 
 FACTORY_IMAGE = (sys.argv[1] if len(sys.argv) > 1 else None) \
     or os.environ.get("LXP_FACTORY_BIN") \
@@ -55,6 +55,17 @@ def test_factory_matches_spec():
             fails.append("%-26s en=%d grid=0x%08x -> %s, expected %s"
                          % (label, enabled, grid, got, (epa12, epb3)))
     assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
+def test_factory_transfer_debounce_is_50():
+    """The transfer pair's PA12 switches behind a symmetric 50-tick debounce
+    (the break-before-make sequencing, 0x2000dba4/5/6) -- qualified<->not both take
+    50 calls to take effect. Characterizes the T14 sequencing timing."""
+    fb = _factory_or_skip()
+    off = fb.pa12_switch_delay(B20, 0)        # qualified -> not qualified
+    on = fb.pa12_switch_delay(0, B20)         # not qualified -> qualified
+    assert off == 50 and on == 50, \
+        "expected 50/50-tick debounce, got off=%s on=%s" % (off, on)
 
 
 if __name__ == "__main__":

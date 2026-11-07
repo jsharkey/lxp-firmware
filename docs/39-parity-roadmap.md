@@ -405,15 +405,26 @@ Reimplemented as pure [`inv_ac_transfer_decide()`](../src/relay.c) (host test
 ([`test_ac_transfer.py`](../tests/test_ac_transfer.py), `make test-sim`). Full decode
 in [`docs/18`](18-power-path-relays.md).
 
-**Remaining (handed off):**
-- **Enable provenance:** `sub_0801887c` derives the enable from config `0x2000d0e4+4`
-  bit 9 + DSP grid state behind debounces (bit 9 → `d9ca` bit 1, not bit 3 — the exact
-  input setting the *AC-transfer* enable is still open). Needed to wire
-  `inv_ac_transfer_decide()` into a live `relay_poll` path.
-- **Sequencing timing:** the break-before-make ordering of the three 50-tick
-  debounces `0x2000dba4/5/6` (micro-test the delays).
-- **PC5 (gen/AC-couple, `sub_08017022`)** and **PD11 (dry-contact, `sub_08035ef2`)** —
-  likely analogous enable gates (`d9ca` bits 1/3); oracle them the same isolated way.
+**Sequencing timing — DONE (2026-11-07).** The transfer PA12 switches behind a
+**symmetric 50-tick debounce** (`0x2000dba4/5/6`): once enabled+settled, flipping the
+grid qualification takes exactly 50 `sub_08018a7c` calls either way. Locked by
+[`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_transfer_debounce_is_50`.
+
+**Remaining (narrowed this pass):**
+- **Enable provenance (still elusive):** clocking `sub_0801887c` 800× sets `d9ca`
+  **bit 1** from config `0x2000d0e4+4` bit 9 (and `d810` bit 3), but **never** the
+  AC-transfer enable `d9ca` bit 3 / `d810` bit 4 for any config+grid input; the 3
+  other `d9ca` writers (`sub_080147ac` init-zero, `sub_080358dc` bit 7,
+  `sub_0801ef48` getter) don't set it either. So the enable comes from an
+  unidentified condition — **possibly inert on this image** (cf. T15), leaving the
+  manual-override path (already mirrored) operative. Pinning it is what wires
+  `inv_ac_transfer_decide()` live. (docs/18.)
+- **PC5 (gen/AC-couple, `sub_08017022`)** and **PD11 (dry-contact, `sub_08035ef2`)**
+  are **not** clean state→relay maps (executed decode, docs/18): PD11 only ever
+  *closes* (grid/EPS `+0xc4` bit1 latch → GPIOD bit11, debounce 10/25/250); PC5 is
+  state-*change*-triggered behind a long debounce (`0x2000daae`). Their content is
+  debounce timing (micro-test), not a vector table — so no oracle-vector
+  reimplementation like the transfer pair.
 
 [`docs/18`](18-power-path-relays.md) names 6 relay pins and 4 logic functions;
 we mirror 2 contracts (run-enable PC6, manual override PA12/PB3). The rest is

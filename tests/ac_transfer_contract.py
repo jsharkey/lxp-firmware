@@ -111,3 +111,39 @@ class FactoryBackend:
                 except Exception:
                     pass
         return (cmd.get("pa12"), cmd.get("pb3"))
+
+    def pa12_switch_delay(self, from_grid, to_grid):
+        """Settle the pair at `from_grid`, then flip the DSP grid word to `to_grid`
+        and count how many calls until PA12 changes -- the break-before-make
+        debounce (`0x2000dba4/5/6`, 50-tick). Returns the call count, or None."""
+        from emu import Emu
+        from unicorn import UC_HOOK_CODE
+        from unicorn.arm_const import UC_ARM_REG_R0
+        import contextlib
+        import io
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(D0E4 + 0xa9, bytes([0]))
+        cur = {}
+
+        def hook(uc, addr, size, ud):
+            if addr == PA12_FN:
+                cur["pa12"] = uc.reg_read(UC_ARM_REG_R0) & 1
+        e.uc.hook_add(UC_HOOK_CODE, hook, begin=PA12_FN, end=PA12_FN + 2)
+
+        def step(grid):
+            e.uc.mem_write(D9CA, bytes([1 << 3]))
+            e.uc.mem_write(CE5C + 0xbc, struct.pack("<I", grid & 0xFFFFFFFF))
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    e.call(FN)
+                except Exception:
+                    pass
+        for _ in range(CLOCKS):           # settle at the starting grid state
+            step(from_grid)
+        settled = cur.get("pa12")
+        cur["pa12"] = None
+        for i in range(1, CLOCKS):        # flip and count calls until PA12 moves
+            step(to_grid)
+            if cur.get("pa12") is not None and cur["pa12"] != settled:
+                return i
+        return None
