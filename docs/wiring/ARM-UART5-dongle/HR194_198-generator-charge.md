@@ -26,4 +26,4 @@ SETTINGS → **Charge tab → Generator Setting**: `Generator Charge Type` (Use 
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **DSP config-push (T10/T25):** the generator-charge parameters are packed into the ARM→DSP config frame, **block 6**: HR 194 start-V → `0x1d` (BE16, 0.1 V, clamped < end-V), HR 195 end-V → `0x1f` (BE16, 0.1 V), HR 196 start-SOC → `0x21` (u8 %), HR 197 end-SOC → `0x22` (u8 %), HR 198 max-charge-curr → `0x23` (BE16, A→0.1 A). Differentially pinned (single-write, fresh captures) and reproduced byte-for-byte by our firmware, verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH` in [`dsppush_contract.py`](../../../tests/dsppush_contract.py)); see the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md) and [block-03_06](../ARM-USART3-DSP/block-03_06-gridcharge-slots.md).

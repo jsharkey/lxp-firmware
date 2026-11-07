@@ -59,10 +59,20 @@ GRID_PUSH = {
     99:  (6, 0x25, 2),   # HR_CHARGE_VOLT_REF  -> charge voltage    (0.1 V)
     105: (3, 0x1b, 1),   # HR_EOD              -> end-of-discharge SOC (%)
     103: (3, 0x1c, 1),   # HR_MAX_BACKFLOW     -> feed-in grid power limit (%)
+    # Generator-charge parameters (block 6 body), T25 matrix + single-write decode.
+    # HR 194 start-V is a u16 at 0x1d but its high byte is pinned 0x01 across the
+    # usable range (it clamps below end-V), so only 0x1e moves for in-range A/B.
+    194: (6, 0x1e, 1),   # HR_GEN_CHG_START_V  -> generator charge start V (0.1 V)
+    195: (6, 0x1f, 2),   # HR_GEN_CHG_END_V    -> generator charge end V   (0.1 V)
+    196: (6, 0x21, 1),   # HR_GEN_CHG_START_SOC-> generator charge start SOC (%)
+    197: (6, 0x22, 1),   # HR_GEN_CHG_END_SOC  -> generator charge end SOC   (%)
+    198: (6, 0x23, 2),   # HR_MAX_GEN_CHG_CURR -> max generator charge (0.1 A)
 }
-# (A, B) write values per register: two valid, distinct in-range values.
+# (A, B) write values per register: two valid, distinct in-range values that flip
+# the asserted byte(s) without tripping a clamp (start-V/end-V stay ordered).
 GRID_AB = {
     101: (20, 100), 102: (20, 100), 99: (510, 560), 105: (20, 80), 103: (10, 80),
+    194: (400, 450), 195: (500, 560), 196: (10, 80), 197: (30, 90), 198: (20, 50),
 }
 
 # Live (writable) registers in the HR 64-89 schedule block, as the factory image

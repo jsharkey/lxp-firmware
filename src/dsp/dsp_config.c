@@ -67,16 +67,27 @@ static const dsp_field_t block3_fields[] = {
 };
 
 /*
- * Block 6 — grid-charge slot: charge/discharge currents + charge voltage.
- * Differentially pinned (GRID_PUSH): HR_CHARGE_CURR -> @0x17 (payload 0x02),
- * BE16, 0.1 A (scale 10); HR_DISCHG_CURR -> @0x1b (payload 0x06), BE16, 0.1 A;
- * HR_CHARGE_VOLT_REF -> @0x25 (payload 0x10), BE16, 0.1 V (scale 1, HR already
- * 0.1 V). The rest of block 6 is a constant slot template not yet decoded.
+ * Block 6 — grid-charge slot: lead-acid charge + generator-charge parameters.
+ * Differentially pinned (GRID_PUSH) and single-write decoded (T25 matrix):
+ *   HR_CHARGE_CURR      -> @0x17, BE16, A -> 0.1 A (scale 10)
+ *   HR_DISCHG_CURR      -> @0x1b, BE16, A -> 0.1 A
+ *   HR_GEN_CHG_START_V  -> @0x1d, BE16, 0.1 V (high byte 0x01 in-range; clamped < end-V)
+ *   HR_GEN_CHG_END_V    -> @0x1f, BE16, 0.1 V
+ *   HR_GEN_CHG_START_SOC-> @0x21, u8,  %
+ *   HR_GEN_CHG_END_SOC  -> @0x22, u8,  %
+ *   HR_MAX_GEN_CHG_CURR -> @0x23, BE16, A -> 0.1 A
+ *   HR_CHARGE_VOLT_REF  -> @0x25, BE16, 0.1 V
+ * The @0x19 word (const 0x012c) is not HR-driven in the sweep; left for decode.
  */
 static const dsp_field_t block6_fields[] = {
-    { HR_CHARGE_CURR,     0x02, 2, 10 }, /* frame 0x17, charge current  A -> 0.1 A */
-    { HR_DISCHG_CURR,     0x06, 2, 10 }, /* frame 0x1b, discharge current A -> 0.1 A */
-    { HR_CHARGE_VOLT_REF, 0x10, 2, 1  }, /* frame 0x25, charge voltage, 0.1 V      */
+    { HR_CHARGE_CURR,      0x02, 2, 10 }, /* frame 0x17, charge current  A -> 0.1 A    */
+    { HR_DISCHG_CURR,      0x06, 2, 10 }, /* frame 0x1b, discharge current A -> 0.1 A  */
+    { HR_GEN_CHG_START_V,  0x08, 2, 1  }, /* frame 0x1d, generator charge start, 0.1 V */
+    { HR_GEN_CHG_END_V,    0x0a, 2, 1  }, /* frame 0x1f, generator charge end,   0.1 V */
+    { HR_GEN_CHG_START_SOC,0x0c, 1, 1  }, /* frame 0x21, generator charge start SOC %  */
+    { HR_GEN_CHG_END_SOC,  0x0d, 1, 1  }, /* frame 0x22, generator charge end SOC %    */
+    { HR_MAX_GEN_CHG_CURR, 0x0e, 2, 10 }, /* frame 0x23, max generator charge A -> 0.1 A */
+    { HR_CHARGE_VOLT_REF,  0x10, 2, 1  }, /* frame 0x25, charge voltage, 0.1 V         */
 };
 
 /* Blocks 1,2,4,5,7,8 either have no field table (built another way, or empty) or
