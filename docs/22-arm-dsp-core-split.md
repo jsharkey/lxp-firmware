@@ -204,7 +204,12 @@ T06 (classifier entry + its telemetry/STATUS base):
 
 - **`sub_0801b480` is not the classifier here.** At that address the 07 image has
   a periodic housekeeping task (counter `0x2000dac6`, RTC tick `sub_08018bc0`),
-  not a mode classifier.
+  not a mode classifier. **The real 07 classifier/state-machine is `sub_0801a678`**
+  (RESOLVED, T02b): it reads the telemetry bank's fault (`0x2000ce5c+0xd0`) and
+  warn (`+0xd4`), composes `STATE+0x98` (fault word) / `STATE+0x9c` (warn word),
+  and writes **IR_STATE at `0x2000d0e4+0xa0`** from the received mode byte
+  (`bank+0`). Verified by feeding a USART2 mode byte on the wire (T02a) and
+  watching `0x2000d0e4+0xa0` track it.
 - **The telemetry bank base `0x20009e54` is stale for 07 — the real base is
   `0x2000ce5c`** (RESOLVED, T02a, docs/33). `0x20009e54` is referenced nowhere in
   the 07 image; the nearby `0x20009e50` is a USART2 RX scratch buffer that the
@@ -216,19 +221,23 @@ T06 (classifier entry + its telemetry/STATUS base):
   **and** `test_usart2_frame_reaches_modbus` pass. `FAC_SAFETY_BANK` is corrected
   to `0x2000ce5c`. (Other docs that still cite `0x20009e54` as the 07 bank —
   16/18/23/29/30/32/37, wiring — read `0x2000ce5c`; same field offsets.)
-- **`0x2000a0d8`+`0x90` (the 05 IR_STATE) is referenced nowhere in 07** either.
+- **`0x2000a0d8`+`0x90` (the 05 IR_STATE) is referenced nowhere in 07** — the 07
+  IR_STATE is **`0x2000d0e4+0xa0`** (confirmed: the PC6 relay decider `sub_08016ec6`
+  reads exactly that byte to gate the run-enable relay; docs/18).
 - **The getter is reached, but its reads during a Modbus `IR 0` poll land in
   Modbus/response frame buffers** (`0x2000a304` is an ~800-byte RX/command buffer
   indexed at `+0x44e`, parsed by `sub_0801b6be` matching command bytes
   0x21/0x31/…), not a STATUS struct — so dynamic read-hooking does not isolate
   IR_STATE either.
 - **Dynamically, the classifier only reclassifies on a received USART2 frame**
-  (the DMA/RX ingest), which the harness does not run (that is **T02**). Poking a
-  bank byte + settling does not drive it (and destabilises the dongle).
+  (the RX ingest) — which the harness **now runs** (T02a cracked it): feeding a
+  frame drives `sub_0801a678` and `0x2000d0e4+0xa0` (IR_STATE) tracks the fed mode.
 
-**So the 07 classifier entry and its telemetry/STATUS RAM base are not yet
-pinned** — the same "retracted phantom address" problem the relay deciders hit
-(docs/18; the factory relay tests are skipped for it). Re-pinning that map is a
+**The 07 classifier entry (`sub_0801a678`) and IR_STATE (`0x2000d0e4+0xa0`) are now
+pinned** (see the resolved bullets above). The relay deciders are likewise pinned
+(docs/18: PB2/PC6 = `sub_08016ec6` reads IR_STATE `+0xa0`). What remains for the
+PC6 state→relay demo is clearing the ARM-local warnings (`STATE+0x9c`) that keep
+the run-enable relay in its warn-blink path (docs/39 T02b). Re-pinning that map is a
 prerequisite shared by T06b (the classifier oracle), the relay tests, and the
 safety-telemetry test, and is adjacent to T02 (running the USART2-ingest/
 classifier task in the sim). Until then, our `inv_classify()`

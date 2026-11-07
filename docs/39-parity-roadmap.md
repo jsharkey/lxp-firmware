@@ -186,16 +186,32 @@ as the right Modbus input registers, with **no bank seeding**.
   tags are ungated (published every valid frame).
 
 #### T02b — Change operating state → PC6 moves (via the running relay task)
-**Status:** `[ ]` · **Layer:** sim (factory) · **Depends:** T02a (natural state via the USART2 mode byte)
-- T02a now lands the mode byte in the bank (`frame[+4] → BANK+0`), but the
-  distributor only publishes it once the frame-trust counter `0x2000da3e` reaches
-  `0x54` (docs/33), so the mode classifier (07 entry point still to confirm —
-  docs/33's `sub_0801b480` is disputed for 07, docs/22) sees it only after the
-  link has settled. PC6 is also **multi-input and time-varying** (state + DSP/fault +
-  debounce + config). **Done when:** feeding enough valid USART2 frames to settle
-  the counter, then a *running* mode byte, flows classifier→IR_STATE→relay→**PC6**
-  with no internal-function call; add a boot-snapshot cache (docs/28 pattern) to
-  keep the frame-count warm-up fast.
+**Status:** `[~] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
+
+**Chain fully cracked and pinned (static + executed); one condition remains for a
+clean PC6 demo.** What's verified:
+- **State → IR_STATE works black-box.** Feed valid USART2 frames to settle the
+  trust counter (`0x2000da3e ≥ 0x54`, ~85 frames), then the mode byte (`frame[+4]`)
+  flows `bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0` (pass-through);
+  verified IR_STATE tracks the fed mode (0x04→0x04, 0x00→0x00, 0x10→0x10) with no
+  internal call. The classifier is `sub_0801a678` (NOT `sub_0801b480` — that's RTC
+  housekeeping; docs/22), which also composes `STATE+0x98` (fault) / `STATE+0x9c`
+  (warn) from `bank+0xd0/+0xd4`.
+- **The relay is pinned:** PC6 = decider `sub_08016ec6` (selector 2),
+  `PC6 = (IR_STATE ≥ 3)` — closed in a running mode, open in standby/fault/
+  programming — **except it blinks when `STATE+0x98==0` (no fault) AND
+  `STATE+0x9c!=0` (a warning is present)**; `0x2000da6c` bit 4 is a manual override.
+- **The one remaining obstacle:** in the minimal harness `STATE+0x9c = 0x140` =
+  **W006 + W008** (W008 = FW-version-mismatch — set because the fed frames carry no
+  valid DSP FW version / telemetry), so the decider sits in the warn-blink path and
+  PC6 does not cleanly follow the mode. **Done when:** feeding *complete valid*
+  telemetry (a tag-rotation that carries the matching FW version and the readings
+  that clear the ARM-local warns) so `STATE+0x9c→0`, then a running mode → PC6=1 and
+  standby → PC6=0, with no internal call; add a boot-snapshot cache (docs/28) for
+  the frame warm-up. This is the "multi-input" condition docs/18 flagged, now pinned.
+- **Harness gotcha found:** between fed frames the assembler's ready flag
+  (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
+  settle) — too short a gap silently drops the next frame.
 - Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)

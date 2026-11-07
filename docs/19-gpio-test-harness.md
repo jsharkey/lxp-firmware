@@ -274,12 +274,15 @@ Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) un
   its *function addresses* were wrong, both fixed in docs/33. Lesson that stands:
   pin the load base first (`VTOR`/reset vector must point into the image), then
   disassemble; a hook-captured PC is fine once the base is right.
-- **T02b (state→PC6).** With the ingest cracked, the mode byte now reaches the
-  bank: `frame[+4] → BANK+0 → mode classifier → IR_STATE → relay → PC6` (the 07
-  classifier entry is still to confirm — docs/33's `sub_0801b480` is disputed for
-  07, docs/22). BANK+0 (mode) is gated behind the frame-trust counter
-  `0x2000da3e` ≥ `0x54` (docs/33), so driving PC6 from the wire means feeding
-  enough valid frames to settle that counter first — the remaining step for T02b. The relay task's PC6
+- **T02b (state→PC6) — chain pinned.** With the ingest cracked, the mode byte
+  reaches the bank and the state path is fully pinned (docs/18, docs/22, docs/39):
+  `frame[+4] → BANK+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0 →
+  relay decider sub_08016ec6 → PC6`, where `PC6 = (IR_STATE ≥ 3)`. Verified
+  black-box that IR_STATE tracks the fed mode (after settling the trust counter
+  `0x2000da3e ≥ 0x54`, ~85 frames). The remaining step for a clean PC6 demo is
+  clearing the ARM-local warnings (`STATE+0x9c = 0x140`, W006/W008) that hold the
+  relay in a warn-blink — i.e. feeding complete valid telemetry, not just a mode
+  byte (docs/39 T02b). The relay task's PC6
   output is also multi-input (state + DSP/fault + debounce + config), so it is
   driven through the shared contract in `test_arm_sim_self_only.py`, not a lone
   injected byte.

@@ -20,18 +20,30 @@ The six power-path relay pins from docs/16 are driven by four logic functions:
 
 ## The shared machinery (proven)
 
-> **CORRECTION (see [`docs/22`](22-arm-dsp-core-split.md) for the full trace).**
-> The IR_STATE provenance stated here was wrong. **Modbus IR_STATE (input reg 0)
-> is the byte at `0x2000a0d8 + 0x90`**, served by the input-register getter
-> `sub_0803289c` (reg-0 case) and written **only** by the classifier
-> `sub_0801b480`. The addresses below — `0x2000d0e4+0xa0` and the telemetry
-> struct `0x2000ce5c` — are **not materialized anywhere in the image** (0 pc-rel
-> / 0 movw+movt), and `sub_0801a678` writes no mode byte (it is a float-heavy
-> compute routine). The *architectural* point still holds — the mode is derived
-> from received telemetry, not computed by the ARM — but via `0x20009e54[0]`
-> (filled by `sub_08024d74` from a received frame), not `0x2000ce5c`. The exact
-> **relay** state-source address (what the PC6/PB3 gates read) needs re-pinning;
-> it is not `0x2000d0e4+0xa0`.
+> **RE-CORRECTION (T02b, verified statically + executed; supersedes the note that
+> stood here).** An earlier "correction" in this spot was itself an artifact of a
+> disassembler base off by `0x5000` (see [`docs/19`](19-gpio-test-harness.md) §T02)
+> and got the addresses backwards. The verified facts for `ceaa-07xx_vE_260214`
+> (`reference/com_flat.bin`):
+> - The telemetry bank **is `0x2000ce5c`** (22 literal refs); `0x20009e54` is the
+>   one with **zero** refs (docs/22, docs/33).
+> - **IR_STATE is the byte at `0x2000d0e4 + 0xa0`** — confirmed because the PC6/PB2
+>   relay decider `sub_08016ec6` reads exactly `[0x2000d0e4+0xa0]` to gate PC6.
+> - The classifier/state-machine is **`sub_0801a678`** (not `sub_0801b480`, which
+>   is a periodic housekeeping/RTC-tick task — docs/22). `sub_0801a678` reads the
+>   bank's fault (`+0xd0`) and warn (`+0xd4`), composes them into
+>   `state+0x98` (fault word) / `state+0x9c` (warn word), and writes IR_STATE
+>   (`+0xa0`) from the received mode byte. Feeding a USART2 mode byte on the wire
+>   (T02a) now drives IR_STATE end to end (verified).
+>
+> **PC6 gate (`sub_08016ec6`, selector 2):** `PC6 = (IR_STATE >= 3)` on the clean
+> path — closed in a running mode, open in standby/fault/programming — **except**
+> it *blinks* when there is no fault (`state+0x98 == 0`) **and** a warning is
+> present (`state+0x9c != 0`); a manual override (`0x2000da6c` bit 4) forces it.
+> So a clean state→PC6 demo needs the ARM-local warnings cleared (in the minimal
+> harness `state+0x9c = 0x140` = W006 + W008 FW-mismatch, set because the fed
+> frames carry no valid FW version / telemetry) — the "multi-input" condition
+> below, now pinned. See docs/39 T02b.
 
 **1. The operating mode = IR_STATE (input register 0).** The resolver
 `sub_0801a678` reads the DSP telemetry struct `0x2000ce5c` (bytes `[0]`/`[1]` =
@@ -98,8 +110,8 @@ Driven **together**, which is the signature of the grid/EPS transfer switch.
 
 > **Correction to [`docs/16`](16-arm-io-map.md).** docs/16 noted PC6 as tied to
 > the *output-priority / AC-First* setting (reading `+0xa0 == 2` as "AC First").
-> That is **wrong**: the gating value is **IR_STATE** (working mode, authoritative
-> source `0x2000a0d8+0x90` — see the CORRECTION above and [`docs/22`](22-arm-dsp-core-split.md));
+> That is **wrong**: the gating value is **IR_STATE** (working mode, at
+> `0x2000d0e4+0xa0` — see the RE-CORRECTION above and [`docs/22`](22-arm-dsp-core-split.md));
 > `== 2` is `STATE_PROGRAMMING`, not AC-First. PC6 is gated by the **operating
 > mode**, not `HR_OUTPUT_PRIO_CFG` (145). (This does not change docs/14's
 > conclusion about the AC-First *time windows* ending in telemetry.)
