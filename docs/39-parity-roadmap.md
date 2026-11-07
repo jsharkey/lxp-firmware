@@ -812,7 +812,7 @@ same Modbus input registers on both images).
 ### T06 — Operating-state classifier + fault/warning composer (`sub_0801a678`)
 **Status:** ✅ split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
 
-- **T06a `[x]` — our classifier + host oracle (done).** Pure
+- **T06a `[x]` ✅ — our classifier + host oracle (done).** Pure
   `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
   {state, fault32, warn32}` (`include/inv/classify.h`, `src/state/classify.c`):
   canonicalised pass-through of the mode byte (Table 9 + LCD Bypass 0x11/0x19),
@@ -822,7 +822,7 @@ same Modbus input registers on both images).
   `main.c`: IR 0 + IR 60-63 are now published **through the classifier** instead
   of a hard-seeded Standby (`state_publish()`), so the real mode/fault/warn flow
   out to Modbus as soon as the USART2 ingest feeds them.
-- **T06b `[x]` — factory oracle (done, T02b-unblocked).** With the USART2 wire
+- **T06b `[x]` ✅ — factory oracle (done, T02b-unblocked).** With the USART2 wire
   running (T02b) the classifier is pinned on the 07 image: **IR 0 is a pure
   pass-through of the relayed mode byte** — no canonicalisation, no fault override.
   Proven by feeding mode bytes on the wire and reading IR_STATE (`0x2000d0e4+0xa0`):

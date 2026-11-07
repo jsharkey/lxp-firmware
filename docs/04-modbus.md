@@ -74,14 +74,14 @@ group boundary** (groups 0–39, 40–79, 80–119, …). Violations return exce
 
 ## Status & TODO
 
-- [x] CRC-16, frame parse/validate, address + optional SN filter
-- [x] 0x03/0x04/0x06/0x10 handlers, exception responses, 40-reg group rule
-- [x] Host unit tests (`make test`, 19 checks)
-- [x] **UART5 port (8N1) with inter-frame gap framing + RS-485 DE on PA15**
+- [x] ✅ CRC-16, frame parse/validate, address + optional SN filter
+- [x] ✅ 0x03/0x04/0x06/0x10 handlers, exception responses, 40-reg group rule
+- [x] ✅ Host unit tests (`make test`, 19 checks)
+- [x] ✅ **UART5 port (8N1) with inter-frame gap framing + RS-485 DE on PA15**
       (`src/uart/uart5.c`), interrupt-driven RX/TX. The DE line is asserted
       before the first TX byte and released on TC — oracle-tested
       (`test_modbus_de_toggles_around_tx`). (T01, [`docs/39`](39-parity-roadmap.md).)
-- [x] **Which UART is the external Modbus/dongle port — resolved to UART5, not
+- [x] ✅ **Which UART is the external Modbus/dongle port — resolved to UART5, not
       USART3.** The external dongle firmware ([`docs/26`](26-dongle-firmware.md))
       proves the dongle is an **RS-485 half-duplex master** (datalogger), so it
       sits on the ARM link where the ARM is the **slave** — **UART5** (PC12/PD2,
@@ -92,6 +92,6 @@ group boundary** (groups 0–39, 40–79, 80–119, …). Violations return exce
       *factory* still answers on USART3 — its UART5 receive path is a scheduler
       task that needs the RTOS running, T02; the register model it serves on
       USART3 is the same, so it stays a valid register oracle meanwhile.)
-- [ ] Populate input registers from live telemetry (needs the DSP link)
-- [ ] Holding-register range validation + persistence (EEPROM/flash layout)
-- [ ] Hardware bring-up test against a real monitoring tool
+- [ ] ⬜ Populate input registers from live telemetry (needs the DSP link)
+- [ ] ⬜ Holding-register range validation + persistence (EEPROM/flash layout)
+- [ ] ⬜ Hardware bring-up test against a real monitoring tool

@@ -58,18 +58,18 @@ enter/commit/cancel edit, min/max clamp, submenu push/pop, action callback).
 
 ## TODO
 
-- [ ] Populate the full 96-item menu + submenus from `string_catalog.txt` +
+- [ ] ⬜ Populate the full 96-item menu + submenus from `string_catalog.txt` +
       `modbus_map.h` (the model is currently a representative subset).
-- [ ] Item types/choices that need RE (enum option lists, per-item scale) —
+- [ ] ⬜ Item types/choices that need RE (enum option lists, per-item scale) —
       confirm against the stock menu-builder tables.
-- [x] `keypad.c`: debounced keypad scan — keys on the factory key pins
+- [x] ✅ `keypad.c`: debounced keypad scan — keys on the factory key pins
       PA8/PA11/PC8/PC9. (An earlier 20×4 HD44780-over-PCF8574 I²C character-LCD
       stand-in was removed once the real panel was decoded: the physical front
       panel has **no** character LCD, only the monochrome graphic LCD now driven
       by `src/hmi/lcd_tft.c` — `docs/28`.)
-- [ ] Render the menu on the graphic LCD (`lcd_tft`): the navigation engine is
+- [ ] ⬜ Render the menu on the graphic LCD (`lcd_tft`): the navigation engine is
       ready — it draws through the `hmi_io_t` callbacks — and needs a
       `draw_row`/`clear` backend that paints onto the graphic panel.
-- [ ] Settings persistence (EEPROM/flash) on commit; range validation shared
+- [ ] ⬜ Settings persistence (EEPROM/flash) on commit; range validation shared
       with the Modbus write path.
-- [ ] Multi-byte/string items (SN, FW, time) rendering.
+- [ ] ⬜ Multi-byte/string items (SN, FW, time) rendering.

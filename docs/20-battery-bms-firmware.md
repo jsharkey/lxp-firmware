@@ -246,21 +246,21 @@ byte (`==1` / `==5` / `==6` branches).
 
 ### Status
 
-- [x] **Per-frame byte layout** — descriptor structure + `0x351`/`0x355`/`0x356`
+- [x] ✅ **Per-frame byte layout** — descriptor structure + `0x351`/`0x355`/`0x356`
   byte-exact (standard preset); RX IDs `0x300/0x301/0x305/0x400` identified.
   Captured in `include/inv/bms_can_map.h`.
-- [ ] **Alarm/flag bit maps** (`0x359`/`0x35a`/`0x35c`) — positions partially
+- [ ] ⬜ **Alarm/flag bit maps** (`0x359`/`0x35a`/`0x35c`) — positions partially
   recovered; finish the exact standard-bit assignment.
-- [ ] **Bus baud rate** — decode the HC32 CAN `SBT` bit-timing. Expected 500 kbit/s.
-- [ ] **Per-preset byte-order/table map** — which `Pnn` preset selects which
+- [ ] ⬜ **Bus baud rate** — decode the HC32 CAN `SBT` bit-timing. Expected 500 kbit/s.
+- [ ] ⬜ **Per-preset byte-order/table map** — which `Pnn` preset selects which
   builder path (and endianness).
-- [ ] **Exact HC32 SKU** + bootloader (`0x0`–`0x20000`) layout.
-- [x] **Bind this contract to the com-MCU side** — done: Init
+- [ ] ⬜ **Exact HC32 SKU** + bootloader (`0x0`–`0x20000`) layout.
+- [x] ✅ **Bind this contract to the com-MCU side** — done: Init
   `sub_08022660`/`sub_080227b6`, RX handler `sub_08005758` → ring `0x200051ac`,
   parser `sub_0802a760` (dispatches the `0x350–0x360` core +
   `0x300`/`0x370–0x38c`/`0x4xx` IDs), TX `sub_0800574c`. See
   [`docs/16` → "CAN1 ↔ battery BMS"](16-arm-io-map.md).
-- [x] **RX is interrupt-driven, not polled** *(corrects an earlier note)* —
+- [x] ✅ **RX is interrupt-driven, not polled** *(corrects an earlier note)* —
   harness instrumentation of the factory image shows it writes `CAN1->IER = 0x2`
   (**FMPIE0**, FIFO-0-message-pending interrupt) and **never reads `RF0R`**;
   pending the `CAN1_RX0` interrupt (vector 16+20) makes its ISR drain the FIFO-0
