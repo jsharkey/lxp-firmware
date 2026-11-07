@@ -235,9 +235,10 @@ T06 (classifier entry + its telemetry/STATUS base):
 
 **The 07 classifier entry (`sub_0801a678`) and IR_STATE (`0x2000d0e4+0xa0`) are now
 pinned** (see the resolved bullets above). The relay deciders are likewise pinned
-(docs/18: PB2/PC6 = `sub_08016ec6` reads IR_STATE `+0xa0`). What remains for the
-PC6 state→relay demo is clearing the ARM-local warnings (`STATE+0x9c`) that keep
-the run-enable relay in its warn-blink path (docs/39 T02b). Re-pinning that map is a
+(docs/18: PB2/PC6 = `sub_08016ec6` reads IR_STATE `+0xa0`). A clean PC6 state→relay
+demo is not reachable from USART2 alone — the relay blinks (state-independently)
+while ARM-local warnings (`STATE+0x9c`, W006/W008) are present, and those gate on a
+whole-inverter status struct `0x2000d890` the USART2 peer can't clear (docs/39 T02b). Re-pinning that map is a
 prerequisite shared by T06b (the classifier oracle), the relay tests, and the
 safety-telemetry test, and is adjacent to T02 (running the USART2-ingest/
 classifier task in the sim). Until then, our `inv_classify()`

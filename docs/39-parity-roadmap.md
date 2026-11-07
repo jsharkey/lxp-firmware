@@ -188,8 +188,9 @@ as the right Modbus input registers, with **no bank seeding**.
 #### T02b — Change operating state → PC6 moves (via the running relay task)
 **Status:** `[~] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
 
-**Chain fully cracked and pinned (static + executed); one condition remains for a
-clean PC6 demo.** What's verified:
+**Chain fully cracked and pinned (static + executed). Finding: `state → IR_STATE`
+works black-box from USART2; a clean `state → PC6` does NOT — PC6 is gated by
+whole-inverter warnings the USART2 peer can't clear (detail below).** What's verified:
 - **State → IR_STATE works black-box.** Feed valid USART2 frames to settle the
   trust counter (`0x2000da3e ≥ 0x54`, ~85 frames), then the mode byte (`frame[+4]`)
   flows `bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0` (pass-through);
@@ -201,14 +202,26 @@ clean PC6 demo.** What's verified:
   `PC6 = (IR_STATE ≥ 3)` — closed in a running mode, open in standby/fault/
   programming — **except it blinks when `STATE+0x98==0` (no fault) AND
   `STATE+0x9c!=0` (a warning is present)**; `0x2000da6c` bit 4 is a manual override.
-- **The one remaining obstacle:** in the minimal harness `STATE+0x9c = 0x140` =
-  **W006 + W008** (W008 = FW-version-mismatch — set because the fed frames carry no
-  valid DSP FW version / telemetry), so the decider sits in the warn-blink path and
-  PC6 does not cleanly follow the mode. **Done when:** feeding *complete valid*
-  telemetry (a tag-rotation that carries the matching FW version and the readings
-  that clear the ARM-local warns) so `STATE+0x9c→0`, then a running mode → PC6=1 and
-  standby → PC6=0, with no internal call; add a boot-snapshot cache (docs/28) for
-  the frame warm-up. This is the "multi-input" condition docs/18 flagged, now pinned.
+- **Why clean PC6 is NOT reachable from USART2 alone (RE complete, bit-level).**
+  The blink path (`0x08016f7e`) toggles PC6 purely on a counter — **it does not
+  read IR_STATE at all** — so whenever a warning is present (no fault), PC6 blinks
+  independent of the operating mode. The clean `PC6=IR_STATE≥3` path runs only when
+  `STATE+0x9c==0` (no warning) or `STATE+0x98!=0` (a fault). In the harness
+  `STATE+0x9c = 0x140` = **W006 + W008**, and both gate on an ARM-internal
+  whole-inverter status struct **`0x2000d890`** (20 refs across subsystems, NOT the
+  USART2 bank): W008 clears only when `[0x2000d890]&0xc00==0xc00`; W006 needs
+  `[0x2000d890+8]&1==0` **and** `bank+0xca&1==0` (only the latter is USART2-fed).
+  Since `0x2000d890` is driven by subsystems the USART2 peer doesn't control, the
+  warn-blink can't be cleared by feeding USART2 — **PC6 is a whole-inverter
+  run-enable relay, not a clean function of the USART2 mode byte.** This settles
+  docs/18's "multi-input, time-varying" note at the register level.
+- **So the achievable black-box result is `state → IR_STATE` (done above);** a
+  deterministic `state → PC6` demo would require driving `0x2000d890` to a healthy
+  state too (a fuller inverter model: valid DSP/grid health), which is beyond a lone
+  USART2 feed. Revised **done-when:** either (a) assert IR_STATE tracks the fed mode
+  (achievable now, needs the ~85-frame settle + a boot-snapshot cache, docs/28), or
+  (b) model the `0x2000d890` health inputs so the warns clear and PC6 follows — a
+  larger task than this card.
 - **Harness gotcha found:** between fed frames the assembler's ready flag
   (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
   settle) — too short a gap silently drops the next frame.

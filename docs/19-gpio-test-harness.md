@@ -279,10 +279,11 @@ Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) un
   `frame[+4] → BANK+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0 →
   relay decider sub_08016ec6 → PC6`, where `PC6 = (IR_STATE ≥ 3)`. Verified
   black-box that IR_STATE tracks the fed mode (after settling the trust counter
-  `0x2000da3e ≥ 0x54`, ~85 frames). The remaining step for a clean PC6 demo is
-  clearing the ARM-local warnings (`STATE+0x9c = 0x140`, W006/W008) that hold the
-  relay in a warn-blink — i.e. feeding complete valid telemetry, not just a mode
-  byte (docs/39 T02b). The relay task's PC6
+  `0x2000da3e ≥ 0x54`, ~85 frames). But a clean PC6 demo is NOT reachable from
+  USART2 alone: the relay blinks (state-independently) whenever ARM-local warnings
+  are present, and those warnings (`STATE+0x9c`, W006/W008) gate on a whole-inverter
+  status struct `0x2000d890` the USART2 peer can't clear. So PC6 is a whole-inverter
+  run-enable relay, not a clean function of the USART2 mode byte (docs/39 T02b). The relay task's PC6
   output is also multi-input (state + DSP/fault + debounce + config), so it is
   driven through the shared contract in `test_arm_sim_self_only.py`, not a lone
   injected byte.

@@ -40,10 +40,14 @@ The six power-path relay pins from docs/16 are driven by four logic functions:
 > path — closed in a running mode, open in standby/fault/programming — **except**
 > it *blinks* when there is no fault (`state+0x98 == 0`) **and** a warning is
 > present (`state+0x9c != 0`); a manual override (`0x2000da6c` bit 4) forces it.
-> So a clean state→PC6 demo needs the ARM-local warnings cleared (in the minimal
-> harness `state+0x9c = 0x140` = W006 + W008 FW-mismatch, set because the fed
-> frames carry no valid FW version / telemetry) — the "multi-input" condition
-> below, now pinned. See docs/39 T02b.
+> The blink path (`0x08016f7e`) toggles PC6 on a counter and does **not** read
+> IR_STATE, so with a warning present PC6 blinks regardless of mode. In the harness
+> `state+0x9c = 0x140` = W006 + W008, and both gate on the ARM-internal
+> whole-inverter status struct `0x2000d890` (20 refs across subsystems, not the
+> USART2 bank) — which the USART2 peer does not control. So **PC6 cannot be cleanly
+> driven from the USART2 mode byte alone**; it is a whole-inverter run-enable relay
+> (this is the "multi-input" condition, now pinned at register level). See docs/39
+> T02b.
 
 **1. The operating mode = IR_STATE (input register 0).** The resolver
 `sub_0801a678` reads the DSP telemetry struct `0x2000ce5c` (bytes `[0]`/`[1]` =
