@@ -68,11 +68,13 @@ int main(void)
     CHECK(r.warn == 0, "no warn bits when clean");
     r = inv_classify(STATE_STANDBY, 0, 0, INV_LOCAL_WARN_W008);
     CHECK(r.warn == (1u << 8), "W008 computed locally -> warn bit 8");
-    /* relayed grid warnings (W016/17/18 high bits) pass through; local W008 ORs */
+    r = inv_classify(STATE_STANDBY, 0, 0, INV_LOCAL_WARN_W000);
+    CHECK(r.warn == (1u << 0), "W000 battery-comms-loss -> warn bit 0");
+    /* relayed grid warnings (W016/17/18 high bits) pass through; local W008/W000 OR */
     r = inv_classify(STATE_STANDBY, 0, (1u << 16) | (1u << 17) | (1u << 18),
-                     INV_LOCAL_WARN_W008);
-    CHECK(r.warn == ((1u<<16)|(1u<<17)|(1u<<18)|(1u<<8)),
-          "relayed grid warnings merged with local W008");
+                     INV_LOCAL_WARN_W008 | INV_LOCAL_WARN_W000);
+    CHECK(r.warn == ((1u<<16)|(1u<<17)|(1u<<18)|(1u<<8)|(1u<<0)),
+          "relayed grid warnings merged with local W008 + W000");
 
     /* --- fault and warn are independent ----------------------------------- */
     r = inv_classify(STATE_AC_CHARGE, (1u << 22), (1u << 25),

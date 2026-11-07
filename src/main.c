@@ -106,8 +106,15 @@ void SysTick_Handler(void) { g_ticks++; }
 /* ---- battery BMS over CAN1 -> the Modbus input-register image ---- */
 static bms_pack_t g_bms;
 
+/* BMS/CAN link liveness for the comms-loss watchdog (W000, T08): the tick of the
+ * last CRC-valid, recognised pack frame, and whether any has ever been seen. */
+static volatile uint32_t g_last_bms_ms;
+static volatile bool     g_bms_seen;
+
 static void on_can_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
     if (!bms_can_on_frame(&g_bms, id, data, dlc)) return;
+    g_last_bms_ms = g_ticks;   /* a recognised pack frame -> link is alive */
+    g_bms_seen = true;
     /* Publish decoded pack state into the shared register image, rescaling each
      * CAN field to its Modbus register (docs/04 / the EG4 18kPV-12LV map). The
      * factory image maps the same CAN fields to these same input registers. */
@@ -178,6 +185,11 @@ static void apply_if_time_reg(uint16_t reg) {
  * frame-health task is unscheduled; docs/29/30), so this is set well above the
  * safety frame interval to avoid false trips. */
 #define SAFETY_LINK_TIMEOUT_MS 1000u
+
+/* BMS/CAN comms-loss timeout -> W000 (Battery communication failure, T08). The
+ * pack streams telemetry at ~1 Hz and we keep-alive at 1 Hz, so a multi-second
+ * gap is a real loss; conservative (the factory threshold is sim-blocked). */
+#define BMS_LINK_TIMEOUT_MS 5000u
 
 static mb_config_t g_mb;   /* defined below; forward tentative decl for mb_wr_hold */
 static volatile uint16_t g_pending_com_addr;  /* HR 15: new slave addr to adopt after the reply (0 = none) */
@@ -387,6 +399,16 @@ int main(void) {
             g_state_in.local_flags |= INV_LOCAL_FAULT_E017;
         else
             g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_FAULT_E017;
+        /* BMS/CAN comms-loss -> W000 (Battery communication failure, T08): once a
+         * recognised pack frame has been seen, raise W000 when none arrives within
+         * the timeout; clears on the next good frame. (The on_can_frame callback
+         * stamps g_last_bms_ms; CAN is drained later in this loop, so this reads the
+         * previous pass's stamp -- a sub-ms lag.) */
+        if (g_bms_seen &&
+            (uint32_t)(g_ticks - g_last_bms_ms) > BMS_LINK_TIMEOUT_MS)
+            g_state_in.local_flags |= INV_LOCAL_WARN_W000;
+        else
+            g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_WARN_W000;
         state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 

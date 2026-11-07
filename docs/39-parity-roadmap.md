@@ -160,10 +160,11 @@ hides what really is.
 ## P1 — the live data path (telemetry, state, faults)
 
 ### T08 — Peer-link supervision: comms-loss faults, timeouts, recovery
-**Status:** split → **safety-link `[x]`** (ours wired + tested, 2026-11-07), **DSP / BMS `[ ]`** · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
+**Status:** split → **safety-link `[x]`** + **BMS `[x]`** (ours wired + tested, 2026-11-07), **DSP (USART3) `[ ]`** (inference-gated) · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
 
 What happens when the DSP, safety CPU or BMS goes quiet? The **safety-CPU (USART2)**
-leg is done:
+and **BMS (CAN)** legs are done; the **DSP (USART3)** leg is held pending a confirmed
+fault-bit assignment (below):
 
 - **Safety link → E017 (done).** Peer-comms-loss on USART2 sets **E017** (FaultCode
   bit 17, `0x20000`) — the ARM-local peer-comms-loss bit the factory also uses
@@ -182,9 +183,24 @@ leg is done:
     class of harness limit as the dongle-UART5 task. So `SAFETY_LINK_TIMEOUT_MS` is a
     conservative default (1 s) pending a bench capture; the *mechanism* (which bit,
     which direction, recovery) is pinned statically (docs/29/30) and proven on ours.
-- **DSP (USART3) and BMS (CAN) legs — remaining.** Same shape: a `last_rx` watchdog
-  per peer (the CAN path already has keep-alive timing; USART3 RX is T09) → the
-  matching fault/warn bit. Still to do.
+- **BMS link → W000 (done).** BMS/CAN comms-loss sets **W000** (WarningCode bit 0,
+  "Battery communication failure" — spec Table 10). Ours: `on_can_frame` stamps the
+  last recognised-pack-frame tick; once a frame has been seen, the loop raises W000
+  when none arrives within `BMS_LINK_TIMEOUT_MS` (5 s, conservative) and clears it on
+  the next good frame (`src/main.c`; `inv_classify` composes `INV_LOCAL_WARN_W000`).
+  Tested e2e on CAN1: `test_bms_link_loss_raises_w000` (`tests/test_arm_sim_self_only.py`)
+  — alive → clear, quiet past the timeout → set, fresh pack frame → clears. Host:
+  `test_classify.c` W000 composition. (Factory threshold sim-blocked, as for E017.)
+- **DSP (USART3) link → E000 — held (inference-gated).** By elimination the ARM's
+  *other* local internal-comm fault bit (the classifier keeps exactly bits 0 and 17;
+  17 = USART2/safety, proven) is **E000** ("Internal communication fault 1"), which
+  would be the **USART3/DSP** peer. But that is an inference, **not** oracle-proven,
+  and — unlike USART2 (whose driver keeps a frame-health counter, docs/30) — no
+  equivalent USART3-poll liveness mechanism has been located in the image, and the
+  threshold is sim-blocked anyway. Rather than wire a live fault on a guess (a wrong
+  bit would raise a fault the factory doesn't), this leg stays open until E000's
+  source is confirmed by RE or a bench capture. The hook would mirror the others (a
+  `last_rx` on `dsp_rx_port`'s Modbus-request path → `INV_LOCAL_FAULT_E000`).
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
 **Status:** `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)

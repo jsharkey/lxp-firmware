@@ -86,6 +86,18 @@ state. **Our firmware already matches byte-for-byte** (`src/main.c` ~1 Hz, `can_
 so the earlier "payload provisional" note is settled. Oracle test:
 [`test_can_tx.py`](../../tests/test_can_tx.py) / [`can_tx_contract.py`](../../tests/can_tx_contract.py).
 
+## Comms-loss → W000 (T08)
+
+Once a recognised pack frame has been seen, our firmware raises **W000** (WarningCode
+bit 0, "Battery communication failure") if no pack frame arrives within
+`BMS_LINK_TIMEOUT_MS` (5 s, conservative) and clears it on the next good frame
+(`src/main.c`: `on_can_frame` stamps the last-rx tick; `inv_classify` composes
+`INV_LOCAL_WARN_W000`). The factory's exact threshold is not observable in the bare
+harness (the same unscheduled-periodic-task limit as the USART2 leg, docs/39 T08), so
+the value is a documented default; the bit and behaviour follow the spec. Oracle test:
+[`test_arm_sim_self_only.py`](../../tests/test_arm_sim_self_only.py)
+`test_bms_link_loss_raises_w000`.
+
 ## Key functions / files
 
 - Factory: init `sub_08022660` (+ filters `sub_080227b6`); RX `sub_08005758` →

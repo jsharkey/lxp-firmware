@@ -272,6 +272,40 @@ def test_safety_link_loss_raises_e017():
     assert (fault_word() & E017) == 0, "E017 did not clear after the link recovered"
 
 
+def test_bms_link_loss_raises_w000():
+    """BMS/CAN comms-loss supervision (docs/39 T08): once a recognised pack frame has
+    been seen, W000 (WarningCode bit 0, "Battery communication failure") is raised if
+    no further pack frame arrives within the timeout and clears on the next good frame.
+    Driven on CAN1 via CanBattery; the clock is advanced by poking g_ticks. The exact
+    factory threshold is sim-blocked, so ours uses a conservative default."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_can import CanBattery
+    IR_WARNCODE_L, W000 = 62, 1 << 0
+    sim = _ours()
+    battery = CanBattery(sim)           # install CAN1 hooks before boot
+    mb = ModbusDongle(sim)
+
+    def warn():
+        w = mb.read_input(IR_WARNCODE_L)
+        assert w, "WarningCode not served (%r)" % w
+        return w[0]
+
+    # establish liveness -> W000 clear
+    battery.send_soc_soh(77, 96)
+    battery.send_measurements(5325, 150, 231)
+    battery.settle()
+    assert (warn() & W000) == 0, "W000 set while the BMS link is alive (0x%x)" % warn()
+
+    # go quiet past the timeout -> W000 raised
+    sim.w32(sim.sym("g_ticks"), 10_000_000)    # >> BMS_LINK_TIMEOUT_MS since the last frame
+    assert (warn() & W000) != 0, "W000 not raised after the BMS link went quiet"
+
+    # a fresh pack frame restores the link -> W000 clears (recovery)
+    battery.send_soc_soh(77, 96)
+    battery.settle()
+    assert (warn() & W000) == 0, "W000 did not clear after the BMS link recovered"
+
+
 def test_w008_tracks_relayed_peer_identity():
     """W008 (FW-version mismatch) is sourced from the peer identity the safety CPU
     relays into the telemetry bank (bank+3..6): it is raised at boot and clears once a

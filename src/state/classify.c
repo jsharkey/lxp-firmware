@@ -52,12 +52,15 @@ inv_class_t inv_classify(uint8_t mode_byte, uint32_t relayed_fault,
     if (local_flags & INV_LOCAL_FAULT_E017)
         out.fault |= (1u << INV_FAULT_BIT_E017);
 
-    /* --- WarningCode (IR 62/63): relayed word + ARM-local W008 -------------
-     * The grid/high warnings come from the frame; W008 (FW-version mismatch,
-     * bit 8) is computed on the ARM from the per-processor version compare. */
+    /* --- WarningCode (IR 62/63): relayed word + ARM-local warnings ---------
+     * The grid/high warnings come from the frame; the ARM adds W008 (FW-version
+     * mismatch, bit 8) from the per-processor version compare and W000 (battery
+     * communication failure, bit 0) from the BMS/CAN link watchdog (T08). */
     out.warn = relayed_warn;
     if (local_flags & INV_LOCAL_WARN_W008)
         out.warn |= (1u << INV_WARN_BIT_W008);
+    if (local_flags & INV_LOCAL_WARN_W000)
+        out.warn |= (1u << INV_WARN_BIT_W000);
 
     /* --- State (IR 0): a PURE PASS-THROUGH of the relayed mode byte ---------
      * ORACLE-PINNED (docs/39 T06b, 07 image): the classifier writes IR_STATE

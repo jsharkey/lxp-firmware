@@ -35,6 +35,7 @@ enum {
     INV_LOCAL_FAULT_E000  = 1u << 0,  /* E000 internal comm fault 1  -> FaultCode bit 0  */
     INV_LOCAL_FAULT_E017  = 1u << 1,  /* E017 internal comm fault 2  -> FaultCode bit 17 */
     INV_LOCAL_WARN_W008   = 1u << 2,  /* W008 FW-version mismatch    -> WarningCode bit 8 */
+    INV_LOCAL_WARN_W000   = 1u << 3,  /* W000 Battery comms failure  -> WarningCode bit 0 */
 };
 
 typedef struct {
@@ -46,6 +47,7 @@ typedef struct {
 /* FaultCode bit set by the ARM locally (not relayed). */
 #define INV_FAULT_BIT_E000   0u
 #define INV_FAULT_BIT_E017   17u
+#define INV_WARN_BIT_W000    0u
 #define INV_WARN_BIT_W008    8u
 
 /* Classify a received DSP mode byte + relayed/safety fault&warn words into the
