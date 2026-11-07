@@ -605,19 +605,39 @@ missing:
   within tolerance.
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
-**Status:** `[ ]` · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+**Status:** `[~] claude 2026-11-07` — evaluator + landscape pinned ([`docs/41`](41-charge-discharge-schedule-gates.md)); most of it is inert/DSP-gated on our image, rest handed off · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
 
-We evaluate only the **AC-First** window (`src/sched/acfirst.c`). The AC-charge
-window evaluator has a factory-vs-ours micro-test already
-(`tests/test_timewindow.py` `test_acchg_*`). Still missing:
-- **Forced-discharge** and **charge-priority** windows (HR 74-89) through the
-  same `timewindow_contract.py` profile mechanism.
-- The **SOC/voltage gates** that start/stop AC charge (HR 64-67 power/SOC
-  limits, HR 158-161 ACChg-by-V/SOC, HR 160s bat-low/OngridEOD,
-  HR 120 ACChargeType selecting time vs SOC vs V). Sweep with **hysteresis
-  boundaries**: start at X, stop at Y, and what happens between.
-- Where the verdict lands: IR status bits? Pushed to the DSP? Check the block 0
-  / slot fields.
+**Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
+schedule features' "active now" verdicts are computed by one combined ARM
+evaluator `sub_0801ed28` (on `com_flat.bin`), writing three bytes
+`0x2000aa5f/60/61` (AC-charge / charge-priority / forced-discharge), gated by a
+per-feature master-enable (`settings+0x23`), the HR 120 mode bits (`settings+0x33`),
+the window, and SOC/limit/status inputs — i.e. literally **window × SOC × V**. But:
+- Driven in isolation, the AC-charge verdict `0xaa5f` tracks the **feature-enable**,
+  not the time window: the **ARM pushes the AC-charge windows to the DSP** (block 4,
+  T10) and the **DSP** time-gates them. (Contrast AC-First, which the ARM evaluates
+  itself → IR 126 bit 8.)
+- Per the T10 capture, **HR 67 (AC-charge SOC) and HR 74-89 (charge-priority +
+  forced-discharge) are inert** (not dongle-writable) on this image, so those gates
+  can't be configured, exercised, or oracled here.
+
+So **ours already covers the live ARM schedule duties** on this image (AC-First →
+IR 126 bit 8; AC-charge windows → DSP block 4) and deliberately does not implement
+the inert/DSP-gated paths.
+
+**Done this pass:**
+- Fixed `tests/timewindow_contract.py` so the `acchg` micro-test **skips cleanly**
+  (was reported as ERROR) on images without its evaluator — its evaluator
+  (`0x08034590`) is for the `ceaa-07xx_vE_260214` build, **not** `com_flat.bin`
+  (which is a 07-layout image at the "ceaa05" App addresses).
+
+**Hand-offs (see [`docs/41`](41-charge-discharge-schedule-gates.md) §Hand-offs):**
+- The evaluator likely reads the **committed slot records** (`0x2000a330…`), not raw
+  settings — pin that to drive the time/SOC gate in isolation.
+- An image that exposes HR 67 / 74-89 (e.g. `ceaa-07xx_vE_260214`) to exercise the
+  inert features and run the `acchg` oracle.
+- The SOC gate reads the derived **battery-limit struct** (`0x2000a68c`) — **T11**.
+- Trace where `0x2000aa5f/60/61` are consumed (relays / status IR / DSP).
 - HR 126-131 OptimalChg is **dormant in the factory** (docs/31 Q5). Don't
   implement it beyond the existing round-trip unless that verdict changes.
 

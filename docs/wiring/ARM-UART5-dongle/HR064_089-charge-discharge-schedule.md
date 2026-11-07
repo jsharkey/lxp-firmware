@@ -15,12 +15,17 @@ Three parallel features, each = **PowerCMD % + SOCLimit % + three time windows**
 
 ## Side-effects of writing
 
-**Persisted to config flash; the schedule is evaluated ARM-side against the
-clock.** The time windows are checked against the RTC the ARM owns (the same
-`hour|minute` packing as the AC-First windows). The ARM decides *when* a window is
-active; it does **not** push the per-window verdict as a separate signal
-([`docs/25`](../../25-modbus-register-spaces.md) establishes this pattern for the
-AC-First window). Higher-resolution `0.1%` power variants live at HR 138-143.
+**Persisted to config flash.** The three features' "active now" verdicts are
+computed ARM-side by one combined evaluator (`sub_0801ed28` on `com_flat.bin`),
+landing in three bytes **`0x2000aa5f/60/61`** (AC-charge / charge-priority /
+forced-discharge), gated by a master-enable + the HR 120 mode bits + the window +
+SOC/limit/status — see [`docs/41`](../../41-charge-discharge-schedule-gates.md).
+**Note the division of labour:** for **AC-charge**, the ARM **pushes the window
+times to the DSP** (config block 4, see below) and the DSP time-gates them; the ARM
+verdict byte `0xaa5f` in isolation reflects the feature-enable, not the window.
+Contrast **AC-First** (HR 152-157), which the ARM evaluates itself and surfaces at
+IR 126 bit 8 ([`docs/25`](../../25-modbus-register-spaces.md)). Higher-resolution
+`0.1%` power variants live at HR 138-143.
 
 ## Where these reach the Control DSP (ARM→USART3 config push)
 
@@ -50,6 +55,6 @@ SETTINGS → **Charge tab**: `AC Chg Based On` selects the AC-charge mode (**def
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **Writability + DSP push (HR 64-73):** [`test_dsp_push.py`](../../../tests/test_dsp_push.py) / [`dsppush_contract.py`](../../../tests/dsppush_contract.py) — `WRITABLE_64_89`/`INERT_64_89` pin which registers store, and `DSP_PUSH` pins that HR 68-73 (AC-charge windows) push to config block 4 while HR 66 (power) is stored but not pushed.
-- **AC-charge windows vs RTC (HR 68-73):** [`test_timewindow.py`](../../../tests/test_timewindow.py) / [`timewindow_contract.py`](../../../tests/timewindow_contract.py) `acchg`.
+- **AC-charge windows vs RTC (HR 68-73):** [`test_timewindow.py`](../../../tests/test_timewindow.py) / [`timewindow_contract.py`](../../../tests/timewindow_contract.py) `acchg` — the factory evaluator profile (`0x08034590`) is for the `ceaa-07xx_vE_260214` build; on `com_flat.bin` (07-layout at "ceaa05" App addresses) it has no such window evaluator, so these two tests **skip** cleanly (see [`docs/41`](../../41-charge-discharge-schedule-gates.md), [`docs/39`](../../39-parity-roadmap.md) T15).
 - **HR 67 + HR 74-89:** contract-asserted **inert** in the factory image (a dongle write does not store) — see `INERT_64_89`.
 - **Write validation (HR 66, T04):** [`test_settings_validate.py`](../../../tests/test_settings_validate.py) / [`settings_contract.py`](../../../tests/settings_contract.py) — in-range `50` accepted, `101` (> max 100) rejected with Modbus exception 3 (not clamped, not stored); host [`test_settings_validate.c`](../../../tests/test_settings_validate.c).

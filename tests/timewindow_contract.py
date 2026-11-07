@@ -273,8 +273,15 @@ def _seed_and_eval(Emu, spec, image, symbols, windows, hour, minute):
     return emu.rbytes(addr, 1)[0] != 0
 
 
-class Skip(Exception):
-    pass
+# Use the runner's Skip so a resolution/availability Skip raised from inside a
+# test body (e.g. "could not identify a factory acchg evaluator for this image")
+# is reported as SKIP, not ERROR. Falls back to a local class when the runner is
+# not importable (e.g. the module used standalone).
+try:
+    from arm_sim_runner import Skip
+except Exception:                     # pragma: no cover - standalone use
+    class Skip(Exception):
+        pass
 
 
 class FactoryBackend:
