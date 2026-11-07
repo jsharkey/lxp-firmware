@@ -128,7 +128,7 @@ _T01-T04 are done; see [Completed tasks](#completed-tasks). T22 was added on
 2026-11-07 from a coverage audit of the dongle register docs._
 
 ### T22 — Register-coverage bookkeeping: catch up, then automate it
-**Status:** `[ ]` · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
+**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
 
 An audit on 2026-11-07 found that the per-register `## Test coverage` sections
 in [`ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) **lag the tests
