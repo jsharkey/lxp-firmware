@@ -235,11 +235,14 @@ T06 (classifier entry + its telemetry/STATUS base):
 
 **The 07 classifier entry (`sub_0801a678`) and IR_STATE (`0x2000d0e4+0xa0`) are now
 pinned** (see the resolved bullets above). The relay deciders are likewise pinned
-(docs/18: PB2/PC6 = `sub_08016ec6` reads IR_STATE `+0xa0`). A clean PC6 state→relay
-demo is not reachable from USART2 alone — the relay blinks (state-independently)
-while ARM-local warnings (`STATE+0x9c`, W006/W008) are present, and those gate on a
-whole-inverter status struct `0x2000d890` the USART2 peer can't clear (docs/39 T02b). Re-pinning that map is a
-prerequisite shared by T06b (the classifier oracle), the relay tests, and the
+(docs/18: PB2/PC6 = `sub_08016ec6` reads IR_STATE `+0xa0`), and the full state→PC6
+path is now demonstrated black-box (`test_usart2_mode_drives_pc6`, docs/39 T02b): the
+relay blinks while an ARM-local warning is present, but both standing warnings clear
+from the wire/GPIO — **W008** when `bank+3..6` = "ceaa" (fed) and **W006** when the
+**PD8 detect input** is high with clean telemetry — after which PC6 cleanly follows
+the fed mode. So the classifier, IR_STATE, decider and health inputs are all pinned,
+closing what was
+a prerequisite shared by T06b (the classifier oracle), the relay tests, and the
 safety-telemetry test, and is adjacent to T02 (running the USART2-ingest/
 classifier task in the sim). Until then, our `inv_classify()`
 (`src/state/classify.c`) is grounded in the **documented** behaviour (this doc +

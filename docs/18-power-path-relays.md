@@ -41,13 +41,17 @@ The six power-path relay pins from docs/16 are driven by four logic functions:
 > it *blinks* when there is no fault (`state+0x98 == 0`) **and** a warning is
 > present (`state+0x9c != 0`); a manual override (`0x2000da6c` bit 4) forces it.
 > The blink path (`0x08016f7e`) toggles PC6 on a counter and does **not** read
-> IR_STATE, so with a warning present PC6 blinks regardless of mode. In the harness
-> `state+0x9c = 0x140` = W006 + W008, and both gate on the ARM-internal
-> whole-inverter status struct `0x2000d890` (20 refs across subsystems, not the
-> USART2 bank) — which the USART2 peer does not control. So **PC6 cannot be cleanly
-> driven from the USART2 mode byte alone**; it is a whole-inverter run-enable relay
-> (this is the "multi-input" condition, now pinned at register level). See docs/39
-> T02b.
+> IR_STATE, so while a warning is present PC6 blinks regardless of mode. The two
+> warnings that stand in a bare harness are both now cleared from the wire/GPIO:
+> **W008** (FW-version mismatch) clears when `bank+3..6` = "ceaa" (fed in a tag-0
+> frame; `sub_0801a93a`), and **W006** (comms health) clears when the **PD8 "detect"
+> input** is high (GPIOD bit 8, read by `sub_0801ac2c`, docs/16) and `bank+0xca`
+> bit 0 is clear. With both cleared (`state+0x9c == 0`) the decider's clean path runs
+> and **PC6 cleanly follows the operating mode** fed on USART2 — demonstrated end to
+> end by `test_usart2_mode_drives_pc6` (docs/39 T02b). (Programming mode, IR_STATE==2,
+> is a deliberate blink.) So PC6 is a whole-inverter run-enable relay, but its inputs
+> are now all pinned and drivable in the harness — it *is* a function of the mode once
+> the inverter is made healthy.
 
 **1. The operating mode = IR_STATE (input register 0).** The resolver
 `sub_0801a678` reads the DSP telemetry struct `0x2000ce5c` (bytes `[0]`/`[1]` =

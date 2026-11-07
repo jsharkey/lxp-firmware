@@ -49,30 +49,26 @@ def _factory():
 
 
 # --- factory relay drive: re-pin needed before these can run (docs/18) ------
-# These two tests drive the factory relay deciders directly. The addresses are now
-# re-pinned (T02b): IR_STATE is `0x2000d0e4+0xa0` (verified -- the PC6/PB2 decider
-# `sub_08016ec6`, a real function entry, reads exactly that byte to gate PC6), and
-# `0x2000da6c` bit 4 is the manual relay override (docs/18). (The earlier note that
-# these were "phantoms" and that IR_STATE lived at `0x2000a0d8+0x90` was a
-# disassembler-base artifact, now corrected -- docs/18/19/22.) But the deciders
-# still can't be exercised as the isolated updaters these tests assume: they are
-# big multi-input RTOS-task control functions that read IR_STATE *and* the
-# whole-inverter warning/fault status (the ARM-local struct `0x2000d890`), debounce
-# counters and config enables. PC6 in particular blinks (state-independently)
-# whenever a warning is present, and those warnings gate on `0x2000d890` -- which no
-# single injected input or lone USART2 feed clears (T02b, docs/39). So a clean
-# black-box factory drive isn't available without modelling that whole context.
+# These two tests call the factory relay deciders DIRECTLY (as isolated updaters).
+# That specific approach doesn't work -- the deciders are big multi-input RTOS-task
+# control functions (they read IR_STATE *and* the whole-inverter warning/fault
+# status, debounce counters, config enables) and fault when entered cold. The
+# addresses are all re-pinned now (T02b): IR_STATE is `0x2000d0e4+0xa0`, the PC6/PB2
+# decider is `sub_08016ec6` (a real function entry), `0x2000da6c` bit 4 is the manual
+# override (docs/18). (The earlier note that these were "phantoms" at `0x2000a0d8+0x90`
+# was a disassembler-base artifact, corrected -- docs/18/19/22.)
 #
-# So these SKIP: the same override + working-mode contracts (RELAY_OVERRIDE_TRUTH /
-# RUN_STATES / NONRUN_STATES) are enforced on our implementation by
-# tests/test_arm_sim_self_only.py, so the behaviour is covered; only the
-# factory-oracle cross-check is paused. (The wire->IR_STATE half of the factory
-# path IS covered black-box by test_usart2_mode_reaches_ir_state above.)
-_RELAY_REPIN = ("factory relay deciders are multi-input RTOS control functions "
-                "(PC6 = sub_08016ec6 reads IR_STATE 0x2000d0e4+0xa0 but blinks on "
-                "whole-inverter warnings in 0x2000d890 that a lone input can't "
-                "clear -- T02b, docs/39); can't be driven as isolated updaters. "
-                "Contract still enforced in test_arm_sim_self_only.py.")
+# The full factory state->PC6 path IS now demonstrated black-box, through the running
+# RTOS, by `test_usart2_mode_drives_pc6` above (feed the mode on the wire with the
+# inverter healthy -> PC6 follows). So these two direct-call tests SKIP: the override
+# + working-mode contracts (RELAY_OVERRIDE_TRUTH / RUN_STATES / NONRUN_STATES) are
+# enforced on our implementation by tests/test_arm_sim_self_only.py, and the factory
+# PC6 relay is covered black-box above -- only the isolated direct-call cross-check is
+# retired as unworkable (and unnecessary).
+_RELAY_REPIN = ("factory relay deciders are multi-input RTOS control functions that "
+                "fault when called in isolation; the factory state->PC6 path is covered "
+                "black-box by test_usart2_mode_drives_pc6, and the contracts by "
+                "test_arm_sim_self_only.py (T02b, docs/39).")
 
 
 def test_relay_override_drives_transfer_pins():
@@ -212,6 +208,55 @@ def test_usart2_mode_reaches_ir_state():
         got = wire.sim.r32(IR_STATE) & 0xFF
         assert got == mode, ("fed USART2 mode 0x%02x on the wire -> IR_STATE 0x%02x "
                              "(expected 0x%02x)" % (mode, got, mode))
+
+
+# --- USART2 operating-mode -> PC6 run-enable relay (T02b, docs/18, docs/39) -----
+# The full state->relay path, driven black-box: the operating-mode byte fed on the
+# wire flows classifier sub_0801a678 -> IR_STATE (0x2000d0e4+0xa0) -> relay decider
+# sub_08016ec6 -> PC6, where PC6 = (IR_STATE >= 3) -- but ONLY when the inverter is
+# healthy. PC6 otherwise blinks (state-independently) whenever an ARM-local warning
+# is present. Two warnings stand in a bare harness, both now understood and cleared
+# from the wire/GPIO (docs/39 T02b):
+#   W008 (FW-version mismatch): the classifier case-insensitively compares bank+3..6
+#     against "ceaa"; feeding a tag-0 frame with that identity clears it.
+#   W006 (comms health): gates on the PD8 "detect" input (docs/16: GPIOD bit 8, read
+#     by sub_0801ac2c with a ~10-tick debounce) AND bank+0xca bit 0; driving PD8 high
+#     and feeding clean telemetry clears it.
+# With both clear (warn=0, fault=0) the decider's clean path runs and PC6 tracks the
+# fed mode. The frame-trust counter (0x2000da3e) is seeded warm as elsewhere.
+def test_usart2_mode_drives_pc6():
+    """A USART2 operating-mode byte fed on the wire drives PC6 (the run-enable relay)
+    through the factory's real classifier + relay decider: with the inverter healthy
+    (peer version "ceaa" fed on the wire, PD8 detect input high, clean telemetry),
+    running modes close PC6 (=1) and standby/fault/programming open it (=0). This is
+    the full T02b state->PC6 demo, black-box via the running RTOS. Factory-only."""
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    TRUST_CTR = 0x2000da3e
+    WARN, FAULT = 0x2000d0e4 + 0x9c, 0x2000d0e4 + 0x98
+    wire = Usart2SafetyWire(_factory())
+    sim = wire.sim
+    sim.w32(TRUST_CTR, (sim.r32(TRUST_CTR) & ~0xFFFF) | 0x54)   # warm the frame-trust counter
+    sim.set_input("PD8", 1)                                      # safety-link detect input present
+    ceaa = b"ceaa"                                               # peer version signature -> W008 clear
+    wire.feed_frame({0x14: (0, 1), 0x15: (ceaa[0], 1), 0x16: (ceaa[1], 1), 0x17: (ceaa[2], 1),
+                     0x18: (ceaa[3], 1), 0x19: (0x05, 1), 0x29: (0x1234, 2)})
+    wire.feed_frame({0x14: (2, 1), 0x11: (0, 1), 0x12: (0, 1)})  # clean tag-2 -> W006 bank input clear
+    sim.set_input("PD8", 1)
+    sim.run(6_000_000)                                           # health debounce -> warns clear
+    assert sim.r32(WARN) == 0 and sim.r32(FAULT) == 0, \
+        "inverter not healthy: warn=0x%x fault=0x%x" % (sim.r32(WARN), sim.r32(FAULT))
+    # Running modes close PC6, standby (0x00) and fault (0x01) open it. PROGRAMMING
+    # (IR_STATE==2) is excluded: the decider has a special case that deliberately
+    # *blinks* PC6 in programming mode (sub_08016ec6, the IR_STATE==2 branch), so it
+    # is not a steady level to assert.
+    for mode, exp in ((0x04, 1), (0x00, 0), (0x10, 1), (0x40, 1), (0x01, 0)):
+        sim.set_input("PD8", 1)
+        wire.feed(build_frame({0x04: (mode, 1), 0x0d: (mode, 1)}), settle=0)
+        sim.run(2_000_000)                                      # classifier + relay decider run
+        got = sim.get_output("PC6")
+        kind = "running" if mode in (0x04, 0x10, 0x40, 0xC0) else "non-run"
+        assert got == exp, ("USART2 mode 0x%02x (%s) on the wire -> PC6=%d, expected %d"
+                            % (mode, kind, got, exp))
 
 
 # --- the per-pack register bank (undocumented IR 5000+), docs/34 §2b -----------

@@ -153,15 +153,16 @@ hardware the dongle can never reach us. The factory serves the dongle on
   UART5, and the README "Port note" plus docs/04 are updated.
 
 ### T02 — Run the factory's RTOS tasks in the simulator  (split into T02a / T02b)
-**Status:** `[~] claude-opus/019chjbE 2026-11-06` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
 
-Turned out bigger than one card, so **split** (keep the ID for references):
+**Done** (both halves). Split into two cards (ID kept for references):
 - **Scheduler + the relay/control task run** under `enable_rtos()` +
-  `attach_config_flash()` — already proven ([`docs/19`](19-gpio-test-harness.md)
+  `attach_config_flash()` — proven ([`docs/19`](19-gpio-test-harness.md)
   §"The factory runs a preemptive RTOS").
-- **T02a** (USART2 bytes → IR) is **done** (below); **T02b** (state → PC6)
-  remains. Full cracked chain + the frame-trust gate:
-  [`docs/19`](19-gpio-test-harness.md) §"T02" and [`docs/33`](33-usart2-telemetry-bank.md).
+- **T02a** (USART2 bytes → IR) **done**; **T02b** (state → PC6) **done**. Full
+  cracked chain, the frame-trust gate, and the inverter-health inputs that gate PC6:
+  [`docs/19`](19-gpio-test-harness.md) §"T02", [`docs/33`](33-usart2-telemetry-bank.md),
+  [`docs/18`](18-power-path-relays.md).
 
 #### T02a — Feed the USART2 safety link on the wire → bank/IR
 **Status:** `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
@@ -187,46 +188,43 @@ as the right Modbus input registers, with **no bank seeding**.
   tags are ungated (published every valid frame).
 
 #### T02b — Change operating state → PC6 moves (via the running relay task)
-**Status:** `[~] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
 
-**Chain fully cracked and pinned (static + executed). Finding: `state → IR_STATE`
-works black-box from USART2; a clean `state → PC6` does NOT — PC6 is gated by
-whole-inverter warnings the USART2 peer can't clear (detail below).** What's verified:
-- **State → IR_STATE works black-box.** Feed valid USART2 frames to settle the
-  trust counter (`0x2000da3e ≥ 0x54`, ~85 frames), then the mode byte (`frame[+4]`)
-  flows `bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0` (pass-through);
-  verified IR_STATE tracks the fed mode (0x04→0x04, 0x00→0x00, 0x10→0x10) with no
-  internal call. The classifier is `sub_0801a678` (NOT `sub_0801b480` — that's RTC
-  housekeeping; docs/22), which also composes `STATE+0x98` (fault) / `STATE+0x9c`
-  (warn) from `bank+0xd0/+0xd4`.
-- **The relay is pinned:** PC6 = decider `sub_08016ec6` (selector 2),
-  `PC6 = (IR_STATE ≥ 3)` — closed in a running mode, open in standby/fault/
-  programming — **except it blinks when `STATE+0x98==0` (no fault) AND
-  `STATE+0x9c!=0` (a warning is present)**; `0x2000da6c` bit 4 is a manual override.
-- **Why clean PC6 is NOT reachable from USART2 alone (RE complete, bit-level).**
-  The blink path (`0x08016f7e`) toggles PC6 purely on a counter — **it does not
-  read IR_STATE at all** — so whenever a warning is present (no fault), PC6 blinks
-  independent of the operating mode. The clean `PC6=IR_STATE≥3` path runs only when
-  `STATE+0x9c==0` (no warning) or `STATE+0x98!=0` (a fault). In the harness
-  `STATE+0x9c = 0x140` = **W006 + W008**, and both gate on an ARM-internal
-  whole-inverter status struct **`0x2000d890`** (20 refs across subsystems, NOT the
-  USART2 bank): W008 clears only when `[0x2000d890]&0xc00==0xc00`; W006 needs
-  `[0x2000d890+8]&1==0` **and** `bank+0xca&1==0` (only the latter is USART2-fed).
-  Since `0x2000d890` is driven by subsystems the USART2 peer doesn't control, the
-  warn-blink can't be cleared by feeding USART2 — **PC6 is a whole-inverter
-  run-enable relay, not a clean function of the USART2 mode byte.** This settles
-  docs/18's "multi-input, time-varying" note at the register level.
-- **The achievable black-box result — `state → IR_STATE` — is now LANDED as a
-  test:** `test_usart2_mode_reaches_ir_state` feeds the mode byte on the wire and
-  asserts IR_STATE (`0x2000d0e4+0xa0`) tracks it across run/non-run modes, through
-  the real RX-ISR ingest (the trust counter is seeded warm, as the serve test seeds
-  the bank, so it is fast; the ~85-frame warm-up is separately verified). A
-  deterministic `state → PC6` demo would additionally require driving `0x2000d890`
-  to a healthy state (a fuller inverter model: valid DSP/grid health), which is
-  beyond a lone USART2 feed — option (b), a larger task than this card.
+**Done.** A USART2 operating-mode byte fed on the wire drives **PC6** (the run-enable
+relay), end to end through the factory's real RTOS, with **no internal-function
+call**: `test_usart2_mode_drives_pc6` asserts running modes close PC6 (=1) and
+standby/fault/programming open it (=0). The full chain, all pinned and executed:
+
+```
+frame[+4] (mode) → bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0
+                → relay decider sub_08016ec6 → PC6 = (IR_STATE >= 3)
+```
+- **Classifier = `sub_0801a678`** (NOT `sub_0801b480`, which is RTC housekeeping —
+  docs/22). It writes IR_STATE (`0x2000d0e4+0xa0`, pass-through of the mode) and
+  composes `STATE+0x98` (fault) / `STATE+0x9c` (warn) from `bank+0xd0/+0xd4`.
+- **Decider = `sub_08016ec6`** (selector 2): clean path `PC6 = (IR_STATE >= 3)`,
+  but it *blinks* (state-independently) when `STATE+0x98==0` **and** `STATE+0x9c!=0`
+  (a warning, no fault); `0x2000da6c` bit 4 is a manual override.
+- **The key to a clean demo: make the inverter healthy so `STATE+0x9c == 0`.** Two
+  ARM-local warnings stand in a bare harness, both now understood and cleared from
+  the wire/GPIO:
+  - **W008 (FW-version mismatch):** the classifier case-insensitively compares
+    `bank+3..6` against the string **"ceaa"** (`sub_0801a93a`); feed a tag-0 frame
+    with that identity (`frame[+0x15..+0x18]`) → `health 0x2000d890` bit 10 sets →
+    W008 clears.
+  - **W006 (comms health):** gates on the **PD8 "detect" input** (docs/16: GPIOD
+    bit 8, read by `sub_0801ac2c` via `sub_8014fb0` with a ~10-tick debounce) **and**
+    `bank+0xca` bit 0. Drive PD8 high (`set_input`) + feed clean telemetry → W006
+    clears.
+  With both clear the decider's clean path runs and PC6 tracks the fed mode. (The
+  frame-trust counter `0x2000da3e` is seeded warm, ~85 frames reach it, as the serve
+  test seeds the bank; the mode byte itself travels the full real wire path.)
+- **This corrects the earlier (over-pessimistic) note that clean PC6 was "not
+  reachable from USART2 alone"** — it is, once the PD8 detect input is driven, which
+  the GPIO harness does routinely (docs/18/19/22 updated).
 - **Harness gotcha found:** between fed frames the assembler's ready flag
   (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
-  settle) — too short a gap silently drops the next frame.
+  settle); feed with `settle=0` + an explicit `sim.run()` to pace it.
 - Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)

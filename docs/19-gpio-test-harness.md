@@ -277,16 +277,15 @@ Findings, against `reference/com_flat.bin` (ceaa-07xx, md5 `fc5b44bd13f6…`) un
 - **T02b (state→PC6) — chain pinned.** With the ingest cracked, the mode byte
   reaches the bank and the state path is fully pinned (docs/18, docs/22, docs/39):
   `frame[+4] → BANK+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0 →
-  relay decider sub_08016ec6 → PC6`, where `PC6 = (IR_STATE ≥ 3)`. Verified
-  black-box that IR_STATE tracks the fed mode (after settling the trust counter
-  `0x2000da3e ≥ 0x54`, ~85 frames). But a clean PC6 demo is NOT reachable from
-  USART2 alone: the relay blinks (state-independently) whenever ARM-local warnings
-  are present, and those warnings (`STATE+0x9c`, W006/W008) gate on a whole-inverter
-  status struct `0x2000d890` the USART2 peer can't clear. So PC6 is a whole-inverter
-  run-enable relay, not a clean function of the USART2 mode byte (docs/39 T02b). The relay task's PC6
-  output is also multi-input (state + DSP/fault + debounce + config), so it is
-  driven through the shared contract in `test_arm_sim_self_only.py`, not a lone
-  injected byte.
+  relay decider sub_08016ec6 → PC6`, where `PC6 = (IR_STATE ≥ 3)`. **Done:** a fed
+  mode byte drives PC6 end to end (`test_usart2_mode_drives_pc6`). The relay blinks
+  (state-independently) while an ARM-local warning is present, but the two that stand
+  in a bare harness are now cleared from the wire/GPIO: **W008** (FW mismatch) by
+  feeding `bank+3..6` = "ceaa" in a tag-0 frame, and **W006** (comms health) by
+  driving the **PD8 "detect" input** high (GPIOD bit 8, docs/16) with clean telemetry.
+  With warns clear the clean path runs and PC6 follows the mode (run→1, standby/fault
+  →0; programming blinks). So PC6 *is* a function of the USART2 mode once the inverter
+  is made healthy — the health inputs are all pinned and drivable (docs/39 T02b).
 
 ### The relay parity tests (target-specific: shared contract, per-image drive)
 
