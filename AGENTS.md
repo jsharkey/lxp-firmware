@@ -145,6 +145,7 @@ a numbered doc and a subdir file disagree, **the subdir file wins.**
 |---|---|---|
 | **Inter-processor & external protocols; hardware IO** | [`docs/wiring/`](docs/wiring/README.md) | one file per physical link (`ARM-USART3`, `DSP-SCI-C`, …): ports, **pins**, electrical type, baud, framing, direction; the overview carries the system block diagram + the full ARM pin map |
 | **The external dongle Modbus registers** | [`docs/wiring/ARM-UART5-dongle/`](docs/wiring/ARM-UART5-dongle/registers.md) | one file per register/group (`IR001-Vpv1`, `HR022-StartPVVolt`, …): meaning, scaling, and where each input's data **comes from** / each write's **side-effects**; the README indexes the whole spec surface |
+| **Which factory image, and 05↔07 addresses** | [`reference/README.md`](reference/README.md) | which flat `.bin` is the committed, canonical image (the **07-series** `ceaa-07xx_vE_260214.bin`, App @`0x08005000`), the verified 05→07 base/address deltas, and the naming rule below |
 
 **When your work touches one of these domains, update the relevant file there —
 don't just drop the finding in a numbered doc or a commit message.** If you pin a
@@ -167,6 +168,17 @@ the authoritative file is invisible to the next agent.
 - Leave a breadcrumb: when you move a fact into one of these subdirs, point the
   old numbered doc at it (the existing "Authoritative wiring:" / "Dongle
   registers:" banners are the pattern).
+- **Name the actual image — never write `com_flat.bin`.** That generic flat-bin
+  name was reused for *both* the 05- and 07-series images across the switch and is
+  the #1 source of 05/07 confusion (stale `0x08000000` vs `0x08005000` base
+  conclusions). Use `ceaa-07xx_vE_260214.bin` (committed, canonical 07) or
+  `ceaa-05xx_com_vE_250325.bin` (historical 05), and tag which image any factory
+  address belongs to. See [`reference/README.md`](reference/README.md).
+- **Make status scannable with emoji.** In task lists and docs, prefix statuses
+  with an emoji a human can eyeball at a glance — e.g. ✅ done · 🚧 in-progress /
+  claimed · ⬜ open (and ⚠️ caveat · ❌ wrong/removed) — kept in sync with any
+  machine-parsed marker (don't replace it). The [`docs/39`](docs/39-parity-roadmap.md)
+  roadmap is the worked example.
 
 ## Record factory quirks (they may be bugs to fix)
 

@@ -71,12 +71,16 @@ House rules that apply to every task (all from [`AGENTS.md`](../AGENTS.md)):
 
 ### Claiming a task (collision avoidance)
 
+**Status emoji** — prefix each `**Status:**` line so a human can scan the board at
+a glance, kept in sync with the `[ ]`/`[~]`/`[x]` marker (which tooling still
+parses): ⬜ open · 🚧 claimed / in-progress (or partially done) · ✅ done.
+
 To claim a task, edit its **Status** line to
-`[~] <agent/handle> <YYYY-MM-DD>`, commit it on its own
+`[~] <agent/handle> <YYYY-MM-DD>` (emoji 🚧), commit it on its own
 (`docs/39: claim T07`), and push **before** you start the real work. If the
 rebase shows someone else claimed it first, pick another task.
 
-When you finish, set the line to `[x]`, link the commits/docs/tests, and tick
+When you finish, set the line to `[x]` (emoji ✅), link the commits/docs/tests, and tick
 the matching README Status box if there is one. Then **move the task's whole
 section** (its `### Txx` heading down to the next task heading, sub-tasks
 included) **to the end of the [Completed tasks](#completed-tasks) section**, in
@@ -130,7 +134,7 @@ _T01-T04 are done; see [Completed tasks](#completed-tasks). T22 was added on
 2026-11-07 from a coverage audit of the dongle register docs._
 
 ### T22 — Register-coverage bookkeeping: catch up, then automate it
-**Status:** `[x] claude/019chjb 2026-11-07` ([`tools/reg_coverage.py`](../tools/reg_coverage.py), `make coverage-report`/`coverage-check`) · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
+**Status:** ✅ `[x] claude/019chjb 2026-11-07` ([`tools/reg_coverage.py`](../tools/reg_coverage.py), `make coverage-report`/`coverage-check`) · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
 
 An audit on 2026-11-07 found the per-register `## Test coverage` sections in
 [`ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) **lagged the tests that
@@ -159,7 +163,7 @@ already exist**, so the gap list overstated what was untested. **Done:**
 ## P1 — the live data path (telemetry, state, faults)
 
 ### T08 — Peer-link supervision: comms-loss faults, timeouts, recovery
-**Status:** split → **safety-link `[x]`** + **BMS `[x]`** (ours wired + tested, 2026-11-07), **DSP (USART3) `[ ]`** (inference-gated) · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
+**Status:** 🚧 split → **safety-link `[x]`** + **BMS `[x]`** (ours wired + tested, 2026-11-07), **DSP (USART3) `[ ]`** (inference-gated) · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
 
 What happens when the DSP, safety CPU or BMS goes quiet? The **safety-CPU (USART2)**
 and **BMS (CAN)** legs are done; the **DSP (USART3)** leg is held pending a confirmed
@@ -202,7 +206,7 @@ fault-bit assignment (below):
   `last_rx` on `dsp_rx_port`'s Modbus-request path → `INV_LOCAL_FAULT_E000`).
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
+**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
@@ -248,7 +252,7 @@ come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was
   same settings + BMS state.
 
 ### T23 — Whole-surface read sweep: every register, both images, one diff
-**Status:** `[ ]` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
+**Status:** ⬜ `[ ]` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
 
 Most registers are tested one at a time, on the path some feature happened to
 need. Nothing yet checks the **whole map**. Add one common sim test (warm once,
@@ -270,7 +274,7 @@ diffs value **or exception code** per register.
   say which.
 
 ### T24 — Write-semantics sweep across the whole HR surface (extends T04)
-**Status:** `[ ]` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
+**Status:** ⬜ `[ ]` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
 
 T04 built the mechanism but its `WRITE_VECTORS` cover only **six** registers
 (HR 9, 15, 20, 66, 101, 105). Generate vectors for **every** writable HR in the
@@ -287,7 +291,7 @@ file gets a coverage line.
   uncovered.
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
-**Status:** `[ ]` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
+**Status:** ⬜ `[ ]` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
 
 For most settings HRs, only *storage* is tested (T03). Whether a dongle write
 actually **reaches the DSP** is not. For example, HR 90/91 EPS V/f note "the
@@ -307,7 +311,7 @@ same sweep on ours.
 ## P2 — features and commands
 
 ### T13 — HMI status dashboard (overview screen; no editors)
-**Status:** `[ ]` · **Layer:** sim (panel framebuffer) + host (layout) · **Soft-depends:** T06/T07 for real values (works with injected values earlier)
+**Status:** ⬜ `[ ]` · **Layer:** sim (panel framebuffer) + host (layout) · **Soft-depends:** T06/T07 for real values (works with injected values earlier)
 
 Replace the menu-first screen with a read-only **overview dashboard** on the
 240×160 panel: PV (V/P per string), battery (V/SOC/charge-discharge P), grid
@@ -331,7 +335,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** `[ ]` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state) · **+ a prerequisite surfaced below (T14a: relay-enable derivation)**
+**Status:** ⬜ `[ ]` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state) · **+ a prerequisite surfaced below (T14a: relay-enable derivation)**
 
 [`docs/18`](18-power-path-relays.md) names 6 relay pins and 4 logic functions;
 we mirror 2 contracts (run-enable PC6, manual override PA12/PB3). The rest is
@@ -369,7 +373,7 @@ missing:
 >   them in the same pass. Released ([`docs/18` "How to finish"](18-power-path-relays.md)).
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
-**Status:** `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+**Status:** 🚧 `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
 
 **Done (voltage gate, 2026-11-07).** The discharge-control gate (HR 120
 **DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
@@ -435,7 +439,7 @@ the inert/DSP-gated paths.
   implement it beyond the existing round-trip unless that verdict changes.
 
 ### T16 — Generator: charge start/stop, quick start, warm-up/cool-down (HR 194-198 + 07-series)
-**Status:** `[ ]` · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
+**Status:** ⬜ `[ ]` · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions
@@ -446,7 +450,7 @@ active). First locate the backing registers/settings for the 07-only features
 then oracle the start/stop thresholds and timers at their boundaries.
 
 ### T17 — Remaining 07-series features: Smart Load, Resume SOC, Quick Charge, buzzer
-**Status:** `[ ]` · **Layer:** RE + micro + sim · **Independent**
+**Status:** ⬜ `[ ]` · **Layer:** RE + micro + sim · **Independent**
 
 From [`docs/11`](11-12000xp-revisions.md): #6 Quick Charge (start, system
 charge SOC/V limit), #7 discharge-resume threshold (+5 % / +2 V hysteresis,
@@ -456,7 +460,7 @@ Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
 
 ### T26 — Document + test the spec-only (`idx`) registers
-**Status:** `[ ]` · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
+**Status:** ⬜ `[ ]` · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
 
 These spec registers have **no file** in `ARM-UART5-dongle/` and no test:
 **HR** 63, 92-97, 104, 106-109, 114-119, 121-125, 132-144, 149-151, 158-193;
@@ -473,7 +477,7 @@ HR 158-169 overlaps T15 and HR 170-193 overlaps T19. Coordinate through those
 cards rather than duplicating. AFCI IR 140-152 stays with T19.
 
 ### T27 — Input registers that still have no test
-**Status:** `[ ]` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
+**Status:** ⬜ `[ ]` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
 
 As of the audit, these input registers have no test at all:
 - **IR 6 InternalFault**: T06 publishes it (classifier output), but no
@@ -496,26 +500,26 @@ As of the audit, these input registers have no test at all:
 ## P3 — later / lower leverage
 
 ### T18 — Firmware-update pass-through (`0x21/0x22/0x23`, State = Programming)
-**Status:** `[ ]` · Layer: sim. The ARM relays DSP firmware updates
+**Status:** ⬜ `[ ]` · Layer: sim. The ARM relays DSP firmware updates
 ([`wiring/ARM-USART3-DSP/bootloader-21_23`](wiring/ARM-USART3-DSP/bootloader-21_23.md)) and reports
 IR 0 = `0x02`. Needed eventually so that field updates of the DSP keep working
 under our firmware. Our own ARM update path (the bootloader layout in docs/11)
 is a separate, later question.
 
 ### T19 — Grid self-test (AutoTest, HR 98 / IR 71-75), parallel systems (HR 112-114, IR 113), AFCI (IR 140-152)
-**Status:** `[ ]` · Mostly hybrid/region-specific and likely inactive on a
+**Status:** ⬜ `[ ]` · Mostly hybrid/region-specific and likely inactive on a
 standalone 12000XP. First **prove whether each one is live on `ceaa-07xx`**
 (the getter returns constants? a setter with no effect?), then record "dormant"
 the way HR 126-131 was handled (`92d8e49`). Implement only what is live.
 
 ### T20 — Variant parity (18kPV `FAAB`, 6000XP `ccaa`)
-**Status:** `[ ]` · Re-run the oracle suites against the other App images
+**Status:** ⬜ `[ ]` · Re-run the oracle suites against the other App images
 (hash table in `README.md`) once the 12000XP suites are broad. That needs the
 per-image `PROFILES` approach of `timewindow_contract.py` generalised across
 tests. Note: `lxp-factory` currently holds only the `ceaa-07xx` ARM image.
 
 ### T21 — Hardware bring-up checklist
-**Status:** `[ ]` · Once T01/T03/T05 land, write the bench procedure: flash
+**Status:** ⬜ `[ ]` · Once T01/T03/T05 land, write the bench procedure: flash
 layout vs the 07 bootloader (vectors at `0x08005000`, docs/11; our 12000XP
 link script is still monolithic at `0x08000000`, so decide which), panel init,
 RS-485 DE, CAN bitrate. Also cover how to recover a unit that bricks.
@@ -564,7 +568,7 @@ work. Agents append newly finished tasks at the end (see "Claiming a task").
 Each card keeps its original heading and ID.
 
 ### T01 — Move the dongle Modbus slave to UART5 (ours + harness)
-**Status:** `[x] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
+**Status:** ✅ `[x] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
 
 > **Done.** Ours now serves Modbus on **UART5** (`src/uart/uart5.c`, PC12/PD2,
 > RS-485 DE on PA15), rebound in `src/modbus/modbus_port.c`; USART3 is the DSP
@@ -598,7 +602,7 @@ hardware the dongle can never reach us. The factory serves the dongle on
   UART5, and the README "Port note" plus docs/04 are updated.
 
 ### T02 — Run the factory's RTOS tasks in the simulator  (split into T02a / T02b)
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
+**Status:** ✅ `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
 
 **Done** (both halves). Split into two cards (ID kept for references):
 - **Scheduler + the relay/control task run** under `enable_rtos()` +
@@ -610,7 +614,7 @@ hardware the dongle can never reach us. The factory serves the dongle on
   [`docs/18`](18-power-path-relays.md).
 
 #### T02a — Feed the USART2 safety link on the wire → bank/IR
-**Status:** `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
+**Status:** ✅ `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
 
 **Done.** A raw USART2 safety frame fed on the wire — through the factory's *real*
 RXNE ISR, byte by byte — is assembled, CRC-checked, distributed and tag-parsed by
@@ -633,7 +637,7 @@ as the right Modbus input registers, with **no bank seeding**.
   tags are ungated (published every valid frame).
 
 #### T02b — Change operating state → PC6 moves (via the running relay task)
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
+**Status:** ✅ `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
 
 **Done.** A USART2 operating-mode byte fed on the wire drives **PC6** (the run-enable
 relay), end to end through the factory's real RTOS, with **no internal-function
@@ -673,7 +677,7 @@ frame[+4] (mode) → bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+
 - Pure harness work; changes no firmware.
 
 ### T03 — Persist the full pinned settings table (54 more registers)
-**Status:** `[x] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
+**Status:** ✅ `[x] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
 
 **Done.** Our firmware now persists the full pinned set via a const table
 (`include/inv/settings_map.h`: HR → slot/offset/width/scale), driving both
@@ -712,7 +716,7 @@ widths and `×10` scalings, all dynamically. We persist 2.
   oracle before trusting the table**, and correct docs/23 if needed.
 
 ### T04 — Holding-register write semantics: ranges, clamps, rejects, read-only
-**Status:** `[x] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
+**Status:** ✅ `[x] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
 
 **Done.** The factory **rejects** an out-of-range write with a Modbus exception
 (it does **not** clamp or store): out-of-range → exception `3` (ILLEGAL_VALUE),
@@ -748,7 +752,7 @@ clamp, or store verbatim.
 - Every deviation from the spec range goes into docs/31.
 
 ### T05 — USART2 safety-CPU receiver: wire frame → bank
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** host (parser) + sim (wire e2e) · **Depends:** T02 (landed)
+**Status:** ✅ `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** host (parser) + sim (wire e2e) · **Depends:** T02 (landed)
 
 **Done.** Our firmware now fills the telemetry bank from the wire and serves it,
 byte-for-byte compatible with the factory (the same raw USART2 bytes produce the
@@ -775,7 +779,7 @@ same Modbus input registers on both images).
   the comms-loss fault (E017). Left as the hook, not the policy, per T08's scope.
 
 ### T06 — Operating-state classifier + fault/warning composer (`sub_0801a678`)
-**Status:** split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
+**Status:** ✅ split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
 
 - **T06a `[x]` — our classifier + host oracle (done).** Pure
   `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
@@ -822,7 +826,7 @@ fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
   over Modbus on both images.
 
 ### T07 — ARM-computed telemetry registers
-**Status:** `[x] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
+**Status:** ✅ `[x] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
 
 **Done (serve layer).** The computed power registers are served from a 32-bit
 value the ARM keeps internally in **0.1 W**, as `IR = (uint16_t)(internal / 10)` —
@@ -883,7 +887,7 @@ formula from its factory getter, then oracle it:
   real too.
 
 ### T09 — DSP link RX: what the ARM consumes on USART3 (finding corrects the premise)
-**Status:** `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**
+**Status:** ✅ `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**
 
 **Finding: the ARM does NOT parse a `0x49` telemetry frame on USART3.** The
 premise ("the factory parses DSP `0x49` on USART3", with RX path
@@ -913,7 +917,7 @@ assembling Modbus/bootloader).
   T05 (USART2 ingest), not at this task.
 
 ### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** `[x]` (all three) → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[x]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+**Status:** ✅ `[x]` (all three) → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[x]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
 
 Split after the T11a oracle came back much smaller than the card assumed: the
 only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
@@ -925,7 +929,7 @@ ours already matches. The IR 81/82/84 current/discharge fields turned out to be 
 genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
 
 #### T11a — BMS charge-voltage working limit (IR 83 = min(0x351, HR 99))
-**Status:** `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
+**Status:** ✅ `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
 
 - **Finding (corrects the card):** the factory serves `IR 83 = min(0x351 charge-V
   limit, HR 99 ChargeVoltRef)` — a plain min, oracled black-box on `ceaa-07xx`
@@ -942,7 +946,7 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
   [`HR099_102`](wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md).
 
 #### T11b — inverter→BMS CAN TX (`0x305` keep-alive)
-**Status:** `[x] claude/019chjb 2026-11-07` ([`test_can_tx.py`](../tests/test_can_tx.py), [`can_tx_contract.py`](../tests/can_tx_contract.py), [`arm_sim_can.py`](../tests/arm_sim_can.py) `capture_tx`, [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b)) · **Layer:** sim (CAN TX capture) · **Was:** T02-blocked, now done
+**Status:** ✅ `[x] claude/019chjb 2026-11-07` ([`test_can_tx.py`](../tests/test_can_tx.py), [`can_tx_contract.py`](../tests/can_tx_contract.py), [`arm_sim_can.py`](../tests/arm_sim_can.py) `capture_tx`, [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b)) · **Layer:** sim (CAN TX capture) · **Was:** T02-blocked, now done
 
 - **Finding (oracle, unblocked by T02):** with the TX task running under the RTOS,
   the factory transmits **`0x305`, DLC 8, payload all-zero**, once it has received
@@ -958,7 +962,7 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
   [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
 
 #### T11c — BMS quirks Q1-Q4 as committed tests
-**Status:** `[x] claude/019chjb 2026-11-07` ([`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py), [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py), [`docs/31`](31-factory-quirks.md) Q1-Q4) · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
+**Status:** ✅ `[x] claude/019chjb 2026-11-07` ([`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py), [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py), [`docs/31`](31-factory-quirks.md) Q1-Q4) · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
 
 - **Done.** Each [`docs/31`](31-factory-quirks.md) verdict is now a committed test,
   factory-oracled on ceaa-07xx and asserted clean on ours:
@@ -974,7 +978,7 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
     `test_can_battery_telemetry_reaches_modbus`. Physical unit stays open (docs/31).
 
 ### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
-**Status:** `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
+**Status:** ✅ `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
 
 Done — HR 11 command dispatch, HR 15 live address change, HR 9/10 own-version
 read-back + live DSP version, and W008 (identity compare) are implemented and
