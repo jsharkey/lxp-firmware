@@ -43,12 +43,37 @@ DSP_PUSH = {
     66: None,
 }
 
+# --- grid-charge slot fields (blocks 3 & 6), T10 -----------------------------
+# Beyond the schedule WINDOWS (DSP_PUSH above), the factory per-block filler packs
+# the grid-charge slot's scalar settings into blocks 3 and 6. Pinned differentially
+# against the real filler (a dongle write to the register moves exactly these frame
+# bytes): reg -> (block_id, payload_offset, width_bytes). Big-endian. EOD and the
+# feed-in limit are single bytes; currents/voltage are u16. The DSP's current unit
+# is 0.1 A (HR is A) so those are value*10 on the wire; the charge voltage HR is
+# already 0.1 V. The apparent moves at payload 0x15/0x16 and in block 0 are shared
+# modbus-buffer residue, not fields -- excluded by looking only at the target block
+# at offset >= 0x17. See docs/wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md.
+GRID_PUSH = {
+    101: (6, 0x17, 2),   # HR_CHARGE_CURR      -> charge current   (0.1 A)
+    102: (6, 0x1b, 2),   # HR_DISCHG_CURR      -> discharge current (0.1 A)
+    99:  (6, 0x25, 2),   # HR_CHARGE_VOLT_REF  -> charge voltage    (0.1 V)
+    105: (3, 0x1b, 1),   # HR_EOD              -> end-of-discharge SOC (%)
+    103: (3, 0x1c, 1),   # HR_MAX_BACKFLOW     -> feed-in grid power limit (%)
+}
+# (A, B) write values per register: two valid, distinct in-range values.
+GRID_AB = {
+    101: (20, 100), 102: (20, 100), 99: (510, 560), 105: (20, 80), 103: (10, 80),
+}
+
 # Live (writable) registers in the HR 64-89 schedule block, as the factory image
 # exposes them. 67 (AC-charge SOC) and 74/76-89 (charge-priority power/windows +
 # forced-discharge) are inert -- a dongle write does not store (read-back stays at
-# the default). HR 75 (HR_CHGFIRST_SOC, charge-priority SOC limit) IS writable, and
-# the factory pushes it to block 4 @0x26 (verified) -- our firmware does not emit
-# that field yet, so it is kept out of DSP_PUSH (below) until the ours side lands.
+# the default). HR 75 (HR_CHGFIRST_SOC, charge-priority SOC limit) IS writable but
+# is NOT pushed: an earlier "block 4 @0x26 (verified)" reading was a push_delta
+# double-write artifact -- SINGLE-write fresh captures show @0x26 stays 0 for every
+# value 20..90 (the byte only "moves" when one write follows another on the same
+# sim, i.e. transaction residue, not serialized config). So HR 75 is stored-only,
+# like HR 66.
 WRITABLE_64_89 = {64, 65, 66, 68, 69, 70, 71, 72, 73, 75}
 INERT_64_89    = {67, 74} | set(range(76, 90))
 

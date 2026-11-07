@@ -29,35 +29,68 @@ uint16_t dsp_crc16(const uint8_t *buf, size_t len) { return inv_modbus_crc16(buf
  * FUN_0009E7C2/FUN_0009E6BA are big-endian (docs/08). (The dongle Modbus path is
  * little-endian -- a different wire; do not confuse the two.) */
 
-/* Each payload field: a holding register and how many bytes to emit (1 or 2). */
-typedef struct { uint16_t reg; uint8_t width; } dsp_field_t;
+/* Each payload field: a holding register, where it lands in the payload (offset
+ * from 0x15), how many bytes (1 or 2, big-endian), and a scale multiplier applied
+ * to the register value before emit (the DSP's unit differs from the HR's: e.g.
+ * charge current is Amps on the HR but 0.1 A on the DSP wire, so scale = 10). The
+ * offsets are pinned differentially against the factory per-block filler -- a
+ * dongle write to the register moves exactly these frame bytes (see
+ * tests/dsppush_contract.py GRID_PUSH and docs/wiring/ARM-USART3-DSP). */
+typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp_field_t;
 
 /*
  * Block 0 — output priority / AC-First + grid-charge enable group.
  * On the DSP this lands in the 0x00AD?? cluster (g_outputPrio=0xADA8,
  * g_acChargeFlags=0xAD84, grid-charge schedule records) — see docs/07.
- * Exact byte offsets inside the block are not yet pinned, so this ordering is a
- * best-effort starting point to refine against a bus capture.
+ * No holding-register write moves a block-0 payload byte in the factory image
+ * (the apparent block-0 deltas are shared modbus-buffer residue, not fields), so
+ * these offsets are a best-effort guess, not differentially pinned. Kept as a
+ * stub; block 0's real content is a constant identity/version template still to
+ * be decoded. docs/wiring/ARM-USART3-DSP/field-provenance.md.
  */
 static const dsp_field_t block0_fields[] = {
-    { HR_OUTPUT_PRIO_CFG, 1 },   /* 0=Bat First, 1=PV First, 2=AC First  -> g_outputPrio */
-    { HR_SYS_ENABLE,      2 },   /* ACChargeType/flags bits              -> g_acChargeFlags */
-    { HR_FUNC_EN,         2 },   /* FuncEn.ACChargeEn (bit 7) etc.                         */
-    { HR_EOD,             1 },   /* end-of-discharge SOC                                   */
-    /* TODO: AC-charge time windows + SOC/Volt (HR ~68-73, 158-161) once mapped */
+    { HR_OUTPUT_PRIO_CFG, 0x00, 1, 1 }, /* 0=Bat First,1=PV First,2=AC First -> g_outputPrio */
+    { HR_SYS_ENABLE,      0x01, 2, 1 }, /* ACChargeType/flags bits           -> g_acChargeFlags */
+    { HR_FUNC_EN,         0x03, 2, 1 }, /* FuncEn.ACChargeEn (bit 7) etc.                       */
+    { HR_EOD,             0x05, 1, 1 }, /* end-of-discharge SOC                                 */
 };
 
-/* Blocks 1..8 — target RAM clusters known (docs/08) but field order not yet
- * recovered, EXCEPT blocks 4 and 5 which carry the grid-charge time-window slot
- * records (built from the slot-committer, dsp_slots.c) and blocks 2/7/8 which are
- * the measurement-calibration gain tables (constant unity defaults, below). The
- * rest are empty for now: the frame is still emitted (header+blockid+CRC) so the
- * rotation and the DSP's completeness bitmask behave, carrying no payload. */
+/*
+ * Block 3 — grid-charge slot: end-of-discharge SOC + feed-in limit.
+ * Differentially pinned (GRID_PUSH): HR_EOD -> @0x1b (payload 0x06), 1 byte, %;
+ * HR_MAX_BACKFLOW -> @0x1c (payload 0x07), 1 byte, %. The rest of block 3 is a
+ * constant slot template (voltage/time defaults) not yet decoded.
+ */
+static const dsp_field_t block3_fields[] = {
+    { HR_EOD,          0x06, 1, 1 },    /* frame 0x1b, end-of-discharge SOC %   */
+    { HR_MAX_BACKFLOW, 0x07, 1, 1 },    /* frame 0x1c, feed-in grid power limit % */
+};
+
+/*
+ * Block 6 — grid-charge slot: charge/discharge currents + charge voltage.
+ * Differentially pinned (GRID_PUSH): HR_CHARGE_CURR -> @0x17 (payload 0x02),
+ * BE16, 0.1 A (scale 10); HR_DISCHG_CURR -> @0x1b (payload 0x06), BE16, 0.1 A;
+ * HR_CHARGE_VOLT_REF -> @0x25 (payload 0x10), BE16, 0.1 V (scale 1, HR already
+ * 0.1 V). The rest of block 6 is a constant slot template not yet decoded.
+ */
+static const dsp_field_t block6_fields[] = {
+    { HR_CHARGE_CURR,     0x02, 2, 10 }, /* frame 0x17, charge current  A -> 0.1 A */
+    { HR_DISCHG_CURR,     0x06, 2, 10 }, /* frame 0x1b, discharge current A -> 0.1 A */
+    { HR_CHARGE_VOLT_REF, 0x10, 2, 1  }, /* frame 0x25, charge voltage, 0.1 V      */
+};
+
+/* Blocks 1,2,4,5,7,8 either have no field table (built another way, or empty) or
+ * carry the calibration tables below. Blocks 4/5 carry the grid-charge time-window
+ * slot records (slot-committer, dsp_slots.c); blocks 2/7/8 are the
+ * measurement-calibration gain tables (constant unity defaults, below); block 1
+ * is empty (frame still emitted so the rotation + completeness bitmask behave). */
 static const dsp_field_t *const block_fields[DSP_CONFIG_NBLOCKS] = {
-    block0_fields, 0, 0, 0, 0, 0, 0, 0, 0
+    block0_fields, 0, 0, block3_fields, 0, 0, block6_fields, 0, 0
 };
 static const uint8_t block_nfields[DSP_CONFIG_NBLOCKS] = {
-    (uint8_t)(sizeof block0_fields / sizeof block0_fields[0]), 0,0,0,0,0,0,0,0
+    (uint8_t)(sizeof block0_fields / sizeof block0_fields[0]), 0, 0,
+    (uint8_t)(sizeof block3_fields / sizeof block3_fields[0]), 0, 0,
+    (uint8_t)(sizeof block6_fields / sizeof block6_fields[0]), 0, 0,
 };
 
 /*
@@ -153,15 +186,16 @@ size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
         const uint16_t *cal = block_cal[block_id];
         for (uint8_t i = 0; i < block_cal_n[block_id]; i++)
             put16(pl + 2 * i, cal[i]);
-    } else {
-        /* pack this block's fields from the holding-register model */
+    } else if (block_fields[block_id]) {
+        /* pack this block's fields from the holding-register model, each at its
+         * pinned payload offset with its unit scale (big-endian). */
         const dsp_field_t *f = block_fields[block_id];
-        size_t off = 0;
         for (uint8_t i = 0; i < block_nfields[block_id]; i++) {
             uint16_t v = 0;
             if (src->read_holding) src->read_holding(src->ctx, f[i].reg, &v);
-            if (f[i].width == 2) { put16(pl + off, v); off += 2; }
-            else                 { pl[off++] = (uint8_t)v; }
+            v = (uint16_t)(v * f[i].scale);
+            if (f[i].width == 2) put16(pl + f[i].off, v);
+            else                 pl[f[i].off] = (uint8_t)v;
         }
     }
 

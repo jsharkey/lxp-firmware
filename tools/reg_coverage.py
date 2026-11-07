@@ -121,6 +121,9 @@ def table_coverage():
         add("DSP config-push (T10)", "HR",
             [r for r, v in m.DSP_PUSH.items() if v is not None],
             ["test_dsp_push", "dsppush_contract"])
+        if hasattr(m, "GRID_PUSH"):
+            add("DSP grid-charge slot fields (T10)", "HR", list(m.GRID_PUSH),
+                ["test_dsp_push", "dsppush_contract"])
     return entries
 
 

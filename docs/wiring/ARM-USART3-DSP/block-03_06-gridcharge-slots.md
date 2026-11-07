@@ -76,6 +76,31 @@ few direct scalars are interleaved. These correspond to the ARM-side schedule
 | `0x1D`/`0x1F`/`0x21` | 2·3 | →`FUN_0009BFC8` (`0x1F` rsv) |
 | `0x23`/`0x25`/`0x27` | 2·3 | →`FUN_0009CC31` (`0x25` rsv) |
 
+### Differentially confirmed ARM-source scalars (T10, blocks 3 & 6)
+
+Replayed the **real** per-block filler (`fn_fill_cfg_block` @`0x08026830`, flat base
+`0x08000000`) under the fixed oracle and swept each candidate holding register
+(`tests/dsppush_contract.py` `GRID_PUSH`; captured by
+`tools/.../hr_sweep`). A dongle write to the register moves **exactly** these frame
+bytes — pinning the scalars the DSP-side triplet map above left as "rsv":
+
+| block | off | HR (dongle) | encoding | note |
+|---|---|---|---|---|
+| 6 | `0x17` | **HR 101** ChargeCurr | BE16, A→**0.1 A** (×10) | first value of the `0x17` triplet |
+| 6 | `0x1B` | **HR 102** DischgCurr | BE16, A→**0.1 A** (×10) | the `0x1B` word of that triplet — **not** reserved |
+| 6 | `0x25` | **HR 99** ChargeVoltRef | BE16, **0.1 V** (×1) | the `0x25` word of the third triplet — **not** reserved |
+| 3 | `0x1B` | **HR 105** EOD | **u8**, % | high byte of the `0x1B` word … |
+| 3 | `0x1C` | **HR 103** MaxBackFlow | **u8**, % | … and its low byte — the word packs **[EOD, backflow]** |
+
+The apparent moves at payload `0x15`/`0x16` and anywhere in **block 0** are shared
+modbus-RX-buffer **residue**, not fields — they appear identically across blocks
+0/3/4/5 for *every* register and are excluded by looking only at the target block at
+offset ≥ `0x17`. Our firmware reproduces these five fields byte-for-byte
+(`src/dsp/dsp_config.c` `block3_fields`/`block6_fields`), verified ours==factory in
+`test_{factory,ours}_grid_push_matches_spec`. **Still a constant template** (no HR
+moves them): the slot voltage/time defaults elsewhere in blocks 3/6, all of block 0,
+and the AC-charge/AC-First slot tails (`0x23+`) of blocks 4/5.
+
 **Triplet convention (superseded for `0x17…0x21`):** docs/10 read these runs as
 6-byte triplets `[val_a, rsv, val_b]` → `handler(val_b, val_a)`. The ARM-source trace
 above shows that is wrong for the window runs in blocks 4/5: the ARM fills **six

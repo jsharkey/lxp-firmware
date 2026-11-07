@@ -26,6 +26,7 @@ sys.path.insert(0, HERE)
 from arm_sim_runner import run_tests, Skip                      # noqa: E402
 from dsppush_contract import (DSP_PUSH, WRITABLE_64_89, INERT_64_89,
                               ab_values, CALIB_BLOCKS, EXPECT_CAL, calib_payloads,
+                              GRID_PUSH, GRID_AB,
                               FactoryBackend, OursBackend)  # noqa: E402
 
 
@@ -179,6 +180,39 @@ def test_push_tracks_changes_over_time():
     seen = _windows_only(fb.push_delta(68, a, b))
     assert (4, 0x17) in seen and (4, 0x18) in seen, \
         "HR 68 edit %04x->%04x did not reach block 4 @0x17 (saw %s)" % (a, b, sorted(seen))
+
+
+# --- grid-charge slot scalar fields (blocks 3 & 6) --------------------------
+def _check_grid_matches_spec(backend):
+    """Each GRID_PUSH register, when its dongle value changes, must move exactly
+    the field bytes the spec names in its target block -- and no other byte in that
+    block at offset >= 0x17 (the payload 0x15/0x16 mask + block-0 residue are shared
+    modbus-buffer noise, excluded by restricting to the target block at 0x17+)."""
+    fails = []
+    for reg in sorted(GRID_PUSH):
+        blk, off, width = GRID_PUSH[reg]
+        a, b = GRID_AB[reg]
+        delta = backend.push_delta(reg, a, b)
+        got = {(bb, oo) for (bb, oo) in delta if bb == blk and oo >= 0x17}
+        exp = {(blk, off + i) for i in range(width)}
+        if got != exp:
+            fails.append("HR %-3d expected block %d @0x%02x (%dB), got %s"
+                         % (reg, blk, off, width, sorted(got)))
+    assert not fails, "%s\n        " % backend.name + "\n        ".join(fails)
+
+
+def test_factory_grid_push_matches_spec():
+    """Factory: dongle write -> real block builder packs the grid-charge slot
+    scalars (charge/discharge current + charge voltage -> block 6; EOD + feed-in
+    limit -> block 3) at the GRID_PUSH offsets. docs/wiring/ARM-USART3-DSP."""
+    _check_grid_matches_spec(_factory_or_skip())
+
+
+def test_ours_grid_push_matches_spec():
+    """Our firmware packs the same grid-charge scalars to the same block/offset,
+    with the DSP unit scaling (currents A->0.1A), so ours is byte-faithful to the
+    factory for these fields (T10)."""
+    _check_grid_matches_spec(_ours_or_skip())
 
 
 if __name__ == "__main__":

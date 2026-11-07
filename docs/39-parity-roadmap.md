@@ -206,7 +206,7 @@ fault-bit assignment (below):
   `last_rx` on `dsp_rx_port`'s Modbus-request path → `INV_LOCAL_FAULT_E000`).
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
+**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3 & 6 scalars landed)` — blocks **1/2/7/8** byte-identical; blocks **3 & 6 grid-charge scalars** now byte-faithful ours==factory (5 fields, differentially pinned + single-write validated); blocks **4/5 windows** match, their `0x23+` tails + all of **block 0** are undecoded **constant templates** (no writable HR drives them) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
@@ -225,26 +225,44 @@ that, the filler reproduces every block from the real 07 working RAM — blocks 
 come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was 1/6).
 [`field-provenance` §The real builder](wiring/ARM-USART3-DSP/field-provenance.md).
 
-**Verified per-block (ours vs the now-working factory oracle, default boot + HR 68):**
+**Verified per-block (ours vs the now-working factory oracle):**
 - **Blocks 2, 7, 8** (calibration gains): **MATCH** — constant Q10 unity `0x0400`
   (no holding register feeds them). `src/dsp/dsp_config.c`.
 - **Block 1** (battery limits): **MATCH** at the no-BMS boot state (both empty);
   the populated case is the T11 limit derivation.
-- **Block 4** (AC-charge): window times `0x17..0x22` MATCH; the slot
-  power/voltage/SOC at `0x23+` (incl. **HR 75 charge-priority SOC → `0x26`**, which
-  the factory pushes and ours does not yet) still differ.
-- **Blocks 0, 3, 5, 6**: **DIFFER** (ours empty) — need the slot-record / output-
-  priority derivation.
+- **Block 3** (grid-charge slot): **HR 105 EOD → `0x1b`**, **HR 103 feed-in limit →
+  `0x1c`** (both u8 %). Ours==factory. The rest of the block is a constant template.
+- **Block 6** (grid-charge slot): **HR 101 charge-curr → `0x17`**, **HR 102
+  discharge-curr → `0x1b`** (both A→0.1 A ×10), **HR 99 charge-volt → `0x25`**
+  (0.1 V). Ours==factory. The rest is a constant template.
+- **Block 4** (AC-charge): window times `0x17..0x22` MATCH; tail `0x23+` is a
+  constant template (below).
+- **Block 5** (AC-First): window times `0x17..0x22` MATCH; tail `0x23+` constant.
+- **Block 0**: no writable HR drives any payload byte — a constant identity/version
+  template plus two bit-packed enable fields (HR 120 `SYS_ENABLE & ~1 → 0x19`,
+  HR 110 `FUNCTION_EN1` bits → `0x1c`, decoded but not yet emitted).
 
-**Remaining (now unblocked + each verifiable against the live oracle):**
-- **Blocks 0, 3, 6** and the `0x23+` tails of **4, 5** — the grid-charge **slot-record**
-  derivation (`0x2000a330…`, real 07 addresses): slot power/voltage/SOC. `src/dsp/dsp_slots.c`
-  does only the time windows today.
-- **Block 0 layout** — priority belongs at `0x1e` (`HR 145 → working 0x2000a343 →
-  block0[0x1e]`, field-provenance), not ours' `0x15` stub.
+All five block-3/6 scalars are pinned **differentially** and re-validated with
+**single-write fresh captures** (`tests/test_dsp_push.py::test_{factory,ours}_grid_push_matches_spec`,
+`GRID_PUSH`; [`block-03_06`](wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md)).
+
+**Methodology correction — beware the differential double-write.** `push_delta`
+writes A, builds, writes B, builds. A byte that only changes because the *second*
+write follows the first (modbus-transaction residue) is a **false positive**. The
+earlier "**HR 75 charge-priority SOC → block 4 `0x26` (verified)**" was exactly
+that: single-write fresh captures show `0x26` stays `0` for every value 20..90, so
+**HR 75 is stored-only (not pushed), like HR 66.** The shared residue also shows up
+at payload `0x15/0x16` and block 0 `0x25/0x26` for nearly every register — always
+excluded. Every real field above was confirmed by single-write capture.
+
+**Remaining (the honest gap — opaque constant templates, no HR drives them):**
+- **Block 4 / 5 tails** (`0x23+`): fixed words e.g. block 4 `0x0770 / 0x01f4 /
+  0x021c / 0x325a`. No writable HR moves them; they are boot/config-flash defaults.
+  Faithful reproduction needs the **init/config-flash source traced** — not opaque
+  hardcoding (the bar the calib blocks met: unity has a known meaning; these don't yet).
+- **Block 0 template**: the identity/version/params constants + the HR 110/120
+  bit-packed enables. Same bar: decode the constants before emitting.
 - **Block 1 populated** — battery limits from the working struct (depends on T11).
-- **HR 75** (`HR_CHGFIRST_SOC`): writable + factory-pushed to **block 4 `0x26`**;
-  ours doesn't emit it yet (so it's held out of the `DSP_PUSH` spec until implemented).
 - **Header parity** — payload region exact; the frame header is still ours'
   SN+timestamp vs the factory's `0x41`/len/status (`0x080273b4`). Separate
   [`frame-header`](wiring/ARM-USART3-DSP/frame-header.md) follow-up.
