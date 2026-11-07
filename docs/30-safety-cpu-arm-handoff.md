@@ -187,6 +187,14 @@ semantics, docs/29).
   **E017 bit (`0x20000`) of the fault word from `0x2000a6c4`** (local override of the
   frame's bit 17) — "I lost the USART2 peer," the ARM-side twin of the DSP's `0x20000`
   comms-loss bit.
+  - **Ours (T08).** Implemented: once a CRC-valid frame has been seen, `src/main.c`
+    raises `INV_LOCAL_FAULT_E017` when `safety_rx_link_ok(now, SAFETY_LINK_TIMEOUT_MS)`
+    is false and clears it on the next good frame (hooks in `safety_rx_port.c`, T05;
+    tested by `test_safety_link_loss_raises_e017`). The factory's exact threshold is
+    **not observable in the bare harness** — feeding the USART2 wire then going silent
+    never moves `0x2000a6c4`/`0x20009048+6` or sets E017, because that frame-health
+    bookkeeping runs in the unscheduled periodic USART2 task — so our timeout is a
+    conservative default pending a bench capture; the mechanism is as pinned above.
 
 ### Note on the reg-9 pointer (Lead 1)
 

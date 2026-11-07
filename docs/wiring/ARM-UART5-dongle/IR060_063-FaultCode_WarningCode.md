@@ -101,5 +101,7 @@ Surfaces on the **Notice menu** (Fault Status / Alarm Status tabs) and the DATA 
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-- **FaultCode / WarningCode composition:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` building these words — the relayed safety-CPU word merged with ARM-local E000 (bit 0) / E017 (bit 17) and the ARM-computed W008 (bit 8), E027 (bit 27) passing through (docs/22, T06a). `main.c` publishes them via `state_publish()`. Factory-oracle parity is T06b (blocked on the 07 re-pin, docs/22).
+- **FaultCode / WarningCode composition:** [`test_classify.c`](../../../tests/test_classify.c) (`make test`) covers `inv_classify()` building these words — the relayed safety-CPU word merged with ARM-local E000 (bit 0) / E017 (bit 17) and the ARM-computed W008 (bit 8), E027 (bit 27) passing through (docs/22, T06a/T06b). A relayed fault composes into the word **without** changing IR 0 (State is a pure pass-through, T06b). `main.c` publishes them via `state_publish()`.
+- **E017 safety-link comms-loss (T08):** [`test_arm_sim_self_only.py`](../../../tests/test_arm_sim_self_only.py) `test_safety_link_loss_raises_e017` — once the USART2 peer has been seen, E017 (bit 17) is raised when no CRC-valid frame arrives within the timeout and clears on the next good frame (docs/29/30; the factory threshold is sim-blocked, so ours uses a conservative default).
+- **W008 FW-version mismatch:** see [`HR009_010-FW-versions.md`](HR009_010-FW-versions.md) (identity compare, T12).
 - (The **BMS** fault/warn at IR 99/100 are a different source and *are* covered — see [`IR081_106-BMS.md`](IR081_106-BMS.md).)

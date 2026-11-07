@@ -442,18 +442,31 @@ formula from its factory getter, then oracle it:
   real too.
 
 ### T08 — Peer-link supervision: comms-loss faults, timeouts, recovery
-**Status:** `[ ]` · **Layer:** **micro (timeout boundaries)** + sim · **Depends:** T05/T09 for the wires; T06 for where the bits land
+**Status:** split → **safety-link `[x]`** (ours wired + tested, 2026-11-07), **DSP / BMS `[ ]`** · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
 
-What happens when the DSP, safety CPU or BMS goes quiet? Expect E000/E017/E018/
-E031 "internal communication fault" bits, a BMS-loss warning, and probably a
-state change and relay drop. **Prove it:**
-- **Oracle:** stop feeding each peer in the factory sim and find the exact
-  timeout: last frame at `t`, fault **not** set at `T-1`, set at `T`. Then
-  check **recovery**: does the fault clear on the first good frame, or after N,
-  and is it latched until reset? For each peer this gives one boundary
-  micro-test plus one e2e test.
-- **Ours:** a small `link_watchdog` module (pure: `last_rx_tick, now → ok/lost`)
-  per peer, wired into T06's local-flags input.
+What happens when the DSP, safety CPU or BMS goes quiet? The **safety-CPU (USART2)**
+leg is done:
+
+- **Safety link → E017 (done).** Peer-comms-loss on USART2 sets **E017** (FaultCode
+  bit 17, `0x20000`) — the ARM-local peer-comms-loss bit the factory also uses
+  (docs/29/30; the factory tracks it in its USART2 frame-health counter
+  `0x2000a6c4` / `0x20009048+6`). Ours: once a CRC-valid frame has been seen, the
+  loop raises E017 when `safety_rx_link_ok(now, SAFETY_LINK_TIMEOUT_MS)` goes false
+  and clears it on the next good frame (`src/main.c`, hooks from `safety_rx_port.c`,
+  T05). Tested e2e on the real USART2 wire: `test_safety_link_loss_raises_e017`
+  (`tests/test_arm_sim_self_only.py`) — alive → E017 clear, quiet past the timeout →
+  E017 set, fresh frame → clears.
+  - **Factory threshold is sim-blocked (not T02).** The exact timeout is *not*
+    observable in the bare harness: feeding the USART2 wire then going silent for
+    155M instructions never moves the factory's comms-loss counter
+    (`0x2000a6c4`/`0x20009048+6`) nor sets E017, because that frame-health bookkeeping
+    is an **unscheduled periodic task** (the USART2 driver `sub_080259d8`), the same
+    class of harness limit as the dongle-UART5 task. So `SAFETY_LINK_TIMEOUT_MS` is a
+    conservative default (1 s) pending a bench capture; the *mechanism* (which bit,
+    which direction, recovery) is pinned statically (docs/29/30) and proven on ours.
+- **DSP (USART3) and BMS (CAN) legs — remaining.** Same shape: a `last_rx` watchdog
+  per peer (the CAN path already has keep-alive timing; USART3 RX is T09) → the
+  matching fault/warn bit. Still to do.
 
 ### T09 — DSP link RX: what the ARM consumes on USART3 (finding corrects the premise)
 **Status:** `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**

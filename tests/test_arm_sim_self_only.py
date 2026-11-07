@@ -240,6 +240,38 @@ def test_usart2_mode_classified_passthrough_e2e():
     assert mb.read_input(IR_STATE) == [0x55], "fault changed IR 0 (should stay the mode byte)"
 
 
+def test_safety_link_loss_raises_e017():
+    """Safety-link (USART2) comms-loss supervision (docs/39 T08): once a CRC-valid
+    frame has been seen, E017 (FaultCode bit 17, the ARM-local peer-comms-loss bit,
+    docs/29/30) is raised if no further frame arrives within the timeout, and clears
+    on the next good frame. Driven on the real USART2 RX wire (T05); the clock is
+    advanced by poking g_ticks. The exact factory threshold is sim-blocked (its
+    USART2 frame-health task is unscheduled), so ours uses a conservative default."""
+    from arm_sim_modbus import ModbusDongle
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    IR_FAULT_L, IR_FAULT_H, E017 = 60, 61, 1 << 17
+    sim = _ours()
+    mb = ModbusDongle(sim)
+    wire = Usart2SafetyWire(sim, boot=False)
+
+    def fault_word():
+        lo = mb.read_input(IR_FAULT_L); hi = mb.read_input(IR_FAULT_H)
+        assert lo and hi, "FaultCode not served (%r / %r)" % (lo, hi)
+        return lo[0] | (hi[0] << 16)
+
+    # establish liveness -> E017 clear
+    wire.feed(build_frame({0x04: (0x04, 1), 0x0d: (0x04, 1), 0x11: (0, 1), 0x12: (0, 1)}))
+    assert (fault_word() & E017) == 0, "E017 set while the safety link is alive"
+
+    # go quiet past the timeout (advance the ms clock) -> E017 raised
+    sim.w32(sim.sym("g_ticks"), 2_000_000)      # >> SAFETY_LINK_TIMEOUT_MS since the last frame
+    assert (fault_word() & E017) != 0, "E017 not raised after the safety link went quiet"
+
+    # a fresh frame restores the link -> E017 clears (recovery)
+    wire.feed(build_frame({0x04: (0x04, 1), 0x0d: (0x04, 1), 0x11: (0, 1), 0x12: (0, 1)}))
+    assert (fault_word() & E017) == 0, "E017 did not clear after the link recovered"
+
+
 def test_w008_tracks_relayed_peer_identity():
     """W008 (FW-version mismatch) is sourced from the peer identity the safety CPU
     relays into the telemetry bank (bank+3..6): it is raised at boot and clears once a

@@ -173,6 +173,12 @@ static void apply_if_time_reg(uint16_t reg) {
 #define OSS_ARM_COMMS_VER   0x01   /* this STM32 "comms" CPU build (HR 9 high) */
 #define OSS_FW_VERSION_CODE 0x01   /* OSS FW version code (HR 10 high)         */
 
+/* Safety-link (USART2) comms-loss timeout -> E017 (T08). Conservative default:
+ * the factory's exact threshold is not observable in the bare harness (its USART2
+ * frame-health task is unscheduled; docs/29/30), so this is set well above the
+ * safety frame interval to avoid false trips. */
+#define SAFETY_LINK_TIMEOUT_MS 1000u
+
 static mb_config_t g_mb;   /* defined below; forward tentative decl for mb_wr_hold */
 static volatile uint16_t g_pending_com_addr;  /* HR 15: new slave addr to adopt after the reply (0 = none) */
 
@@ -369,6 +375,18 @@ int main(void) {
             g_state_in.local_flags |= INV_LOCAL_WARN_W008;
         else
             g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_WARN_W008;
+        /* Safety-link comms-loss -> E017 (docs/29/30, T08): once the USART2 peer
+         * has been seen, raise E017 if no CRC-valid frame arrives within the
+         * timeout, and clear it on the next good frame. The factory tracks peer
+         * liveness in its USART2 driver's frame-health counter (0x2000a6c4 /
+         * 0x20009048+6) and overrides fault bit 17 the same way; that driver is an
+         * unscheduled periodic task in the bare harness, so the exact threshold is
+         * not observable -- SAFETY_LINK_TIMEOUT_MS is a conservative default. */
+        if (safety_rx_frames() > 0 &&
+            !safety_rx_link_ok(g_ticks, SAFETY_LINK_TIMEOUT_MS))
+            g_state_in.local_flags |= INV_LOCAL_FAULT_E017;
+        else
+            g_state_in.local_flags &= ~(uint32_t)INV_LOCAL_FAULT_E017;
         state_publish(g_rt.input_reg);    /* IR 0 State + IR 60-63 Fault/Warn (docs/22, T06a) */
         energy_publish(g_rt.input_reg);   /* expose energy counters to IR 28-37 / 40-59 */
 
