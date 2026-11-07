@@ -44,4 +44,7 @@ void     config_set_u8(uint8_t slot, uint16_t off, uint8_t value);
  * wrote anything. Call from the main loop. */
 bool config_flash_poll(void);
 
+/* True iff `slot` held a valid stored record at boot (false = blank/first-boot). */
+bool config_slot_loaded(uint8_t slot);
+
 #endif /* INV_CONFIG_FLASH_H */

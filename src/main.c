@@ -54,10 +54,20 @@ static void settings_persist_hr(uint16_t reg, uint16_t val)
 }
 
 /* Seed the holding-register image from the config flash at boot (inverse scale). */
+/* Apply the factory-fresh defaults (T03). Runs before the persisted seed so a
+ * stored value always wins; a blank/first-boot unit keeps these. */
+static void settings_apply_defaults(uint16_t *hold)
+{
+    for (unsigned i = 0; i < SETTINGS_DEFAULTS_LEN; i++)
+        hold[SETTINGS_DEFAULTS[i].reg] = SETTINGS_DEFAULTS[i].value;
+}
+
 static void settings_seed_hr(uint16_t *hold)
 {
     for (unsigned i = 0; i < SETTINGS_MAP_LEN; i++) {
         const settings_field_t *f = &SETTINGS_MAP[i];
+        if (!config_slot_loaded(f->slot))
+            continue;                      /* blank slot -> keep the applied default */
         uint16_t stored = (f->width == 1) ? config_get_u8(f->slot, f->off)
                                           : config_get_u16(f->slot, f->off);
         hold[f->reg] = (uint16_t)(stored / f->scale);
@@ -313,6 +323,7 @@ int main(void) {
     (void)v;                                 /* name/model_code used by HMI/DSP */
 
     config_flash_init();                     /* SPI NOR up; load persisted settings */
+    settings_apply_defaults(g_rt.holding_reg); /* factory-fresh defaults (T03)        */
     settings_seed_hr(g_rt.holding_reg);      /* persisted values override the defaults */
     {   /* HR 15 ComAddr: adopt the persisted Modbus slave address (T12) */
         uint16_t a = g_rt.holding_reg[HR_COM_ADDR];

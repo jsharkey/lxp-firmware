@@ -30,6 +30,7 @@
 static uint8_t  s_img[CFG_SLOTS][PAGE];    /* live record image per slot */
 static uint32_t s_wptr[CFG_SLOTS];         /* next flash write address   */
 static bool     s_dirty[CFG_SLOTS];
+static bool     s_loaded[CFG_SLOTS];        /* slot had a stored record at boot */
 static bool     s_present;                 /* a config flash answered JEDEC */
 
 static uint32_t slot_base(uint8_t slot) { return (uint32_t)slot * REGION; }
@@ -67,6 +68,7 @@ void config_flash_init(void)
             memset(s_img[s], 0, PAGE);
             s_wptr[s] = slot_base(s);
             s_dirty[s] = false;
+            s_loaded[s] = false;
         }
         return;
     }
@@ -76,11 +78,21 @@ void config_flash_init(void)
         if (p < 0) {                       /* blank slot: start a fresh ring */
             memset(s_img[s], 0, PAGE);
             s_wptr[s] = slot_base(s);
+            s_loaded[s] = false;
         } else {
             s_wptr[s] = (uint32_t)p + PAGE; /* append above the newest record */
+            s_loaded[s] = true;
         }
         s_dirty[s] = false;
     }
+}
+
+/* Whether a slot held a valid stored record at boot (vs. blank/first-boot). Lets
+ * the settings layer apply factory defaults to blank slots and let persisted
+ * records override only where they actually exist. */
+bool config_slot_loaded(uint8_t slot)
+{
+    return (slot < CFG_SLOTS) && s_loaded[slot];
 }
 
 uint16_t config_get_u16(uint8_t slot, uint16_t off)

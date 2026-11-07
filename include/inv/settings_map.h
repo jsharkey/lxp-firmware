@@ -103,4 +103,33 @@ static const settings_field_t SETTINGS_MAP[] = {
 
 #define SETTINGS_MAP_LEN (sizeof(SETTINGS_MAP) / sizeof(SETTINGS_MAP[0]))
 
+/*
+ * Factory-fresh defaults (T03). A blank config flash leaves every setting at 0;
+ * the factory instead ships sensible defaults (measured on ceaa-07xx: a fresh unit
+ * reads these). Values are in WIRE units (what Modbus read_holding returns). Applied
+ * at boot to the holding-register image BEFORE the persisted store is seeded, so a
+ * stored value always overrides the default (and a fresh unit matches the factory).
+ *
+ * Scoped to the persisted settings with unambiguous standard defaults. Deliberately
+ * NOT included yet (each needs separate care): HR 21 FuncEn (read-back ORs 0x200,
+ * docs/31 Q8), HR 90/91 EPS volt/freq (the EPS-voltage select enum does not include
+ * the raw 220 V default cleanly), and the non-persisted lead-acid / generator-charge
+ * voltages (HR 100/144/148/194-198) which have no config slot yet.
+ */
+typedef struct { uint16_t reg; uint16_t value; } settings_default_t;
+static const settings_default_t SETTINGS_DEFAULTS[] = {
+    {  23,  30 },   /* ConnectTime (s)                 */
+    {  64, 100 },   /* ChargePowerPercent (%)          */
+    {  65, 100 },   /* DischgPowerPercent (%)          */
+    {  66, 100 },   /* ACChargePower (%)               */
+    {  99, 574 },   /* ChargeVoltRef (0.1 V = 57.4 V)  */
+    { 101, 250 },   /* ChargeCurr (A)                  */
+    { 102, 250 },   /* DischgCurr (A)                  */
+    { 105,  15 },   /* EOD (%)                         */
+    { 110,   1 },   /* FunctionEn1 (bit0)              */
+    { 120, 144 },   /* stSysEnable (0x90)              */
+    { 147, 150 },   /* Battery capacity (Ah)           */
+};
+#define SETTINGS_DEFAULTS_LEN (sizeof(SETTINGS_DEFAULTS) / sizeof(SETTINGS_DEFAULTS[0]))
+
 #endif /* INV_SETTINGS_MAP_H */

@@ -433,6 +433,41 @@ def test_bms_alarm_b_not_decoded():
     assert not diff, "Q3: 0x35A changed BMS registers (ours should ignore it): %s" % diff
 
 
+def test_fresh_boot_has_factory_defaults():
+    """A truly blank config flash (erased chip, no stored records) boots with the
+    factory-fresh settings defaults (T03), not zeros -- matching a fresh factory
+    unit. A slot that DOES hold a record overrides its default (next test). Keep in
+    sync with SETTINGS_DEFAULTS in include/inv/settings_map.h (measured ceaa-07xx
+    defaults). We attach an ERASED flash (0xFF, no valid records) before boot so
+    ModbusDongle does not provision the usual zero-payload records."""
+    from arm_sim import SpiNorFlash
+    from arm_sim_modbus import ModbusDongle
+    sim = _ours()
+    sim.attach_spi_flash(cs_pin="PA4", spi_base=0x40013000, flash=SpiNorFlash())
+    mb = ModbusDongle(sim)                 # sees spi_flash present -> no config provisioned
+    EXPECT = {23: 30, 64: 100, 65: 100, 66: 100, 99: 574, 101: 250, 102: 250,
+              105: 15, 110: 1, 120: 144, 147: 150}
+    bad = []
+    for reg, want in sorted(EXPECT.items()):
+        got = mb.read_holding(reg)
+        if got != [want]:
+            bad.append("HR %d: want %d got %s" % (reg, want, got))
+    assert not bad, "fresh-boot defaults wrong:\n        " + "\n        ".join(bad)
+
+
+def test_stored_config_overrides_default():
+    """A slot that holds a record overrides the applied default (persisted value
+    wins). The default ModbusDongle harness provisions valid zero-payload records
+    for every slot, so the defaulted registers read their stored value (0 here),
+    not the default -- proving the override path. (T03)"""
+    from arm_sim_modbus import ModbusDongle
+    sim = _ours()
+    mb = ModbusDongle(sim)                 # provisions zero-payload records in all slots
+    # 99 (slot 0) and 64 (slot 5) are in SETTINGS_MAP -> stored 0 overrides the default
+    assert mb.read_holding(99) == [0], "stored (0) should override the 574 default"
+    assert mb.read_holding(64) == [0], "stored (0) should override the 100 default"
+
+
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
 def _main(argv):
     args = [a for a in argv[1:] if not a.startswith("-")]
