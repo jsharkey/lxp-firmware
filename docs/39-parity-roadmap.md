@@ -651,7 +651,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** `[ ]` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
+**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
 
 [`docs/18`](18-power-path-relays.md) names 6 relay pins and 4 logic functions;
 we mirror 2 contracts (run-enable PC6, manual override PA12/PB3). The rest is
