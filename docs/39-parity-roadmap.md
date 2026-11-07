@@ -564,7 +564,7 @@ genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
   [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
 
 #### T11c — BMS quirks Q1-Q4 as committed tests
-**Status:** `[ ]` · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
+**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
 
 - Lock in [`docs/31`](31-factory-quirks.md) **Q1-Q4** (`0x355` hi-res SOC →
   IR 101, `0x359` "PN" → IR 97, `0x35A` dropped, IR 98 10× unit). The verdicts are
