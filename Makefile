@@ -111,6 +111,15 @@ test:
 	@./$(BUILD)/test_safety_rx
 	$(HOSTCC) $(HOSTFLAGS) src/sched/dischg_gate.c tests/test_dischg_gate.c -o $(BUILD)/test_dischg_gate
 	@./$(BUILD)/test_dischg_gate
+	@python3 tools/reg_coverage.py --check   # T22: a covering test must be recorded in its register's doc
+
+# Register-coverage bookkeeping (T22): cross-reference the register map, the
+# tests, and each register's `## Test coverage` doc section. Read-only.
+coverage-report:
+	@python3 tools/reg_coverage.py
+
+coverage-check:
+	@python3 tools/reg_coverage.py --check
 
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
@@ -237,4 +246,4 @@ test-window: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window factory hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check factory hmi-sim factory-hmi

@@ -33,4 +33,5 @@ DATA MENU exposes these across the Solar/Battery/Grid/UPS tabs as `E*_day` (one 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
 - **IR 30 / 44 / 45 (EPV3 day/all):** [`test_variant.c`](../../../tests/test_variant.c) asserts these PV3 energy slots are gated off on the 12000XP.
-- **All other day/all counters:** _No automated test exercises this register yet — a focused test is welcome._
+- **Epv1 day/all (IR 28 / 40 / 41, T07):** the accumulator is driven and read back by [`test_energy.py`](../../../tests/test_energy.py) / host [`test_energy.c`](../../../tests/test_energy.c) ([`energy_contract.py`](../../../tests/energy_contract.py)): IR 28 (Epv1_day) and IR 40/41 (Epv1_all, u32 split) accumulate per tick gated on a running state, and the **midnight daily reset** zeroes IR 28 while IR 40/41 persist (the shared rollover spec, docs/37).
+- **All other day/all counters (IR 29, 31-37, 42-43, 46-59):** _No automated test exercises these yet — a focused test is welcome._ (IR 30/44/45 EPV3 are variant-gated, above.)

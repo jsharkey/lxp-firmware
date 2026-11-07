@@ -113,12 +113,14 @@ call/wiring line or two to `main.c`. Rebase often.
 | HMI | full menu + editors | menu engine on the real panel (`src/hmi/`) | **status dashboard** (editors out of scope) |
 | Harness depth | — | factory RTOS tasks **don't run** in the sim, so peer data is injected at the bank, not on the wire ([`docs/19`](19-gpio-test-harness.md), `tests/arm_sim_safety.py`) | wire-level e2e for USART2/USART3/relay task |
 
-Register-level coverage: **22 of 56** `docs/wiring/ARM-UART5-dongle/` register files list **no
-test** at all (recount as of T12). These include IR 6, 19, 60-63, 77, 107 and
-HR 16, 23-62, 103, 110, 112-113, 146-148, 194-198. (T04 added write-validation
-coverage for HR 9-10, 15, 20, 22, 66, 101, 105; T07 added serve coverage for
-IR 7-11, 16-17, 24-27, 69-70; T12 added command-dispatch + one-shot coverage for
-HR 11.) The tasks below are what close them.
+Register-level coverage is now tool-tracked (T22): **`make coverage-report`**
+([`tools/reg_coverage.py`](../tools/reg_coverage.py)) cross-references the register
+map, the tests and each register's `## Test coverage` doc section. As of the T22
+catch-up, **10 of 54** `docs/wiring/ARM-UART5-dongle/` register files still name no
+test (was a hand-counted ~22); the tool also lists the registers no test touches at
+all (section B) and fails (`--check`, run by `make test`) if a test covers a
+register its doc doesn't record. Run the tool for the live figure rather than
+trusting a number frozen here.
 
 ---
 
@@ -128,32 +130,29 @@ _T01-T04 are done; see [Completed tasks](#completed-tasks). T22 was added on
 2026-11-07 from a coverage audit of the dongle register docs._
 
 ### T22 — Register-coverage bookkeeping: catch up, then automate it
-**Status:** `[~] claude/019chjb 2026-11-07` · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
+**Status:** `[x] claude/019chjb 2026-11-07` ([`tools/reg_coverage.py`](../tools/reg_coverage.py), `make coverage-report`/`coverage-check`) · **Layer:** docs + a read-only tool · **Independent** · **Unblocks:** honest gap counts for T23-T27
 
-An audit on 2026-11-07 found that the per-register `## Test coverage` sections
-in [`ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) **lag the tests
-that already exist**. As a result, the gap list overstates what is untested and
-hides what really is.
-- **Catch-up (mechanical).** `tests/settings_persist_contract.py`
-  `SETTINGS_MAP` round-trips 62 HRs cross-image (T03:
-  `test_ours_writes_the_factory_byte_layout_full`,
-  `test_factory_persists_ours_reads_by_class`). **None** of the following files
-  record it: `HR015`, `HR020`, `HR023_024` (HR 23), `HR025_062` (29 of the
-  grid-protection regs), `HR064_089` (64-66, 68-73, 75), `HR103`, `HR105`,
-  `HR110`, `HR112`, `HR120`, `HR147_148` (HR 147). In addition, `IR028_059`
-  says "all other counters: no test", yet `test_energy.py` / `test_energy.c`
-  cover Epv1 day/all, the midnight reset and the daily-reset location.
-  Re-audit every file against the current `tests/`.
-- **Automate.** Add a read-only `tools/reg_coverage.py`. It extracts the
-  registers each test touches (`IR_*`/`HR_*` symbols via `modbus_map.h`, plus
-  the contract tables `SETTINGS_MAP`, `WRITE_VECTORS`, `SAFETY_TELEMETRY`, the
-  telemetry/energy contracts, …). It then prints a register × test matrix and
-  lists (a) registers whose doc does not mention a test that touches them, and
-  (b) spec registers with no test at all.
-- Wire it up as `make coverage-report`. Once the catch-up is done, consider a
-  `--check` mode that `make test` runs, so a new test that isn't recorded fails
-  fast. Then replace the hand-counted "26 of 54" figure in the gap snapshot
-  with the tool's output.
+An audit on 2026-11-07 found the per-register `## Test coverage` sections in
+[`ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md) **lagged the tests that
+already exist**, so the gap list overstated what was untested. **Done:**
+- **Catch-up.** Recorded the T03 cross-image persistence (`SETTINGS_MAP` /
+  [`settings_persist_contract.py`](../tests/settings_persist_contract.py), proven by
+  `test_persist_crossimage.py`) in the 11 HR docs that omitted it — `HR015`, `HR020`,
+  `HR023_024` (HR 23), `HR025_062` (grid-protection subset), `HR064_089` (64-66,
+  68-73, 75), `HR103`, `HR105`, `HR110`, `HR112`, `HR120`, `HR147_148` (HR 147) — and
+  the Epv1 energy coverage (IR 28/40/41) in `IR028_059`. The "N of 54 files list no
+  test" figure dropped from a hand-counted ~22 to **10** (`make coverage-report`).
+- **Automated.** [`tools/reg_coverage.py`](../tools/reg_coverage.py) (read-only;
+  no image needed) cross-references `modbus_map.h`, the shared contract tables
+  (`SETTINGS_MAP`, `WRITE_VECTORS`, `SAFETY_TELEMETRY`, the telemetry/energy/DSP-push
+  contracts) and an `IR_*`/`HR_*` + numeric-read/write scan of `tests/`, against each
+  register's `## Test coverage` section. It prints **(A)** docs that under-record a
+  covering test (the catch-up list — now 0), **(B)** registers no test touches at
+  all, and `--matrix` for the full register × test grid.
+- **Wired up.** `make coverage-report` (full report), `make coverage-check` (quiet
+  pass/fail), and **`make test` runs `--check`** so a new test that isn't recorded in
+  its register's doc fails fast. The frozen gap figures in this doc now point at the
+  tool instead of a hand count.
 
 ---
 
@@ -517,9 +516,10 @@ RS-485 DE, CAN bitrate. Also cover how to recover a unit that bricks.
 ## Cross-cutting, always-on
 
 - **Coverage bookkeeping:** every task above that touches a register updates
-  that register's `## Test coverage`. The "26 of 54 files list no test" figure
-  in the gap snapshot should go **down** with every task. Recount it when you
-  close one.
+  that register's `## Test coverage`. This is now enforced: **`make test` runs
+  `tools/reg_coverage.py --check`** (T22), which fails if a test covers a register
+  whose doc doesn't record it. Use **`make coverage-report`** for the register ×
+  test matrix and the live "N of 54 files list no test" figure — don't hand-count.
 - **Harness speed:** sim tests get slower as they grow. Any agent that adds a
   sim test should reuse the warm-once / clone-per-case pattern
   ([`docs/19`](19-gpio-test-harness.md) §"Warm once, clone per case") and
