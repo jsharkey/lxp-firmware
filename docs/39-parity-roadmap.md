@@ -77,7 +77,13 @@ To claim a task, edit its **Status** line to
 rebase shows someone else claimed it first, pick another task.
 
 When you finish, set the line to `[x]`, link the commits/docs/tests, and tick
-the matching README Status box if there is one.
+the matching README Status box if there is one. Then **move the task's whole
+section** (its `### Txx` heading down to the next task heading, sub-tasks
+included) **to the end of the [Completed tasks](#completed-tasks) section**, in
+the same commit. That way the P0-P3 sections above hold only open or
+in-progress work. Keep its heading text and ID unchanged, because other docs
+link to it. A task that is only partly done (some sub-tasks still `[ ]`) stays
+where it is until every part is `[x]`.
 
 If a task turns out bigger than its card, split it: add `T07a`, `T07b` under it
 rather than renumbering. Other agents reference these IDs.
@@ -118,328 +124,11 @@ HR 11.) The tasks below are what close them.
 
 ## P0 — unblockers and the biggest gaps
 
-### T01 — Move the dongle Modbus slave to UART5 (ours + harness)
-**Status:** `[x] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
-
-> **Done.** Ours now serves Modbus on **UART5** (`src/uart/uart5.c`, PC12/PD2,
-> RS-485 DE on PA15), rebound in `src/modbus/modbus_port.c`; USART3 is the DSP
-> link's alone (`src/dsp/dsp_link_port.c` brings it up). The harness
-> `ModbusDongle` auto-detects the port. **Oracle finding:** the factory answers
-> on **USART3** in the harness, **not** UART5 — its UART5 receive path
-> (`sub_0802afe2`) is a scheduler task that needs the RTOS running (**T02**);
-> the USART3 register model it serves is the same, so it is a valid oracle
-> meanwhile (and probing UART5 on the factory is avoided — its ISR disturbs
-> persistence). `make test-sim` green for both images (common 9/9 each, verified
-> on the committed `reference/ceaa-07xx_vE_260214.bin` — the 07-series factory
-> oracle). DE sequencing pinned by
-> `test_modbus_de_toggles_around_tx`. Docs: README port note, [`docs/04`](04-modbus.md),
-> [`docs/wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md). The full UART5
-> oracle for the factory is a **T02 follow-up**.
-
-Today our Modbus engine and the DSP config push **share USART3**, so on real
-hardware the dongle can never reach us. The factory serves the dongle on
-**UART5 + RS-485 DE on PA15** ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md),
-[`docs/26`](26-dongle-firmware.md)).
-- **Oracle:** teach `tests/arm_sim_modbus.py` (`ModbusDongle`) to drive
-  **UART5** (`0x40005000`). Prove that the factory answers a read on UART5 and
-  that DE toggles around TX. Pin the factory's UART5 baud and RX mechanism
-  (docs/26 notes UART5 is polled or handled by a task, not NVIC-vectored as
-  USART3 is). Keep a USART3 mode only if the factory demonstrably answers
-  there, and record that in `wiring/ARM-UART5`.
-- **Ours:** add a UART5 driver, rebind `modbus_port.c` to it, and drive DE in
-  `mb_port_set_tx()`. Leave USART3 to the DSP alone. Then every existing common
-  test must pass unchanged over UART5.
-- **Done when:** `make test-sim` is green for both images with the dongle on
-  UART5, and the README "Port note" plus docs/04 are updated.
-
-### T02 — Run the factory's RTOS tasks in the simulator  (split into T02a / T02b)
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
-
-**Done** (both halves). Split into two cards (ID kept for references):
-- **Scheduler + the relay/control task run** under `enable_rtos()` +
-  `attach_config_flash()` — proven ([`docs/19`](19-gpio-test-harness.md)
-  §"The factory runs a preemptive RTOS").
-- **T02a** (USART2 bytes → IR) **done**; **T02b** (state → PC6) **done**. Full
-  cracked chain, the frame-trust gate, and the inverter-health inputs that gate PC6:
-  [`docs/19`](19-gpio-test-harness.md) §"T02", [`docs/33`](33-usart2-telemetry-bank.md),
-  [`docs/18`](18-power-path-relays.md).
-
-#### T02a — Feed the USART2 safety link on the wire → bank/IR
-**Status:** `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
-
-**Done.** A raw USART2 safety frame fed on the wire — through the factory's *real*
-RXNE ISR, byte by byte — is assembled, CRC-checked, distributed and tag-parsed by
-the firmware into its telemetry bank, and the decoded measurements come back out
-as the right Modbus input registers, with **no bank seeding**.
-`test_usart2_frame_reaches_modbus` feeds a tag-2 frame and reads IR 12/15/20/18/13
-(grid R/freq/EPS R/inverter current/grid S) back, tracking across frames.
-- **Chain cracked** (verified statically + executed, docs/33 §1): RXNE IRQ
-  `sub_0801bddc` → assembler `sub_0801bb0e` (SOF `0x49`, `frame[3]`=len,
-  CRC-16/MODBUS big-endian) → validator `0x08027560` → distributor `sub_0802677a`
-  + tag parser `sub_08025ab8` → bank **`0x2000ce5c`** → the factory's getter.
-- **Two data fixes it forced:** the telemetry bank is `0x2000ce5c`, **not**
-  `0x20009e54` (zero refs — a mis-transcription that had `FAC_SAFETY_BANK` wrong,
-  so `test_safety_cpu_telemetry_reaches_modbus` was failing; now fixed and green);
-  and docs/33's parse-chain function addresses were wrong (the field-offset map was
-  right). Root cause of the earlier dead end: a disassembler base off by `0x5000`
-  (docs/19 §T02). The reusable feeder adds `build_frame()`/`feed_frame()` for T05.
-- **Gating note for T02b:** mode/fault/warn (`BANK+0/+0xd0/+0xd4`) are published
-  only once the frame-trust counter `0x2000da3e` reaches `0x54`; measurement/ID
-  tags are ungated (published every valid frame).
-
-#### T02b — Change operating state → PC6 moves (via the running relay task)
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
-
-**Done.** A USART2 operating-mode byte fed on the wire drives **PC6** (the run-enable
-relay), end to end through the factory's real RTOS, with **no internal-function
-call**: `test_usart2_mode_drives_pc6` asserts running modes close PC6 (=1) and
-standby/fault/programming open it (=0). The full chain, all pinned and executed:
-
-```
-frame[+4] (mode) → bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0
-                → relay decider sub_08016ec6 → PC6 = (IR_STATE >= 3)
-```
-- **Classifier = `sub_0801a678`** (NOT `sub_0801b480`, which is RTC housekeeping —
-  docs/22). It writes IR_STATE (`0x2000d0e4+0xa0`, pass-through of the mode) and
-  composes `STATE+0x98` (fault) / `STATE+0x9c` (warn) from `bank+0xd0/+0xd4`.
-- **Decider = `sub_08016ec6`** (selector 2): clean path `PC6 = (IR_STATE >= 3)`,
-  but it *blinks* (state-independently) when `STATE+0x98==0` **and** `STATE+0x9c!=0`
-  (a warning, no fault); `0x2000da6c` bit 4 is a manual override.
-- **The key to a clean demo: make the inverter healthy so `STATE+0x9c == 0`.** Two
-  ARM-local warnings stand in a bare harness, both now understood and cleared from
-  the wire/GPIO:
-  - **W008 (FW-version mismatch):** the classifier case-insensitively compares
-    `bank+3..6` against the string **"ceaa"** (`sub_0801a93a`); feed a tag-0 frame
-    with that identity (`frame[+0x15..+0x18]`) → `health 0x2000d890` bit 10 sets →
-    W008 clears.
-  - **W006 (comms health):** gates on the **PD8 "detect" input** (docs/16: GPIOD
-    bit 8, read by `sub_0801ac2c` via `sub_8014fb0` with a ~10-tick debounce) **and**
-    `bank+0xca` bit 0. Drive PD8 high (`set_input`) + feed clean telemetry → W006
-    clears.
-  With both clear the decider's clean path runs and PC6 tracks the fed mode. (The
-  frame-trust counter `0x2000da3e` is seeded warm, ~85 frames reach it, as the serve
-  test seeds the bank; the mode byte itself travels the full real wire path.)
-- **This corrects the earlier (over-pessimistic) note that clean PC6 was "not
-  reachable from USART2 alone"** — it is, once the PD8 detect input is driven, which
-  the GPIO harness does routinely (docs/18/19/22 updated).
-- **Harness gotcha found:** between fed frames the assembler's ready flag
-  (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
-  settle); feed with `settle=0` + an explicit `sim.run()` to pace it.
-- Pure harness work; changes no firmware.
-
-### T03 — Persist the full pinned settings table (54 more registers)
-**Status:** `[x] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
-
-**Done.** Our firmware now persists the full pinned set via a const table
-(`include/inv/settings_map.h`: HR → slot/offset/width/scale), driving both
-`settings_persist_hr` and `settings_seed_hr` (`src/main.c`); `config_flash` gained
-1-byte accessors for the packed slot-5 block. `tests/test_persist_crossimage.py`
-is now table-driven (`tests/settings_persist_contract.py`) and green both ways:
-ours→flash over the **whole table**, byte-exact to the factory layout and
-byte-identical to the factory's own record per storage class; and factory→ours
-*live* round-trip one register per storage class. **62 registers** covered
-(docs/23's 56 + the 6 AC-First windows newly pinned here). A full-table *live*
-ours→factory read-back is blocked on **T02** — the factory RTOS re-journals on boot
-and wedges the dongle when it boots on a device we have written (see docs/23
-"Harness note"). The oracle settled three docs/23 errors/notes — slot-5 `+0x00..+0x07`
-are **1-byte** fields, HR 109 is at **+0xa5** (not +0xa4), and two factory
-behaviours (HR 21 `FuncEn` read-merge, HR 112 slave-mode write gating) → docs/31
-Q8/Q9. Still gated (follow-up, as docs/23 predicted): the charge-first /
-forced-discharge schedules (74, 76-89) and the Q(V)/PF block — they draw no `0x06`
-echo without a precondition. See [`docs/23`](23-arm-config-writer.md) "Width
-correction & harness notes".
-
-[`docs/23`](23-arm-config-writer.md) pins **56 HRs** to slot-0/slot-5 offsets,
-widths and `×10` scalings, all dynamically. We persist 2.
-- **Oracle:** generalise `tests/test_persist_crossimage.py` into a **table-driven**
-  test over the full docs/23 table: write → cold boot → read back, **ours→factory
-  and factory→ours**. It already shares the SPI-flash model, so a record written
-  by one image must read back correctly in the other.
-- **Ours:** replace the `switch` in `settings_persist_hr` / `settings_seed_hr`
-  with a **const table** (`include/inv/settings_map.h`: HR, slot, offset, width,
-  scale). Keep slot-1↔4 mirroring and the internal-flash mirror for slots 0/5 in
-  mind (docs/23 §"Slot 1 ↔ slot 4", §"Internal-flash mirror").
-- Also find the slot/offset of the **schedule** HRs (64-89, 152-157) and the
-  **AC-First** windows if they aren't pinned yet, using the same probe method.
-- Watch the odd offsets: `+0x13`, `+0x15`, `+0x1b` in slot 0, and the one-byte
-  steps in slot 5 (`+0x00`, `+0x01`, `+0x02`…). A "2B" field at a 1-byte stride
-  means the docs/23 widths may be wrong for some rows. **Settle this with the
-  oracle before trusting the table**, and correct docs/23 if needed.
-
-### T04 — Holding-register write semantics: ranges, clamps, rejects, read-only
-**Status:** `[x] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
-
-**Done.** The factory **rejects** an out-of-range write with a Modbus exception
-(it does **not** clamp or store): out-of-range → exception `3` (ILLEGAL_VALUE),
-read-only register → exception `4` (SLAVE_FAILURE), reserved address → exception
-`2`. Recovered by a fresh-boot-per-value dongle probe (the harness RX degrades
-after a rejected write, so static isolation of the validator wasn't needed and
-wasn't achieved). Ours: `settings_validate()`
-([`src/settings/settings_validate.c`](../src/settings/settings_validate.c),
-[`include/inv/settings_validate.h`](../include/inv/settings_validate.h)) in front
-of `mb_wr_hold` **and** `hmi_write` ([`src/main.c`](../src/main.c)). Tests: common
-[`tests/test_settings_validate.py`](../tests/test_settings_validate.py) +
-[`settings_contract.py`](../tests/settings_contract.py) (factory + ours agree, 11
-vectors), host [`tests/test_settings_validate.c`](../tests/test_settings_validate.c)
-(`make test`). Deviations → [`docs/31`](31-factory-quirks.md) **Q6** (HR 101/105
-enforce only one bound — replicated for parity) and **Q7** (HR 22 returns
-exception 2 on this image). Register coverage updated for HR 9/10, 15, 20, 22, 66,
-101, 105.
-
-Original card:
-
-`mb_wr_hold` accepts anything (`/* TODO: validate ranges */`). The factory's
-behaviour on an out-of-range write is **unknown**: reject with exception 3,
-clamp, or store verbatim.
-- **Oracle:** a table-driven sim test sweeps each documented HR at `min-1`,
-  `min`, `max`, `max+1` (ranges from `modbus_map.h` / the per-register docs) and
-  records the reply (echo vs exception code) plus the read-back value. Also
-  cover writes to **reserved** and **read-only** addresses, and `0x10` on
-  registers other than SN/time (the spec says `0x10` is only valid for SN and
-  time; does the factory enforce that?). Sweeping the vectors may be cheaper as
-  a micro-test of the factory's per-register setter, if one is isolatable.
-- **Ours:** a `settings_validate(reg, val) → {accept, clamp(v), reject(exc)}`
-  pure function in front of `mb_wr_hold` **and** `hmi_write`.
-- Every deviation from the spec range goes into docs/31.
+_All P0 tasks are done; see [Completed tasks](#completed-tasks)._
 
 ---
 
 ## P1 — the live data path (telemetry, state, faults)
-
-### T05 — USART2 safety-CPU receiver: wire frame → bank
-**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** host (parser) + sim (wire e2e) · **Depends:** T02 (landed)
-
-**Done.** Our firmware now fills the telemetry bank from the wire and serves it,
-byte-for-byte compatible with the factory (the same raw USART2 bytes produce the
-same Modbus input registers on both images).
-- **Parser** (`src/safety/safety_rx.c`, `inv/safety_rx.h`): a pure, host-tested
-  byte-stream state machine for the EG4 type-1 frame (SOF `0x49`, `frame[3]`=len,
-  total `len`+6 capped `<0x40`, CRC-16/MODBUS big-endian). It validates the CRC and
-  type, distributes the header (mode / relayed fault+warn / etc.) and the tag
-  sub-record (docs/33 §1a, tags 0/1/2) into the bank (native LE, as
-  `safety_cpu_publish` reads it), and resynchronises past garbage. Host test
-  `tests/test_safety_rx.c` (37 checks): good/bad CRC, wrong type, truncated,
-  unknown tag, resync after junk, and each tag's field map.
-- **Driver** (`src/uart/uart2.c`, `inv/uart2.h`): RXNE-interrupt USART2 (PA2/PA3,
-  RS-485 direction PC2, docs/16), matching the factory (RXNE, not DMA — docs/19
-  T02). The glue `src/safety/safety_rx_port.c` drains the RX ring, feeds the parser
-  into `g_safety_bank`, and exposes the decoded mode/fault/warn to the classifier
-  (wired into `main.c`; `state_publish` now flows the real mode/fault/warn out).
-- **Oracle:** the common sim test `test_usart2_safety_frame_reaches_modbus`
-  (tests/test_arm_sim.py) feeds the **same raw tag-2 frame** to both images and
-  asserts IR 12/15/20/23/18/13/122 — ours (UART5 Modbus) and the factory (USART3,
-  via the T02 USART2 wire feeder) serve identical values. Both green.
-- **rx-timeout → fault (for T08):** `safety_rx_last_frame_ms()` /
-  `safety_rx_link_ok(now, timeout)` expose link liveness; T08 maps a stale link to
-  the comms-loss fault (E017). Left as the hook, not the policy, per T08's scope.
-
-### T06 — Operating-state classifier + fault/warning composer (`sub_0801a678`)
-**Status:** split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
-
-- **T06a `[x]` — our classifier + host oracle (done).** Pure
-  `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
-  {state, fault32, warn32}` (`include/inv/classify.h`, `src/state/classify.c`):
-  canonicalised pass-through of the mode byte (Table 9 + LCD Bypass 0x11/0x19),
-  fault/not-running override, and the FaultCode/WarningCode composition (relayed
-  word + ARM-local E000/E017/W008, E027 passes through) per IR000 / IR060_063.
-  Host-tested (`tests/test_classify.c`, `make test`, 63 checks). Wired into
-  `main.c`: IR 0 + IR 60-63 are now published **through the classifier** instead
-  of a hard-seeded Standby (`state_publish()`), so the real mode/fault/warn flow
-  out to Modbus as soon as the USART2 ingest feeds them.
-- **T06b `[x]` — factory oracle (done, T02b-unblocked).** With the USART2 wire
-  running (T02b) the classifier is pinned on the 07 image: **IR 0 is a pure
-  pass-through of the relayed mode byte** — no canonicalisation, no fault override.
-  Proven by feeding mode bytes on the wire and reading IR_STATE (`0x2000d0e4+0xa0`):
-  every byte 0x00–0xFF appears verbatim (canonical, LCD 0x11/0x19, and arbitrary
-  bytes 0x55/0xFF alike), and a relayed fault flows to the FaultCode (IR 60/61)
-  **without** changing IR_STATE. This **corrected both of docs/22's 05-series
-  guesses** (no 0x02 override target, no 0x08 non-canonical default) and
-  `inv_classify` was fixed to match (canonicalisation + override removed, the
-  `INV_LOCAL_NOT_RUNNING` flag dropped). Classifier = `sub_0801a678`, bank base
-  `0x2000ce5c`, all re-pinned in T02a/T02b. Tests: `test_usart2_classifier_is_pure_passthrough`
-  + `test_usart2_mode_reaches_ir_state` (factory), `test_usart2_mode_classified_passthrough_e2e`
-  (ours), `test_classify.c` (host). The isolated-call `ClassifyBackend` the card
-  envisioned proved unnecessary (the deciders fault when called in isolation —
-  docs/18); the wire-fed e2e is the oracle. See [`docs/22`](22-arm-dsp-core-split.md)
-  "T06b RESOLVED".
-
-[`docs/22`](22-arm-dsp-core-split.md) says the ARM's mode module is a
-**classifier, not a power FSM**:
-`received_mode_byte + fault flags → IR_STATE`, plus a merge of the relayed
-fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
-[`IR060_063`](wiring/ARM-UART5-dongle/IR060_063-FaultCode_WarningCode.md)).
-- **Oracle:** a micro-test calls `sub_0801b480` in isolation and sweeps **every
-  mode byte 0x00-0xFF** × {no fault, each ARM-local fault bit, relayed fault}.
-  It records the IR 0 / 6 / 60-63 outputs as the vector table. Specifically
-  check the manual's extra codes `0x11` Bypass and `0x19` PV-charge+bypass
-  ([`IR000-State`](wiring/ARM-UART5-dongle/IR000-State.md)), and what an
-  unknown/non-canonical byte becomes.
-- **Ours:** `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags)
-  → {state, fault32, warn32, internal_fault}` as a pure function. Publish it
-  from `main.c` instead of the hard-seeded Standby.
-- **Sim e2e:** inject a bank mode byte plus fault bits, then read IR 0/60-63
-  over Modbus on both images.
-
-### T07 — ARM-computed telemetry registers
-**Status:** `[x] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
-
-**Done (serve layer).** The computed power registers are served from a 32-bit
-value the ARM keeps internally in **0.1 W**, as `IR = (uint16_t)(internal / 10)` —
-unsigned, truncating, **not a float** (this *corrects the card's "float" guess*,
-recovered by injecting the STATUS-struct source and reading the getter
-`sub_0803289c`). Covered: **IR 7/8 Ppv**, **10/11 Pcharge/Pdischarge** (the getter
-adds no sign clamp — the split is upstream), **16/17 Pinv/Prec**, **24 Peps**,
-**26/27 Ptogrid/Ptouser** (all `/10`); **IR 25 Seps** served **1:1** in VA; **IR
-69/70 RunningTime** a u32 seconds counter split low/high (advances 1/s while
-`op_state ≥ 3`). Ours: `inv_telemetry_publish()`/`inv_power_to_ir()`
-([`src/telemetry/telemetry.c`](../src/telemetry/telemetry.c),
-[`include/inv/telemetry.h`](../include/inv/telemetry.h)), wired into
-[`src/main.c`](../src/main.c) and feeding `src/energy/`. Tests: common
-[`tests/test_telemetry.py`](../tests/test_telemetry.py) +
-[`telemetry_contract.py`](../tests/telemetry_contract.py) (factory + ours agree),
-host [`tests/test_telemetry.c`](../tests/test_telemetry.c). Register coverage
-updated for IR 7-11, 16-17, 24-27, 69-70.
-
-**Deferred (the V·I / sign-split COMPUTE itself).** The getter only *serves* a
-pre-computed value; the upstream compute is filled by the **safety-CPU `0x49`
-telemetry parser on USART2** (`sub_08025ab8` over buffer `0x20009048`, a scheduler
-task that doesn't run in the harness) — so the internal quantities are
-**injected** here (as the card allows) and the real compute lands with the
-**USART2 ingest, T05** (*not* a USART3 `0x49` — the ARM's USART3 RX is a
-Modbus/bootloader demux, see **T09**).
-
-**T07b update (2026-11-07, after T02a landed the USART2 ingest).** The two
-bank-**relayed** fields are now served from the safety bank by `src/safety/safety_cpu.c`:
-**IR 19 PF** (bank `+0xaa`, raw 0-2000 verbatim — [`IR019-PF`](wiring/ARM-UART5-dongle/IR019-PF.md))
-and **IR 107 BatVoltSample_INV** (bank `+0x0a`, 0.1 V), both added to the shared
-`SAFETY_TELEMETRY` contract (ours proven by `test_arm_sim_self_only.py`; the factory
-oracle validates them against its getter when run on a ceaa-07xx image).
-**Correction:** **IR 64 Tinner / 67 Tbat** and **IR 77 ACInputType** are **not** in
-the recovered USART2 safety bank (docs/33's tag map carries only the radiator temps
-IR 65/66 — no inner/battery temp, no AC-input-type). So they are **not**
-bank-relayed on this image; their source is elsewhere/unrecovered — a correction to
-the earlier "relayed per docs/33" assumption. RunningTime cross-boot persistence is
-still open (T07b).
-
-Original card:
-
-These are the registers the ARM **computes** rather than relays
-([`docs/22`](22-arm-dsp-core-split.md) "PV power is ARM-computed",
-[`docs/33`](33-usart2-telemetry-bank.md) §3). Find each register's inputs and
-formula from its factory getter, then oracle it:
-- **IR 7-9 Ppv** (V·I, float in the factory, so check rounding/truncation and
-  the negative/zero clamp), **IR 10-11 Pcharge/Pdischarge** (sign split of the
-  battery power), **IR 16-17 Pinv/Prec**, **IR 24-25 Peps/Seps**,
-  **IR 26-27 Ptogrid/Ptouser**, **IR 19 PF** (encoded range).
-- **IR 69-70 RunningTime** (what increments it, gating state, does it persist
-  across boot?), **IR 77 ACInputType**, **IR 107 BatVoltSample_INV**,
-  **IR 64 Tinner / IR 67 Tbat** (if ARM-local ADC).
-- Each formula gets a micro-test over its edge vectors (0, negative, rail,
-  overflow of the u16). Then a single sim test checks that the whole set is
-  served after one injected snapshot.
-- These feed `src/energy/` (it already integrates `IR_PPV*` etc.), so once they
-  are real, the energy counters ([`docs/37`](37-energy-accumulation.md)) are
-  real too.
 
 ### T08 — Peer-link supervision: comms-loss faults, timeouts, recovery
 **Status:** split → **safety-link `[x]`** (ours wired + tested, 2026-11-07), **DSP / BMS `[ ]`** · claude · **Layer:** sim + micro · **Depends:** T05/T09 wires (done), T06 (done)
@@ -467,36 +156,6 @@ leg is done:
 - **DSP (USART3) and BMS (CAN) legs — remaining.** Same shape: a `last_rx` watchdog
   per peer (the CAN path already has keep-alive timing; USART3 RX is T09) → the
   matching fault/warn bit. Still to do.
-
-### T09 — DSP link RX: what the ARM consumes on USART3 (finding corrects the premise)
-**Status:** `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**
-
-**Finding: the ARM does NOT parse a `0x49` telemetry frame on USART3.** The
-premise ("the factory parses DSP `0x49` on USART3", with RX path
-`FUN_0801bb0e`/`FUN_08025ab8`) was wrong — those are the **USART2** safety-CPU
-`0x49` path. The ARM's USART3 RX (ISR `sub_0801c774` → `sub_0801c6e0` → byte
-handler `sub_0801c3e6`, buffer `0x20007490`) is a **Modbus-slave (`03/04/06/10`)
-+ DSP-bootloader (`21/22/23`) demux**, address-gated; a `0x49`/type-1 frame is
-rejected. Proven static (App vector table + `tools/disres.py`: the func dispatch,
-and the `cmp #0x49` living in the USART2 handler `sub_0801c808` reading buffer
-`0x20009048`) **and** dynamic (the real byte handler drops a `0x49` SOF while
-assembling Modbus/bootloader).
-- **Oracle (done):** drive the real `sub_0801c3e6` with each frame's first two
-  bytes and check whether the assembler advances (accept) or resets (drop) —
-  [`tests/dsprx_contract.py`](../tests/dsprx_contract.py)`::FactoryBackend`.
-- **Ours (done):** [`inv_dsp_rx_classify`](../src/dsp/dsp_rx.c) mirrors the demux
-  decision (pure, host-tested [`test_dsp_rx.c`](../tests/test_dsp_rx.c)); the
-  USART3 RX service [`src/dsp/dsp_rx_port.c`](../src/dsp/dsp_rx_port.c) drains the
-  wire, serves Modbus as a slave (the DSP polls the ARM here), recognises
-  bootloader frames (→ T18), and drops the rest. Wired into `src/main.c`.
-- **Recorded** in [`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)
-  (rewritten), the USART3-DSP [`README`](wiring/ARM-USART3-DSP/README.md) /
-  [`fields`](wiring/ARM-USART3-DSP/fields.md) (corrections folded in) and
-  [`docs/31`](31-factory-quirks.md) Q10. Common sim test wired into `make test-sim`.
-- **Consequence for telemetry compute (T07 follow-ons):** the upstream V·I /
-  sign-split compute does **not** arrive via a USART3 `0x49` — its source is the
-  **USART2** safety-CPU telemetry bank (docs/33). Re-point IR 19/64/67/77 work at
-  T05 (USART2 ingest), not at this task.
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
 **Status:** `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
@@ -544,113 +203,9 @@ come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was
 - **Done when:** every block's payload is byte-identical to the factory's for the
   same settings + BMS state.
 
-### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
-**Status:** `[x]` (all three) → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[x]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
-
-Split after the T11a oracle came back much smaller than the card assumed: the
-only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
-charge-voltage one, and it is a plain `min` with a setting, not a multi-field
-cell-count computation. The current/discharge fields and the inverter→BMS TX need
-the RTOS tasks (T02) to observe, so they were carried as T11b/T11c. **T11b is now
-done** (T02 landed): the inverter→BMS TX is a `0x305` DLC8 all-zero keep-alive that
-ours already matches. The IR 81/82/84 current/discharge fields turned out to be a
-genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
-
-#### T11a — BMS charge-voltage working limit (IR 83 = min(0x351, HR 99))
-**Status:** `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
-
-- **Finding (corrects the card):** the factory serves `IR 83 = min(0x351 charge-V
-  limit, HR 99 ChargeVoltRef)` — a plain min, oracled black-box on `ceaa-07xx`
-  (sweep `0x351` 0/100/560/600/1000 vs HR 99 520/574/590, all `min`). The
-  "~57.4 V cell-count clamp" in the old `on_can_frame` comment is simply HR 99's
-  power-on **default** (574); HR 99 = 590 raises the ceiling, so there is no
-  separate hard clamp. **IR 81/82/84** (max chg/dis current, discharge cutoff)
-  stay `0` under the same sweep — no reachable publish path; open pending T02.
-- **Done:** pure fn `inv_bms_charge_volt_ref()`; host micro-test sweeps the `min`
-  boundaries (13 checks); sim e2e `test_bms_charge_volt_ref_clamps_to_setting`
-  (setting-wins branch) + the two `*telemetry*` tests (pass-through branch, HR 99
-  raised over the wire) green for **both** images; docs in
-  [`IR081_106-BMS`](wiring/ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a),
-  [`HR099_102`](wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md).
-
-#### T11b — inverter→BMS CAN TX (`0x305` keep-alive)
-**Status:** `[x] claude/019chjb 2026-11-07` ([`test_can_tx.py`](../tests/test_can_tx.py), [`can_tx_contract.py`](../tests/can_tx_contract.py), [`arm_sim_can.py`](../tests/arm_sim_can.py) `capture_tx`, [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b)) · **Layer:** sim (CAN TX capture) · **Was:** T02-blocked, now done
-
-- **Finding (oracle, unblocked by T02):** with the TX task running under the RTOS,
-  the factory transmits **`0x305`, DLC 8, payload all-zero**, once it has received
-  pack telemetry, periodically, and **state-independent** (nominal vs faulted/low
-  identical). No `0x300/0x301/0x400` in steady state. **Our firmware already sends
-  exactly that** (`main.c` ~1 Hz keep-alive, `can_port.c`) — the "payload
-  provisional" note was correct by luck and is now settled.
-- **Done:** added a reusable bxCAN **TX capture** to the CAN harness
-  (`arm_sim_can.py` `capture_tx` — presents TME, records each TXRQ; our firmware
-  even *drops* the keep-alive unless TME0 reads set, so the capture is what lets
-  ours transmit in the sim too); sim test `test_can_tx.py` asserts `0x305`/DLC8/zero
-  for **both** images and that they agree; docs in
-  [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
-
-#### T11c — BMS quirks Q1-Q4 as committed tests
-**Status:** `[x] claude/019chjb 2026-11-07` ([`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py), [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py), [`docs/31`](31-factory-quirks.md) Q1-Q4) · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
-
-- **Done.** Each [`docs/31`](31-factory-quirks.md) verdict is now a committed test,
-  factory-oracled on ceaa-07xx and asserted clean on ours:
-  - **Q1** (`0x355` hi-res SOC → IR 101) + **Q2** (`0x359` "PN" → IR 97):
-    `test_bms_frame_misfiling_quirks_q1_q2` reproduces them on the factory
-    (IR 101 = 7700, IR 97 = 0x4E50, IR 96 module count correct);
-    `test_bms_frame_misfiling_quirks_not_reproduced` asserts ours leaves IR 97/101
-    at 0 while still publishing IR 96.
-  - **Q3** (`0x35A` dropped): `test_bms_alarm_b_reaches_no_register_q3` (factory) /
-    `test_bms_alarm_b_not_decoded` (ours) — inject only 0x35A, no IR 81-106 moves.
-  - **Q4** (IR 98 unit): no new test — a unit-label question, not a value bug; the
-    1:1 pass-through both images perform is already locked by
-    `test_can_battery_telemetry_reaches_modbus`. Physical unit stays open (docs/31).
-
 ---
 
 ## P2 — features and commands
-
-### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
-**Status:** `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
-
-Done — HR 11 command dispatch, HR 15 live address change, HR 9/10 own-version
-read-back + live DSP version, and W008 (identity compare) are implemented and
-tested. W008 and the DSP-version read-back were pinned and proven once the USART2
-wire ran (T02b); the HR 15 timing and wrong-SN behaviour remain decisions because
-they live on the factory's **dongle UART5** slave task, which the sim does not
-schedule (a separate factory-dongle harness — not T02, which is done).
-
-- **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
-  [`docs/23`](23-arm-config-writer.md) §Reset-to-default): **done.**
-  `src/state/command.c` (`inv_command_apply`) dispatches one op per set bit,
-  reboot last; it is a one-shot (register reads back 0). Wired: bit 0 clears
-  energy/runtime counters, bit 5/6 drive the BMS charge/discharge switches, bit 7
-  is a real `SCB->AIRCR` SYSRESETREQ (constants confirmed in the 07 image). Bits
-  1/2/3/4 (defaults / adj-ratio / fault & monitor records) are accepted-and-ignored
-  for now rather than faked (docs/23 open). Tests: [`test_command.c`](../tests/test_command.c)
-  (24 checks), + one-shot over the wire in [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py).
-- **HR 15 ComAddr:** **done.** Ours adopts the new address after the write's own
-  reply (deferred one transaction so the ACK lands on the old address), and loads
-  the stored value on boot — no reboot. Address-0 broadcast and the factory's exact
-  apply-moment are **not observable** here (factory-dongle UART5 task, not scheduled
-  — not T02); our contract is "immediate, after the reply". Test:
-  `test_comaddr_changes_slave_address_live`.
-- **SN (HR 2-6):** persisted via T03 (`0x10` write-multiple); ours runs
-  `check_sn=false` (SN echoed, not required to match). Whether the factory drops or
-  excepts a wrong-SN frame is **not observable** (factory-dongle UART5 task, not
-  scheduled — not T02); decision in docs/31 is to serve any correctly addressed frame
-  rather than risk stranding a dongle.
-- **HR 9-10 versions + W008:** **done, and pinned by T02b.** Ours seeds HR 9 high /
-  HR 10 high from its own build constants (`OSS_ARM_COMMS_VER`, `OSS_FW_VERSION_CODE`)
-  and now serves **HR 10 low live from the relayed DSP version** (`bank+2`), proven on
-  the factory (`test_usart2_dsp_version_reaches_hr10_low`). **W008 is a model-IDENTITY
-  compare** (not a numeric version compare): the classifier matches the relayed peer
-  identity (bank+3..6) against "ceaa" and sets the version-OK health bit `0x2000d890`
-  bit 10 — proven both directions (`test_usart2_identity_drives_version_health_bit`).
-  Ours implements the same case-insensitive compare vs `model_code`, latched, raising
-  W008 while unmatched (`src/safety/safety_cpu.c`; host `test_w008.c`, ours
-  `test_w008_tracks_relayed_peer_identity`). **Open (→ T06b):** how that health bit
-  gates into the Modbus WarningCode is not yet pinned (it does not surface in the bare
-  harness). Decisions recorded in [`docs/31`](31-factory-quirks.md).
 
 ### T13 — HMI status dashboard (overview screen; no editors)
 **Status:** `[ ]` · **Layer:** sim (panel framebuffer) + host (layout) · **Soft-depends:** T06/T07 for real values (works with injected values earlier)
@@ -852,6 +407,466 @@ T10 DSP blocks  <── T11 BMS limits (block 1)
 T15 schedules, T17 07-series features   (independent)
 ```
 
-Tasks that start **today with no dependency**: T01, T02, T03, T04, T06 (micro
-half), T07, T10 (blocks 2/3/6/7/8), T11, T13 (with injected values), T15,
-T17. (T09 is complete.)
+Open and in-progress tasks are the ones still listed under P0-P3 above. Finished
+tasks are in [Completed tasks](#completed-tasks) below.
+
+---
+
+## Completed tasks
+
+Finished tasks, moved here from P0-P3 so the sections above show only open
+work. Agents append newly finished tasks at the end (see "Claiming a task").
+Each card keeps its original heading and ID.
+
+### T01 — Move the dongle Modbus slave to UART5 (ours + harness)
+**Status:** `[x] claude/019chjb 2026-11-06` · **Layer:** sim (common) · **Unblocks:** T08, all hardware use
+
+> **Done.** Ours now serves Modbus on **UART5** (`src/uart/uart5.c`, PC12/PD2,
+> RS-485 DE on PA15), rebound in `src/modbus/modbus_port.c`; USART3 is the DSP
+> link's alone (`src/dsp/dsp_link_port.c` brings it up). The harness
+> `ModbusDongle` auto-detects the port. **Oracle finding:** the factory answers
+> on **USART3** in the harness, **not** UART5 — its UART5 receive path
+> (`sub_0802afe2`) is a scheduler task that needs the RTOS running (**T02**);
+> the USART3 register model it serves is the same, so it is a valid oracle
+> meanwhile (and probing UART5 on the factory is avoided — its ISR disturbs
+> persistence). `make test-sim` green for both images (common 9/9 each, verified
+> on the committed `reference/ceaa-07xx_vE_260214.bin` — the 07-series factory
+> oracle). DE sequencing pinned by
+> `test_modbus_de_toggles_around_tx`. Docs: README port note, [`docs/04`](04-modbus.md),
+> [`docs/wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md). The full UART5
+> oracle for the factory is a **T02 follow-up**.
+
+Today our Modbus engine and the DSP config push **share USART3**, so on real
+hardware the dongle can never reach us. The factory serves the dongle on
+**UART5 + RS-485 DE on PA15** ([`wiring/ARM-UART5-dongle`](wiring/ARM-UART5-dongle/README.md),
+[`docs/26`](26-dongle-firmware.md)).
+- **Oracle:** teach `tests/arm_sim_modbus.py` (`ModbusDongle`) to drive
+  **UART5** (`0x40005000`). Prove that the factory answers a read on UART5 and
+  that DE toggles around TX. Pin the factory's UART5 baud and RX mechanism
+  (docs/26 notes UART5 is polled or handled by a task, not NVIC-vectored as
+  USART3 is). Keep a USART3 mode only if the factory demonstrably answers
+  there, and record that in `wiring/ARM-UART5`.
+- **Ours:** add a UART5 driver, rebind `modbus_port.c` to it, and drive DE in
+  `mb_port_set_tx()`. Leave USART3 to the DSP alone. Then every existing common
+  test must pass unchanged over UART5.
+- **Done when:** `make test-sim` is green for both images with the dongle on
+  UART5, and the README "Port note" plus docs/04 are updated.
+
+### T02 — Run the factory's RTOS tasks in the simulator  (split into T02a / T02b)
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** harness (`tools/arm_sim.py`) · **Unblocks:** T05, T08, T14, wire-level e2e
+
+**Done** (both halves). Split into two cards (ID kept for references):
+- **Scheduler + the relay/control task run** under `enable_rtos()` +
+  `attach_config_flash()` — proven ([`docs/19`](19-gpio-test-harness.md)
+  §"The factory runs a preemptive RTOS").
+- **T02a** (USART2 bytes → IR) **done**; **T02b** (state → PC6) **done**. Full
+  cracked chain, the frame-trust gate, and the inverter-health inputs that gate PC6:
+  [`docs/19`](19-gpio-test-harness.md) §"T02", [`docs/33`](33-usart2-telemetry-bank.md),
+  [`docs/18`](18-power-path-relays.md).
+
+#### T02a — Feed the USART2 safety link on the wire → bank/IR
+**Status:** `[x] claude-opus/019chjbE 2026-11-06` · **Layer:** sim (factory) · **Unblocks:** T05, T02b
+
+**Done.** A raw USART2 safety frame fed on the wire — through the factory's *real*
+RXNE ISR, byte by byte — is assembled, CRC-checked, distributed and tag-parsed by
+the firmware into its telemetry bank, and the decoded measurements come back out
+as the right Modbus input registers, with **no bank seeding**.
+`test_usart2_frame_reaches_modbus` feeds a tag-2 frame and reads IR 12/15/20/18/13
+(grid R/freq/EPS R/inverter current/grid S) back, tracking across frames.
+- **Chain cracked** (verified statically + executed, docs/33 §1): RXNE IRQ
+  `sub_0801bddc` → assembler `sub_0801bb0e` (SOF `0x49`, `frame[3]`=len,
+  CRC-16/MODBUS big-endian) → validator `0x08027560` → distributor `sub_0802677a`
+  + tag parser `sub_08025ab8` → bank **`0x2000ce5c`** → the factory's getter.
+- **Two data fixes it forced:** the telemetry bank is `0x2000ce5c`, **not**
+  `0x20009e54` (zero refs — a mis-transcription that had `FAC_SAFETY_BANK` wrong,
+  so `test_safety_cpu_telemetry_reaches_modbus` was failing; now fixed and green);
+  and docs/33's parse-chain function addresses were wrong (the field-offset map was
+  right). Root cause of the earlier dead end: a disassembler base off by `0x5000`
+  (docs/19 §T02). The reusable feeder adds `build_frame()`/`feed_frame()` for T05.
+- **Gating note for T02b:** mode/fault/warn (`BANK+0/+0xd0/+0xd4`) are published
+  only once the frame-trust counter `0x2000da3e` reaches `0x54`; measurement/ID
+  tags are ungated (published every valid frame).
+
+#### T02b — Change operating state → PC6 moves (via the running relay task)
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** sim (factory) · **Depends:** T02a
+
+**Done.** A USART2 operating-mode byte fed on the wire drives **PC6** (the run-enable
+relay), end to end through the factory's real RTOS, with **no internal-function
+call**: `test_usart2_mode_drives_pc6` asserts running modes close PC6 (=1) and
+standby/fault/programming open it (=0). The full chain, all pinned and executed:
+
+```
+frame[+4] (mode) → bank+0 → classifier sub_0801a678 → IR_STATE 0x2000d0e4+0xa0
+                → relay decider sub_08016ec6 → PC6 = (IR_STATE >= 3)
+```
+- **Classifier = `sub_0801a678`** (NOT `sub_0801b480`, which is RTC housekeeping —
+  docs/22). It writes IR_STATE (`0x2000d0e4+0xa0`, pass-through of the mode) and
+  composes `STATE+0x98` (fault) / `STATE+0x9c` (warn) from `bank+0xd0/+0xd4`.
+- **Decider = `sub_08016ec6`** (selector 2): clean path `PC6 = (IR_STATE >= 3)`,
+  but it *blinks* (state-independently) when `STATE+0x98==0` **and** `STATE+0x9c!=0`
+  (a warning, no fault); `0x2000da6c` bit 4 is a manual override.
+- **The key to a clean demo: make the inverter healthy so `STATE+0x9c == 0`.** Two
+  ARM-local warnings stand in a bare harness, both now understood and cleared from
+  the wire/GPIO:
+  - **W008 (FW-version mismatch):** the classifier case-insensitively compares
+    `bank+3..6` against the string **"ceaa"** (`sub_0801a93a`); feed a tag-0 frame
+    with that identity (`frame[+0x15..+0x18]`) → `health 0x2000d890` bit 10 sets →
+    W008 clears.
+  - **W006 (comms health):** gates on the **PD8 "detect" input** (docs/16: GPIOD
+    bit 8, read by `sub_0801ac2c` via `sub_8014fb0` with a ~10-tick debounce) **and**
+    `bank+0xca` bit 0. Drive PD8 high (`set_input`) + feed clean telemetry → W006
+    clears.
+  With both clear the decider's clean path runs and PC6 tracks the fed mode. (The
+  frame-trust counter `0x2000da3e` is seeded warm, ~85 frames reach it, as the serve
+  test seeds the bank; the mode byte itself travels the full real wire path.)
+- **This corrects the earlier (over-pessimistic) note that clean PC6 was "not
+  reachable from USART2 alone"** — it is, once the PD8 detect input is driven, which
+  the GPIO harness does routinely (docs/18/19/22 updated).
+- **Harness gotcha found:** between fed frames the assembler's ready flag
+  (`buf+0x36a`) must clear, which needs the consumer task to run (~4M insns of
+  settle); feed with `settle=0` + an explicit `sim.run()` to pace it.
+- Pure harness work; changes no firmware.
+
+### T03 — Persist the full pinned settings table (54 more registers)
+**Status:** `[x] claude 2026-11-06` · **Layer:** sim (cross-image) + host · **Independent**
+
+**Done.** Our firmware now persists the full pinned set via a const table
+(`include/inv/settings_map.h`: HR → slot/offset/width/scale), driving both
+`settings_persist_hr` and `settings_seed_hr` (`src/main.c`); `config_flash` gained
+1-byte accessors for the packed slot-5 block. `tests/test_persist_crossimage.py`
+is now table-driven (`tests/settings_persist_contract.py`) and green both ways:
+ours→flash over the **whole table**, byte-exact to the factory layout and
+byte-identical to the factory's own record per storage class; and factory→ours
+*live* round-trip one register per storage class. **62 registers** covered
+(docs/23's 56 + the 6 AC-First windows newly pinned here). A full-table *live*
+ours→factory read-back is blocked on **T02** — the factory RTOS re-journals on boot
+and wedges the dongle when it boots on a device we have written (see docs/23
+"Harness note"). The oracle settled three docs/23 errors/notes — slot-5 `+0x00..+0x07`
+are **1-byte** fields, HR 109 is at **+0xa5** (not +0xa4), and two factory
+behaviours (HR 21 `FuncEn` read-merge, HR 112 slave-mode write gating) → docs/31
+Q8/Q9. Still gated (follow-up, as docs/23 predicted): the charge-first /
+forced-discharge schedules (74, 76-89) and the Q(V)/PF block — they draw no `0x06`
+echo without a precondition. See [`docs/23`](23-arm-config-writer.md) "Width
+correction & harness notes".
+
+[`docs/23`](23-arm-config-writer.md) pins **56 HRs** to slot-0/slot-5 offsets,
+widths and `×10` scalings, all dynamically. We persist 2.
+- **Oracle:** generalise `tests/test_persist_crossimage.py` into a **table-driven**
+  test over the full docs/23 table: write → cold boot → read back, **ours→factory
+  and factory→ours**. It already shares the SPI-flash model, so a record written
+  by one image must read back correctly in the other.
+- **Ours:** replace the `switch` in `settings_persist_hr` / `settings_seed_hr`
+  with a **const table** (`include/inv/settings_map.h`: HR, slot, offset, width,
+  scale). Keep slot-1↔4 mirroring and the internal-flash mirror for slots 0/5 in
+  mind (docs/23 §"Slot 1 ↔ slot 4", §"Internal-flash mirror").
+- Also find the slot/offset of the **schedule** HRs (64-89, 152-157) and the
+  **AC-First** windows if they aren't pinned yet, using the same probe method.
+- Watch the odd offsets: `+0x13`, `+0x15`, `+0x1b` in slot 0, and the one-byte
+  steps in slot 5 (`+0x00`, `+0x01`, `+0x02`…). A "2B" field at a 1-byte stride
+  means the docs/23 widths may be wrong for some rows. **Settle this with the
+  oracle before trusting the table**, and correct docs/23 if needed.
+
+### T04 — Holding-register write semantics: ranges, clamps, rejects, read-only
+**Status:** `[x] claude 2026-11-06` · **Layer:** micro (per-register vectors) + one sim smoke · **Independent**
+
+**Done.** The factory **rejects** an out-of-range write with a Modbus exception
+(it does **not** clamp or store): out-of-range → exception `3` (ILLEGAL_VALUE),
+read-only register → exception `4` (SLAVE_FAILURE), reserved address → exception
+`2`. Recovered by a fresh-boot-per-value dongle probe (the harness RX degrades
+after a rejected write, so static isolation of the validator wasn't needed and
+wasn't achieved). Ours: `settings_validate()`
+([`src/settings/settings_validate.c`](../src/settings/settings_validate.c),
+[`include/inv/settings_validate.h`](../include/inv/settings_validate.h)) in front
+of `mb_wr_hold` **and** `hmi_write` ([`src/main.c`](../src/main.c)). Tests: common
+[`tests/test_settings_validate.py`](../tests/test_settings_validate.py) +
+[`settings_contract.py`](../tests/settings_contract.py) (factory + ours agree, 11
+vectors), host [`tests/test_settings_validate.c`](../tests/test_settings_validate.c)
+(`make test`). Deviations → [`docs/31`](31-factory-quirks.md) **Q6** (HR 101/105
+enforce only one bound — replicated for parity) and **Q7** (HR 22 returns
+exception 2 on this image). Register coverage updated for HR 9/10, 15, 20, 22, 66,
+101, 105.
+
+Original card:
+
+`mb_wr_hold` accepts anything (`/* TODO: validate ranges */`). The factory's
+behaviour on an out-of-range write is **unknown**: reject with exception 3,
+clamp, or store verbatim.
+- **Oracle:** a table-driven sim test sweeps each documented HR at `min-1`,
+  `min`, `max`, `max+1` (ranges from `modbus_map.h` / the per-register docs) and
+  records the reply (echo vs exception code) plus the read-back value. Also
+  cover writes to **reserved** and **read-only** addresses, and `0x10` on
+  registers other than SN/time (the spec says `0x10` is only valid for SN and
+  time; does the factory enforce that?). Sweeping the vectors may be cheaper as
+  a micro-test of the factory's per-register setter, if one is isolatable.
+- **Ours:** a `settings_validate(reg, val) → {accept, clamp(v), reject(exc)}`
+  pure function in front of `mb_wr_hold` **and** `hmi_write`.
+- Every deviation from the spec range goes into docs/31.
+
+### T05 — USART2 safety-CPU receiver: wire frame → bank
+**Status:** `[x] claude-opus/019chjbE 2026-11-07` · **Layer:** host (parser) + sim (wire e2e) · **Depends:** T02 (landed)
+
+**Done.** Our firmware now fills the telemetry bank from the wire and serves it,
+byte-for-byte compatible with the factory (the same raw USART2 bytes produce the
+same Modbus input registers on both images).
+- **Parser** (`src/safety/safety_rx.c`, `inv/safety_rx.h`): a pure, host-tested
+  byte-stream state machine for the EG4 type-1 frame (SOF `0x49`, `frame[3]`=len,
+  total `len`+6 capped `<0x40`, CRC-16/MODBUS big-endian). It validates the CRC and
+  type, distributes the header (mode / relayed fault+warn / etc.) and the tag
+  sub-record (docs/33 §1a, tags 0/1/2) into the bank (native LE, as
+  `safety_cpu_publish` reads it), and resynchronises past garbage. Host test
+  `tests/test_safety_rx.c` (37 checks): good/bad CRC, wrong type, truncated,
+  unknown tag, resync after junk, and each tag's field map.
+- **Driver** (`src/uart/uart2.c`, `inv/uart2.h`): RXNE-interrupt USART2 (PA2/PA3,
+  RS-485 direction PC2, docs/16), matching the factory (RXNE, not DMA — docs/19
+  T02). The glue `src/safety/safety_rx_port.c` drains the RX ring, feeds the parser
+  into `g_safety_bank`, and exposes the decoded mode/fault/warn to the classifier
+  (wired into `main.c`; `state_publish` now flows the real mode/fault/warn out).
+- **Oracle:** the common sim test `test_usart2_safety_frame_reaches_modbus`
+  (tests/test_arm_sim.py) feeds the **same raw tag-2 frame** to both images and
+  asserts IR 12/15/20/23/18/13/122 — ours (UART5 Modbus) and the factory (USART3,
+  via the T02 USART2 wire feeder) serve identical values. Both green.
+- **rx-timeout → fault (for T08):** `safety_rx_last_frame_ms()` /
+  `safety_rx_link_ok(now, timeout)` expose link liveness; T08 maps a stale link to
+  the comms-loss fault (E017). Left as the hook, not the policy, per T08's scope.
+
+### T06 — Operating-state classifier + fault/warning composer (`sub_0801a678`)
+**Status:** split → **T06a `[x]`** (ours + host), **T06b `[x]`** (factory oracle, T02b-unblocked 2026-11-07) · claude · **Layer:** **micro** + sim e2e · **Unblocks:** T13, T14
+
+- **T06a `[x]` — our classifier + host oracle (done).** Pure
+  `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags) →
+  {state, fault32, warn32}` (`include/inv/classify.h`, `src/state/classify.c`):
+  canonicalised pass-through of the mode byte (Table 9 + LCD Bypass 0x11/0x19),
+  fault/not-running override, and the FaultCode/WarningCode composition (relayed
+  word + ARM-local E000/E017/W008, E027 passes through) per IR000 / IR060_063.
+  Host-tested (`tests/test_classify.c`, `make test`, 63 checks). Wired into
+  `main.c`: IR 0 + IR 60-63 are now published **through the classifier** instead
+  of a hard-seeded Standby (`state_publish()`), so the real mode/fault/warn flow
+  out to Modbus as soon as the USART2 ingest feeds them.
+- **T06b `[x]` — factory oracle (done, T02b-unblocked).** With the USART2 wire
+  running (T02b) the classifier is pinned on the 07 image: **IR 0 is a pure
+  pass-through of the relayed mode byte** — no canonicalisation, no fault override.
+  Proven by feeding mode bytes on the wire and reading IR_STATE (`0x2000d0e4+0xa0`):
+  every byte 0x00–0xFF appears verbatim (canonical, LCD 0x11/0x19, and arbitrary
+  bytes 0x55/0xFF alike), and a relayed fault flows to the FaultCode (IR 60/61)
+  **without** changing IR_STATE. This **corrected both of docs/22's 05-series
+  guesses** (no 0x02 override target, no 0x08 non-canonical default) and
+  `inv_classify` was fixed to match (canonicalisation + override removed, the
+  `INV_LOCAL_NOT_RUNNING` flag dropped). Classifier = `sub_0801a678`, bank base
+  `0x2000ce5c`, all re-pinned in T02a/T02b. Tests: `test_usart2_classifier_is_pure_passthrough`
+  + `test_usart2_mode_reaches_ir_state` (factory), `test_usart2_mode_classified_passthrough_e2e`
+  (ours), `test_classify.c` (host). The isolated-call `ClassifyBackend` the card
+  envisioned proved unnecessary (the deciders fault when called in isolation —
+  docs/18); the wire-fed e2e is the oracle. See [`docs/22`](22-arm-dsp-core-split.md)
+  "T06b RESOLVED".
+
+[`docs/22`](22-arm-dsp-core-split.md) says the ARM's mode module is a
+**classifier, not a power FSM**:
+`received_mode_byte + fault flags → IR_STATE`, plus a merge of the relayed
+fault/warn words with ARM-local bits (E000, E017, W008, low warn bits 0-9; see
+[`IR060_063`](wiring/ARM-UART5-dongle/IR060_063-FaultCode_WarningCode.md)).
+- **Oracle:** a micro-test calls `sub_0801b480` in isolation and sweeps **every
+  mode byte 0x00-0xFF** × {no fault, each ARM-local fault bit, relayed fault}.
+  It records the IR 0 / 6 / 60-63 outputs as the vector table. Specifically
+  check the manual's extra codes `0x11` Bypass and `0x19` PV-charge+bypass
+  ([`IR000-State`](wiring/ARM-UART5-dongle/IR000-State.md)), and what an
+  unknown/non-canonical byte becomes.
+- **Ours:** `inv_classify(mode_byte, relayed_fault, relayed_warn, local_flags)
+  → {state, fault32, warn32, internal_fault}` as a pure function. Publish it
+  from `main.c` instead of the hard-seeded Standby.
+- **Sim e2e:** inject a bank mode byte plus fault bits, then read IR 0/60-63
+  over Modbus on both images.
+
+### T07 — ARM-computed telemetry registers
+**Status:** `[x] claude 2026-11-06` · **Layer:** micro (scaling/rounding) + sim · **Independent** (sources may be injected)
+
+**Done (serve layer).** The computed power registers are served from a 32-bit
+value the ARM keeps internally in **0.1 W**, as `IR = (uint16_t)(internal / 10)` —
+unsigned, truncating, **not a float** (this *corrects the card's "float" guess*,
+recovered by injecting the STATUS-struct source and reading the getter
+`sub_0803289c`). Covered: **IR 7/8 Ppv**, **10/11 Pcharge/Pdischarge** (the getter
+adds no sign clamp — the split is upstream), **16/17 Pinv/Prec**, **24 Peps**,
+**26/27 Ptogrid/Ptouser** (all `/10`); **IR 25 Seps** served **1:1** in VA; **IR
+69/70 RunningTime** a u32 seconds counter split low/high (advances 1/s while
+`op_state ≥ 3`). Ours: `inv_telemetry_publish()`/`inv_power_to_ir()`
+([`src/telemetry/telemetry.c`](../src/telemetry/telemetry.c),
+[`include/inv/telemetry.h`](../include/inv/telemetry.h)), wired into
+[`src/main.c`](../src/main.c) and feeding `src/energy/`. Tests: common
+[`tests/test_telemetry.py`](../tests/test_telemetry.py) +
+[`telemetry_contract.py`](../tests/telemetry_contract.py) (factory + ours agree),
+host [`tests/test_telemetry.c`](../tests/test_telemetry.c). Register coverage
+updated for IR 7-11, 16-17, 24-27, 69-70.
+
+**Deferred (the V·I / sign-split COMPUTE itself).** The getter only *serves* a
+pre-computed value; the upstream compute is filled by the **safety-CPU `0x49`
+telemetry parser on USART2** (`sub_08025ab8` over buffer `0x20009048`, a scheduler
+task that doesn't run in the harness) — so the internal quantities are
+**injected** here (as the card allows) and the real compute lands with the
+**USART2 ingest, T05** (*not* a USART3 `0x49` — the ARM's USART3 RX is a
+Modbus/bootloader demux, see **T09**).
+
+**T07b update (2026-11-07, after T02a landed the USART2 ingest).** The two
+bank-**relayed** fields are now served from the safety bank by `src/safety/safety_cpu.c`:
+**IR 19 PF** (bank `+0xaa`, raw 0-2000 verbatim — [`IR019-PF`](wiring/ARM-UART5-dongle/IR019-PF.md))
+and **IR 107 BatVoltSample_INV** (bank `+0x0a`, 0.1 V), both added to the shared
+`SAFETY_TELEMETRY` contract (ours proven by `test_arm_sim_self_only.py`; the factory
+oracle validates them against its getter when run on a ceaa-07xx image).
+**Correction:** **IR 64 Tinner / 67 Tbat** and **IR 77 ACInputType** are **not** in
+the recovered USART2 safety bank (docs/33's tag map carries only the radiator temps
+IR 65/66 — no inner/battery temp, no AC-input-type). So they are **not**
+bank-relayed on this image; their source is elsewhere/unrecovered — a correction to
+the earlier "relayed per docs/33" assumption. RunningTime cross-boot persistence is
+still open (T07b).
+
+Original card:
+
+These are the registers the ARM **computes** rather than relays
+([`docs/22`](22-arm-dsp-core-split.md) "PV power is ARM-computed",
+[`docs/33`](33-usart2-telemetry-bank.md) §3). Find each register's inputs and
+formula from its factory getter, then oracle it:
+- **IR 7-9 Ppv** (V·I, float in the factory, so check rounding/truncation and
+  the negative/zero clamp), **IR 10-11 Pcharge/Pdischarge** (sign split of the
+  battery power), **IR 16-17 Pinv/Prec**, **IR 24-25 Peps/Seps**,
+  **IR 26-27 Ptogrid/Ptouser**, **IR 19 PF** (encoded range).
+- **IR 69-70 RunningTime** (what increments it, gating state, does it persist
+  across boot?), **IR 77 ACInputType**, **IR 107 BatVoltSample_INV**,
+  **IR 64 Tinner / IR 67 Tbat** (if ARM-local ADC).
+- Each formula gets a micro-test over its edge vectors (0, negative, rail,
+  overflow of the u16). Then a single sim test checks that the whole set is
+  served after one injected snapshot.
+- These feed `src/energy/` (it already integrates `IR_PPV*` etc.), so once they
+  are real, the energy counters ([`docs/37`](37-energy-accumulation.md)) are
+  real too.
+
+### T09 — DSP link RX: what the ARM consumes on USART3 (finding corrects the premise)
+**Status:** `[x] claude 2026-11-06` ([`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md), [`dsp_rx.c`](../src/dsp/dsp_rx.c), [`test_dsp_rx.py`](../tests/test_dsp_rx.py)) · **Layer:** host + sim · **Independent**
+
+**Finding: the ARM does NOT parse a `0x49` telemetry frame on USART3.** The
+premise ("the factory parses DSP `0x49` on USART3", with RX path
+`FUN_0801bb0e`/`FUN_08025ab8`) was wrong — those are the **USART2** safety-CPU
+`0x49` path. The ARM's USART3 RX (ISR `sub_0801c774` → `sub_0801c6e0` → byte
+handler `sub_0801c3e6`, buffer `0x20007490`) is a **Modbus-slave (`03/04/06/10`)
++ DSP-bootloader (`21/22/23`) demux**, address-gated; a `0x49`/type-1 frame is
+rejected. Proven static (App vector table + `tools/disres.py`: the func dispatch,
+and the `cmp #0x49` living in the USART2 handler `sub_0801c808` reading buffer
+`0x20009048`) **and** dynamic (the real byte handler drops a `0x49` SOF while
+assembling Modbus/bootloader).
+- **Oracle (done):** drive the real `sub_0801c3e6` with each frame's first two
+  bytes and check whether the assembler advances (accept) or resets (drop) —
+  [`tests/dsprx_contract.py`](../tests/dsprx_contract.py)`::FactoryBackend`.
+- **Ours (done):** [`inv_dsp_rx_classify`](../src/dsp/dsp_rx.c) mirrors the demux
+  decision (pure, host-tested [`test_dsp_rx.c`](../tests/test_dsp_rx.c)); the
+  USART3 RX service [`src/dsp/dsp_rx_port.c`](../src/dsp/dsp_rx_port.c) drains the
+  wire, serves Modbus as a slave (the DSP polls the ARM here), recognises
+  bootloader frames (→ T18), and drops the rest. Wired into `src/main.c`.
+- **Recorded** in [`telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)
+  (rewritten), the USART3-DSP [`README`](wiring/ARM-USART3-DSP/README.md) /
+  [`fields`](wiring/ARM-USART3-DSP/fields.md) (corrections folded in) and
+  [`docs/31`](31-factory-quirks.md) Q10. Common sim test wired into `make test-sim`.
+- **Consequence for telemetry compute (T07 follow-ons):** the upstream V·I /
+  sign-split compute does **not** arrive via a USART3 `0x49` — its source is the
+  **USART2** safety-CPU telemetry bank (docs/33). Re-point IR 19/64/67/77 work at
+  T05 (USART2 ingest), not at this task.
+
+### T11 — BMS: charge/discharge limit derivation + inverter→BMS TX
+**Status:** `[x]` (all three) → **T11a `[x]`** (charge-V working limit), **T11b `[x]`** (inverter→BMS TX), **T11c `[x]`** (quirks Q1-Q4 as tests) · `claude/019chjb 2026-11-07` · **Layer:** micro (clamp math) + sim (CAN e2e) · **Independent**
+
+Split after the T11a oracle came back much smaller than the card assumed: the
+only BMS "limit derivation" the factory exposes (reachably, in the harness) is the
+charge-voltage one, and it is a plain `min` with a setting, not a multi-field
+cell-count computation. The current/discharge fields and the inverter→BMS TX need
+the RTOS tasks (T02) to observe, so they were carried as T11b/T11c. **T11b is now
+done** (T02 landed): the inverter→BMS TX is a `0x305` DLC8 all-zero keep-alive that
+ours already matches. The IR 81/82/84 current/discharge fields turned out to be a
+genuine map gap on this image (still `0` with the RTOS running), not T02-gated.
+
+#### T11a — BMS charge-voltage working limit (IR 83 = min(0x351, HR 99))
+**Status:** `[x] claude/019chjb 2026-11-07` ([`bms_limits.c`](../src/bms/bms_limits.c), [`test_bms_limits.c`](../tests/test_bms_limits.c), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#working-limit-derivation-t11a)) · **Layer:** micro (clamp) + sim (CAN e2e) · **Independent**
+
+- **Finding (corrects the card):** the factory serves `IR 83 = min(0x351 charge-V
+  limit, HR 99 ChargeVoltRef)` — a plain min, oracled black-box on `ceaa-07xx`
+  (sweep `0x351` 0/100/560/600/1000 vs HR 99 520/574/590, all `min`). The
+  "~57.4 V cell-count clamp" in the old `on_can_frame` comment is simply HR 99's
+  power-on **default** (574); HR 99 = 590 raises the ceiling, so there is no
+  separate hard clamp. **IR 81/82/84** (max chg/dis current, discharge cutoff)
+  stay `0` under the same sweep — no reachable publish path; open pending T02.
+- **Done:** pure fn `inv_bms_charge_volt_ref()`; host micro-test sweeps the `min`
+  boundaries (13 checks); sim e2e `test_bms_charge_volt_ref_clamps_to_setting`
+  (setting-wins branch) + the two `*telemetry*` tests (pass-through branch, HR 99
+  raised over the wire) green for **both** images; docs in
+  [`IR081_106-BMS`](wiring/ARM-UART5-dongle/IR081_106-BMS.md#working-charge-voltage-derivation-t11a),
+  [`HR099_102`](wiring/ARM-UART5-dongle/HR099_102-leadacid-charge.md), [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md).
+
+#### T11b — inverter→BMS CAN TX (`0x305` keep-alive)
+**Status:** `[x] claude/019chjb 2026-11-07` ([`test_can_tx.py`](../tests/test_can_tx.py), [`can_tx_contract.py`](../tests/can_tx_contract.py), [`arm_sim_can.py`](../tests/arm_sim_can.py) `capture_tx`, [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b)) · **Layer:** sim (CAN TX capture) · **Was:** T02-blocked, now done
+
+- **Finding (oracle, unblocked by T02):** with the TX task running under the RTOS,
+  the factory transmits **`0x305`, DLC 8, payload all-zero**, once it has received
+  pack telemetry, periodically, and **state-independent** (nominal vs faulted/low
+  identical). No `0x300/0x301/0x400` in steady state. **Our firmware already sends
+  exactly that** (`main.c` ~1 Hz keep-alive, `can_port.c`) — the "payload
+  provisional" note was correct by luck and is now settled.
+- **Done:** added a reusable bxCAN **TX capture** to the CAN harness
+  (`arm_sim_can.py` `capture_tx` — presents TME, records each TXRQ; our firmware
+  even *drops* the keep-alive unless TME0 reads set, so the capture is what lets
+  ours transmit in the sim too); sim test `test_can_tx.py` asserts `0x305`/DLC8/zero
+  for **both** images and that they agree; docs in
+  [`ARM-CAN1-BMS`](wiring/ARM-CAN1-BMS.md#inverter--battery-tx-t11b).
+
+#### T11c — BMS quirks Q1-Q4 as committed tests
+**Status:** `[x] claude/019chjb 2026-11-07` ([`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py), [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py), [`docs/31`](31-factory-quirks.md) Q1-Q4) · **Layer:** sim (factory-green / fixed-in-ours) · **Independent**
+
+- **Done.** Each [`docs/31`](31-factory-quirks.md) verdict is now a committed test,
+  factory-oracled on ceaa-07xx and asserted clean on ours:
+  - **Q1** (`0x355` hi-res SOC → IR 101) + **Q2** (`0x359` "PN" → IR 97):
+    `test_bms_frame_misfiling_quirks_q1_q2` reproduces them on the factory
+    (IR 101 = 7700, IR 97 = 0x4E50, IR 96 module count correct);
+    `test_bms_frame_misfiling_quirks_not_reproduced` asserts ours leaves IR 97/101
+    at 0 while still publishing IR 96.
+  - **Q3** (`0x35A` dropped): `test_bms_alarm_b_reaches_no_register_q3` (factory) /
+    `test_bms_alarm_b_not_decoded` (ours) — inject only 0x35A, no IR 81-106 moves.
+  - **Q4** (IR 98 unit): no new test — a unit-label question, not a value bug; the
+    1:1 pass-through both images perform is already locked by
+    `test_can_battery_telemetry_reaches_modbus`. Physical unit stays open (docs/31).
+
+### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
+**Status:** `[x] claude 2026-11-07` · **Layer:** sim + host · **Depends:** T03 (persistence of addr / SN)
+
+Done — HR 11 command dispatch, HR 15 live address change, HR 9/10 own-version
+read-back + live DSP version, and W008 (identity compare) are implemented and
+tested. W008 and the DSP-version read-back were pinned and proven once the USART2
+wire ran (T02b); the HR 15 timing and wrong-SN behaviour remain decisions because
+they live on the factory's **dongle UART5** slave task, which the sim does not
+schedule (a separate factory-dongle harness — not T02, which is done).
+
+- **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
+  [`docs/23`](23-arm-config-writer.md) §Reset-to-default): **done.**
+  `src/state/command.c` (`inv_command_apply`) dispatches one op per set bit,
+  reboot last; it is a one-shot (register reads back 0). Wired: bit 0 clears
+  energy/runtime counters, bit 5/6 drive the BMS charge/discharge switches, bit 7
+  is a real `SCB->AIRCR` SYSRESETREQ (constants confirmed in the 07 image). Bits
+  1/2/3/4 (defaults / adj-ratio / fault & monitor records) are accepted-and-ignored
+  for now rather than faked (docs/23 open). Tests: [`test_command.c`](../tests/test_command.c)
+  (24 checks), + one-shot over the wire in [`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py).
+- **HR 15 ComAddr:** **done.** Ours adopts the new address after the write's own
+  reply (deferred one transaction so the ACK lands on the old address), and loads
+  the stored value on boot — no reboot. Address-0 broadcast and the factory's exact
+  apply-moment are **not observable** here (factory-dongle UART5 task, not scheduled
+  — not T02); our contract is "immediate, after the reply". Test:
+  `test_comaddr_changes_slave_address_live`.
+- **SN (HR 2-6):** persisted via T03 (`0x10` write-multiple); ours runs
+  `check_sn=false` (SN echoed, not required to match). Whether the factory drops or
+  excepts a wrong-SN frame is **not observable** (factory-dongle UART5 task, not
+  scheduled — not T02); decision in docs/31 is to serve any correctly addressed frame
+  rather than risk stranding a dongle.
+- **HR 9-10 versions + W008:** **done, and pinned by T02b.** Ours seeds HR 9 high /
+  HR 10 high from its own build constants (`OSS_ARM_COMMS_VER`, `OSS_FW_VERSION_CODE`)
+  and now serves **HR 10 low live from the relayed DSP version** (`bank+2`), proven on
+  the factory (`test_usart2_dsp_version_reaches_hr10_low`). **W008 is a model-IDENTITY
+  compare** (not a numeric version compare): the classifier matches the relayed peer
+  identity (bank+3..6) against "ceaa" and sets the version-OK health bit `0x2000d890`
+  bit 10 — proven both directions (`test_usart2_identity_drives_version_health_bit`).
+  Ours implements the same case-insensitive compare vs `model_code`, latched, raising
+  W008 while unmatched (`src/safety/safety_cpu.c`; host `test_w008.c`, ours
+  `test_w008_tracks_relayed_peer_identity`). **Open (→ T06b):** how that health bit
+  gates into the Modbus WarningCode is not yet pinned (it does not surface in the bare
+  harness). Decisions recorded in [`docs/31`](31-factory-quirks.md).

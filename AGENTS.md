@@ -64,6 +64,12 @@ grab "the next number" while offline will collide — this has already happened
 - When you finish something, **check its box and add the `docs/NN` link in the
   same commit** that lands the work. That's how the other agents see it's done.
 
+**The parity task queue is [`docs/39-parity-roadmap.md`](docs/39-parity-roadmap.md)**
+(tasks `T01`, `T02`, …). Claim a task there before starting, following its
+"Claiming a task" rules. When a task is **fully** `[x]`, **move its whole section
+to the end of the "Completed tasks" section** in the same commit, so the P0-P3
+sections show only open or in-progress work. Keep the heading and ID unchanged.
+
 **Hand-offs are a first-class pattern.** When your work depends on evidence you
 can't reach yourself (another firmware image, a domain you can't run), write a
 short hand-off doc that states *exactly* what's needed — see
