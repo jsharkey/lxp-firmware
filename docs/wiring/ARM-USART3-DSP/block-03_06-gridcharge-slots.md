@@ -97,9 +97,35 @@ modbus-RX-buffer **residue**, not fields — they appear identically across bloc
 0/3/4/5 for *every* register and are excluded by looking only at the target block at
 offset ≥ `0x17`. Our firmware reproduces these five fields byte-for-byte
 (`src/dsp/dsp_config.c` `block3_fields`/`block6_fields`), verified ours==factory in
-`test_{factory,ours}_grid_push_matches_spec`. **Still a constant template** (no HR
-moves them): the slot voltage/time defaults elsewhere in blocks 3/6, all of block 0,
-and the AC-charge/AC-First slot tails (`0x23+`) of blocks 4/5.
+`test_{factory,ours}_grid_push_matches_spec`.
+
+### Constant-template bytes — decoded provenance (T10)
+
+The bytes no dongle HR moves (the slot voltage/time defaults elsewhere in blocks
+3/6, all of block 0, and the AC-charge/AC-First slot tails `0x23+` of blocks 4/5)
+are **not** a hardcodable flash constant and **not** external/per-unit config flash.
+They are the factory's **default settings / model values**, computed into the ARM
+working struct at boot and serialised by the same filler. Traced by instrumenting
+the filler's reads (data-flow) and the boot writes:
+
+- The sources are the **settings working struct `0x2000c8xx`** and the **slot/limit
+  working struct `0x2000d3xx`**, written during boot (zero pre-boot), not copied
+  from a flash const table. (An apparent flash source at `0x0802exxx` was a false
+  match against the **CRC-16 lookup table** the filler also reads.)
+- The values are recognisable **defaults**: block 0 `0x29:2a = 0x2ee0` = 12000
+  (12 kW rated — **model-specific**), `0x1f:20 = 0x01b8` = 440 / `0x21:22 = 0x01a4`
+  = 420 (voltage limits); block 6 `0x1d:1e = 0x01d0` = 46.4 V (HR 194 default),
+  `0x1f:20 = 0x01e0` = 48.0 V (HR 195 default), `0x25:26 = 0x023e` = 57.4 V (HR 99
+  default); block 3 `0x1d:1e`/`0x1f:20`/`0x23:24` = 464/480/588 (lead-acid limit
+  defaults). I.e. the template bytes at HR-driven offsets are simply those settings'
+  **default values**, and the non-HR ones are settings with no dongle HR exposed.
+
+**Consequence for parity:** our firmware already serialises the HR-driven fields
+correctly; reproducing these template bytes byte-exact is a matter of our firmware
+adopting the **same settings defaults** (a settings-layer / T03 task, and the
+model-specific rated-power value), not of the DSP-push mechanism, which is complete.
+We deliberately do **not** hardcode this model-specific default blob into the push
+builder.
 
 **Triplet convention (superseded for `0x17…0x21`):** docs/10 read these runs as
 6-byte triplets `[val_a, rsv, val_b]` → `handler(val_b, val_a)`. The ARM-source trace

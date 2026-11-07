@@ -210,7 +210,7 @@ comms-loss code and recovers on the next good frame/poll:
   next poll → clears. (Factory threshold sim-blocked, as for E017/W000.)
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3/6 scalars + block-0 enable core + generator charge)` — blocks **1/2/7/8** byte-identical; **every HR-driven field in blocks 0, 3, 4, 5, 6 now emitted byte-faithful ours==factory** (grid-charge + generator-charge scalars, schedule windows, and block-0 packed enable/priority core). What remains is the **non-HR constant templates** (block 0 identity/version, block 4/5 `0x23+` tails) which need the init/config-flash source traced · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block)
+**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (blocks 3/6 scalars + block-0 enable core + generator charge)` — blocks **1/2/7/8** byte-identical; **every HR-driven field in blocks 0, 3, 4, 5, 6 now emitted byte-faithful ours==factory** (grid-charge + generator-charge scalars, schedule windows, and block-0 packed enable/priority core). What remains is the **non-HR constant templates** (block 0 identity/version, block 4/5 `0x23+` tails) — now **decoded** as boot-computed **settings/model defaults** (not a flash const, not per-unit config), so byte-exact parity there is a settings-defaults (T03) + model-constant task, not a push-mechanism gap · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
@@ -264,14 +264,20 @@ that: single-write fresh captures show `0x26` stays `0` for every value 20..90, 
 at payload `0x15/0x16` and block 0 `0x25/0x26` for nearly every register — always
 excluded. Every real field above was confirmed by single-write capture.
 
-**Remaining (the honest gap — opaque constant templates, no HR drives them):**
-- **Block 4 / 5 tails** (`0x23+`): fixed words e.g. block 4 `0x0770 / 0x01f4 /
-  0x021c / 0x325a`. No writable HR moves them; they are boot/config-flash defaults.
-  Faithful reproduction needs the **init/config-flash source traced** — not opaque
-  hardcoding (the bar the calib blocks met: unity has a known meaning; these don't yet).
-- **Block 0 template**: the HR-driven enable/priority core is now emitted; what
-  remains is the identity/version/params **constant** template (`0x15–0x18`, `0x1b`,
-  `0x1d`, `0x1f–0x27`, `0x29–0x2e`). Same bar: decode the constants before emitting.
+**Remaining — decoded: the leftover bytes are settings/model defaults, not a push gap.**
+The bytes no HR moves (block 4/5 `0x23+` tails, block 0 identity/version template,
+and the slot voltage/time defaults in blocks 3/6) were traced (data-flow through the
+filler + boot-write hook): they are **boot-computed into the ARM settings/slot
+working structs** (`0x2000c8xx`/`0x2000d3xx`; zero pre-boot), **not** a flash const
+table (an apparent `0x0802exxx` source was a CRC-table false match) and **not**
+external per-unit config. Their values are recognisable **defaults** — `0x2ee0` =
+12000 = **12 kW rated** (model-specific), voltage limits `0x01b8`/`0x01a4` = 440/420,
+and at HR-driven offsets simply those settings' defaults (block 6 `0x023e` = 57.4 V =
+HR 99 default, etc.). So matching them byte-exact is our firmware **adopting the same
+settings defaults** (a T03 settings-layer task + the model rated-power constant), not
+the DSP-push mechanism — which is complete for every identifiable field. We do **not**
+hardcode this model-specific default blob into the push builder.
+[`block-03_06 §Constant-template bytes`](wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md).
 - **Block 3 @0x19** (HR 112 `SET_SYSTEM_TYPE` second target) — mapped, not yet emitted.
 - **Block 1 populated** — battery limits from the working struct (depends on T11).
 - **Header parity** — payload region exact; the frame header is still ours'

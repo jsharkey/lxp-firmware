@@ -122,5 +122,12 @@ ours==factory by [`test_dsp_push.py`](../../../tests/test_dsp_push.py)
 `test_{factory,ours}_grid_push_matches_spec`; the exact transforms are locked by the
 host test [`test_dsp_config.c`](../../../tests/test_dsp_config.c). The surrounding
 identity/version template (`0x15–0x18`, `0x1b`, `0x1d`, `0x1f–0x27`, `0x29–0x2e`) is
-a constant **not** driven by any holding register and is **still to be decoded**, so
-block 0 is not byte-exact as a whole — only its HR-driven bytes are.
+**not** driven by any holding register. Decoded (T10): it is boot-**computed** into
+the settings working struct `0x2000c8xx` (zero pre-boot, written during boot — not a
+flash const table; an apparent `0x0802exxx` flash source was a CRC-table false
+match), and its values are recognisable **default settings / model constants** —
+e.g. `0x29:2a = 0x2ee0` = 12000 = **12 kW rated power** (model-specific), `0x1f:20 =
+0x01b8` = 440 and `0x21:22 = 0x01a4` = 420 (voltage limits). So block 0 is byte-exact
+for its HR-driven bytes; the template is a **settings-defaults** matter (ours adopting
+the same defaults, T03), not a push-mechanism gap. See
+[block-03_06 §Constant-template bytes](block-03_06-gridcharge-slots.md).
