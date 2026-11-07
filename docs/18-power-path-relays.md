@@ -216,14 +216,22 @@ function's RAM fields), `tools/gpio_map.py`, `tools/periph_map.py`.
 > `sub_08018a7c` calls to take effect, both qualified→not and not→qualified. Locked
 > by [`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_transfer_debounce_is_50`.
 >
-> **Enable *provenance* — narrowed, still elusive (2026-11-07):** `sub_0801887c`
-> clocked past its own debounce (800 passes) sets `d9ca` **bit 1** from config
-> `0x2000d0e4+4` bit 9 (and `d810` bit 3 = `(d9ca & 3) ? 1 : 0`), but **never** the
-> AC-transfer enable `d9ca` **bit 3** / `d810` **bit 4** for any config+grid input
-> tried. The three other functions that write `d9ca` (`sub_080147ac` boot-init
-> zeroes it; `sub_080358dc` sets bit 7; `sub_0801ef48` is a getter) don't set bit 3
-> either. So the enable that gates the normal grid-eval transfer is set by an
-> as-yet-unidentified condition — **possibly inert on this image** (cf. the T15
-> schedule features), which would make the **manual/AutoTest override** path
-> (`+0xa9==1` → PB3←`0x2000da6c` bit0, PA12←bit1; already mirrored) the operative one
-> here. Pinning it is what remains to wire `inv_ac_transfer_decide()` *live*.
+> **Enable — the gate has THREE sources (2026-11-07, corrects "possibly inert"):**
+> the normal-path `sub_08018a7c` reaches the grid-eval path iff
+> **`0x2000d9ca` bit 3 OR `0x2000d810` bit 4 OR `0x2000ce5c+0xca` bit 4**. The third
+> is a **DSP-provided** bit (the `0x2000ce5c` safety/DSP bank), and it is NOT a clean
+> equivalent of the ARM enable — driving it (with `d9ca` clear) both enables the
+> path **and forces PA12 = 1 / PB3 = 1 (the transfer state) regardless of the grid
+> word**. So `+0xca` bit 4 is the **DSP's "transfer to backup" command** (grid-lost →
+> transfer), not just an enable. This means the transfer is **DSP-driven, not inert**
+> (correcting the prior guess). Confirmed by driving `sub_08018a7c` in isolation
+> ([`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_dsp_bit_forces_transfer`).
+>
+> The **ARM-local** enable `d9ca` bit 3 / `d810` bit 4 provenance is still open:
+> `sub_0801887c` clocked 800× sets `d9ca` **bit 1** from config `0x2000d0e4+4` bit 9
+> (and `d810` bit 3), but never bit 3 / `d810` bit 4; the other three `d9ca` writers
+> (`sub_080147ac` init-zero, `sub_080358dc` bit 7, `sub_0801ef48` getter) don't
+> either. `inv_ac_transfer_decide()` models the **ARM-enabled, `+0xca`-clear** case
+> (PA12 follows grid qualification — verified); wiring it *live* needs the safety
+> bank's `+0xbc`/`+0xca` fields populated (not yet in our USART2 tag map — a T05/T09
+> tag-decode follow-on) and the `+0xca` "force transfer" refinement added.

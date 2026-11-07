@@ -57,6 +57,23 @@ def test_factory_matches_spec():
     assert not fails, "factory\n        " + "\n        ".join(fails)
 
 
+def test_factory_dsp_bit_forces_transfer():
+    """The DSP-provided bit 0x2000ce5c+0xca bit 4 both ENABLES the grid-eval path
+    (a third enable beside the ARM d9ca bit 3 / d810 bit 4) AND forces PA12 = 1 /
+    PB3 = 1 -- the transfer state -- regardless of the grid-status word. So it is
+    the DSP's "transfer to backup" command, not a clean equivalent of the ARM
+    enable (where PA12 follows grid qualification). Resolved enable finding (T14):
+    the transfer is DSP-driven, not inert."""
+    fb = _factory_or_skip()
+    fails = []
+    for label, grid in [("grid-ok", B20), ("no-grid", 0), ("grid mode2 bad", B20 | (2 << 29))]:
+        got = fb.decide_via_dsp_enable(grid)
+        if got != (1, 1):
+            fails.append("DSP-cmd %-14s grid=0x%08x -> %s, expected (1, 1)"
+                         % (label, grid, got))
+    assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
 def test_factory_transfer_debounce_is_50():
     """The transfer pair's PA12 switches behind a symmetric 50-tick debounce
     (the break-before-make sequencing, 0x2000dba4/5/6) -- qualified<->not both take

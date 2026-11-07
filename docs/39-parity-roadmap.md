@@ -413,15 +413,20 @@ in [`docs/18`](18-power-path-relays.md).
 grid qualification takes exactly 50 `sub_08018a7c` calls either way. Locked by
 [`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_transfer_debounce_is_50`.
 
-**Remaining (narrowed this pass):**
-- **Enable provenance (still elusive):** clocking `sub_0801887c` 800× sets `d9ca`
-  **bit 1** from config `0x2000d0e4+4` bit 9 (and `d810` bit 3), but **never** the
-  AC-transfer enable `d9ca` bit 3 / `d810` bit 4 for any config+grid input; the 3
-  other `d9ca` writers (`sub_080147ac` init-zero, `sub_080358dc` bit 7,
-  `sub_0801ef48` getter) don't set it either. So the enable comes from an
-  unidentified condition — **possibly inert on this image** (cf. T15), leaving the
-  manual-override path (already mirrored) operative. Pinning it is what wires
-  `inv_ac_transfer_decide()` live. (docs/18.)
+**Enable — DSP-driven, not inert (2026-11-07, corrects prior "possibly inert").**
+The grid-eval gate has **three** sources: `d9ca` bit 3 OR `d810` bit 4 OR
+**`0x2000ce5c+0xca` bit 4** (a DSP/safety-bank bit). Driving the DSP bit both
+enables the path **and forces the transfer state (PA12=1/PB3=1) regardless of grid**
+— i.e. it is the DSP's **"transfer to backup" command**, not a clean enable. Locked
+by [`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_dsp_bit_forces_transfer`.
+
+**Remaining:**
+- **ARM-local enable `d9ca` bit 3 / `d810` bit 4 provenance** still open:
+  `sub_0801887c` (clocked 800×) sets `d9ca` bit 1 from config `+4` bit 9, never bit 3;
+  the other 3 `d9ca` writers don't either.
+- **Wire `inv_ac_transfer_decide()` live**: needs the safety bank's `+0xbc`/`+0xca`
+  fields populated in ours (not in our USART2 tag map yet — a **T05/T09** tag-decode
+  follow-on) and the `+0xca` "force transfer" refinement added to the pure function.
 - **PC5 (gen/AC-couple, `sub_08017022`)** and **PD11 (dry-contact, `sub_08035ef2`)**
   are **not** clean state→relay maps (executed decode, docs/18): PD11 only ever
   *closes* (grid/EPS `+0xc4` bit1 latch → GPIOD bit11, debounce 10/25/250); PC5 is

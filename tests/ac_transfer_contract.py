@@ -112,6 +112,37 @@ class FactoryBackend:
                     pass
         return (cmd.get("pa12"), cmd.get("pb3"))
 
+    def decide_via_dsp_enable(self, dsp_grid):
+        """Like decide(enabled=True, ...) but enable the transfer via the
+        **DSP-provided** bit `0x2000ce5c+0xca` bit 4 (not the ARM `d9ca` bit 3),
+        proving that DSP bit is an equivalent enable. Returns (PA12, PB3)."""
+        from emu import Emu
+        from unicorn import UC_HOOK_CODE
+        from unicorn.arm_const import UC_ARM_REG_R0
+        import contextlib
+        import io
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(D0E4 + 0xa9, bytes([0]))
+        cmd = {}
+
+        def hook(uc, addr, size, ud):
+            if addr == PB3_FN:
+                cmd["pb3"] = uc.reg_read(UC_ARM_REG_R0) & 1
+            elif addr == PA12_FN:
+                cmd["pa12"] = uc.reg_read(UC_ARM_REG_R0) & 1
+        e.uc.hook_add(UC_HOOK_CODE, hook, begin=min(PB3_FN, PA12_FN), end=max(PB3_FN, PA12_FN) + 2)
+        for _ in range(CLOCKS):
+            e.uc.mem_write(D9CA, bytes([0]))                     # ARM enable OFF
+            v = struct.unpack("<H", e.rbytes(CE5C + 0xca, 2))[0] | (1 << 4)
+            e.uc.mem_write(CE5C + 0xca, struct.pack("<H", v))    # DSP enable bit 4 ON
+            e.uc.mem_write(CE5C + 0xbc, struct.pack("<I", dsp_grid & 0xFFFFFFFF))
+            with contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    e.call(FN)
+                except Exception:
+                    pass
+        return (cmd.get("pa12"), cmd.get("pb3"))
+
     def pa12_switch_delay(self, from_grid, to_grid):
         """Settle the pair at `from_grid`, then flip the DSP grid word to `to_grid`
         and count how many calls until PA12 changes -- the break-before-make
