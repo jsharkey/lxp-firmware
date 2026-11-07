@@ -10,7 +10,7 @@ contract). Factory-only here because the verdict is ARM-internal (consumed by th
 control function sub_0801f438) -- there is no Modbus register for ours to serve.
 
 Run (from repo root):
-    python3 tests/test_dischg_gate.py                 # factory com_flat.bin if present
+    python3 tests/test_dischg_gate.py                 # canonical 07 image if present
     python3 tests/test_dischg_gate.py FACTORY.bin
 Or `make test-sim`. Skips cleanly without unicorn / a factory image.
 """
@@ -26,7 +26,7 @@ from dischg_gate_contract import VECTORS, predict, FactoryBackend  # noqa: E402
 
 FACTORY_IMAGE = (sys.argv[1] if len(sys.argv) > 1 else None) \
     or os.environ.get("LXP_FACTORY_BIN") \
-    or os.path.join(ROOT, "reference", "com_flat.bin")
+    or os.path.join(ROOT, "reference", "ceaa-07xx_vE_260214.bin")
 
 _fac = []
 

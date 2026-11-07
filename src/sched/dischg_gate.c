@@ -1,7 +1,8 @@
 /*
  * Discharge-control voltage gate with hysteresis. See include/inv/dischg_gate.h
  * and docs/41-charge-discharge-schedule-gates.md (T15). Mirrors the factory
- * evaluator sub_0801ed28's voltage path, byte-for-byte on the decision:
+ * discharge-gate voltage path byte-for-byte on the decision (07 block
+ * 0x080355c2; 05 sub_0801ed28):
  *   v = (uint16 bank voltage) / 10 (signed);  active = active ? v>=stop : v>=start
  */
 #include "inv/dischg_gate.h"

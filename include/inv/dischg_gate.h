@@ -5,19 +5,21 @@
  *
  * The factory evaluates a battery-voltage threshold with a deadband to decide
  * whether battery discharge is currently allowed, and latches the verdict so it
- * does not chatter at the boundary. Reverse-engineered from the ceaa05/`com_flat`
- * ARM evaluator `sub_0801ed28` (T15), whose voltage path is exactly:
+ * does not chatter at the boundary. Reverse-engineered (T15) on the canonical 07
+ * image (`ceaa-07xx_vE_260214.bin`) as the voltage path of the discharge-gate
+ * evaluator — the self-contained block `0x080355c2…0x08035608`, verdict byte
+ * `0x2000dbc3` — whose decision is exactly:
  *
  *     v = (uint16 safety-bank battery voltage @+0x0a) / 10      // signed divide
  *     active = active ? (v >= stop) : (v >= start)              // latched hysteresis
  *
  * i.e. turn **on** once V reaches `start` (settings `+0x46`), stay on until V
- * falls **below** `stop` (settings `+0x48`), then turn off. The verdict byte
- * (`0x2000aa5f`) is consumed by the main power-control function `sub_0801f438`.
- * Mode is selected by HR 120 DischgCtrlType (settings `+0x33` bits 4-5): 0 = by
- * voltage (this), 1 = by SOC (battery-limit struct `0x2000a68c`, needs T11),
- * 2 = both (voltage OR SOC). Gated by the discharge master-enable settings `+0x23`
- * bit 13. See docs/41-charge-discharge-schedule-gates.md.
+ * falls **below** `stop` (settings `+0x48`), then turn off. Mode is selected by
+ * HR 120 DischgCtrlType (settings `+0x33` bits 4-5): 0 = by voltage (this),
+ * 1 = by SOC (battery-limit struct, needs T11), 2 = both. The verdict is consumed
+ * by the main power-control function. (The 05-series image has the identical logic
+ * at `sub_0801ed28` / verdict `0x2000aa5f`.) See
+ * docs/41-charge-discharge-schedule-gates.md.
  *
  * Pure and transport-agnostic (host-testable): the caller holds the latch and
  * feeds the raw safety-bank voltage word and the two thresholds.

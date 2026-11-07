@@ -371,8 +371,8 @@ missing:
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
 **Status:** `[~] claude 2026-11-07` — **discharge-by-voltage hysteresis gate cracked + reimplemented + factory-verified**; SOC mode (T11) + window schedules handed off ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
 
-**Done (voltage gate, 2026-11-07).** The discharge-control gate (`sub_0801ed28`,
-HR 120 **DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
+**Done (voltage gate, 2026-11-07).** The discharge-control gate (HR 120
+**DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
 voltage — `active = active ? (V >= stop) : (V >= start)`, V = safety-bank V `/10`,
 start/stop at `settings+0x46/+0x48`. Reproduced as the pure
 [`inv_dischg_volt_gate()`](../src/sched/dischg_gate.c) (host test
@@ -380,14 +380,23 @@ start/stop at `settings+0x46/+0x48`. Reproduced as the pure
 against the factory evaluator** driven in isolation
 ([`test_dischg_gate.py`](../tests/test_dischg_gate.py) +
 [`dischg_gate_contract.py`](../tests/dischg_gate_contract.py), wired into
-`make test-sim`). The verdict `0x2000aa5f` is consumed by the main control function
-`sub_0801f438` (literal-pool xref — so not dead). Details + the correction of the
-earlier draft in [`docs/41`](41-charge-discharge-schedule-gates.md).
+`make test-sim`). The verdict byte is consumed by the main power-control function
+(literal-pool xref — so not dead). Details + the correction of the earlier draft in
+[`docs/41`](41-charge-discharge-schedule-gates.md).
+
+**Re-pinned to the canonical 07 image (2026-11-07).** The oracle now drives the
+**07** image (`ceaa-07xx_vE_260214.bin`, per [`reference/README`](../reference/README.md)):
+voltage-gate block `0x080355c2…0x08035608`, verdict `0x2000dbc3`, settings
+`0x2000c85c`, bank `0x2000ce5c` — the self-contained block driven with `r1` =
+settings base (the full evaluator `0x08035474` additionally gates on a health bit +
+mode before reaching it). Same hysteresis, same offsets (`+0x46/+0x48/+0x0a`); the
+earlier run used the ambiguous `com_flat.bin` (05-style addresses). Verified
+byte-for-byte on the 07 image.
 
 **Remaining (handed off):** discharge-by-**SOC** (DischgCtrlType mode 1) reads the
 battery-limit struct → **T11**; wiring the gate into a discharge controller (none
 yet in ours); the HR 64-89 **time-window** schedules (charge-priority/forced-
-discharge/AC-charge-SOC inert on `com_flat.bin`; need a ceaa-07xx image).
+discharge/AC-charge-SOC inert; need the features exposed).
 
 **Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
 schedule features' "active now" verdicts are computed by one combined ARM
