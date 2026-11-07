@@ -63,6 +63,8 @@ SAFETY_TELEMETRY = {
     "gen_freq":  (0x62, 122,  1),    # generator freq     0.01 Hz
     "t_rad1":    (0x1e,  65,  0.1),  # radiator temp 1    served /10
     "t_rad2":    (0x1c,  66,  0.1),  # radiator temp 2    served /10
+    "batv_inv":  (0x0a, 107,  1),    # inverter batt V    0.1 V (verbatim)
+    "pf":        (0xaa,  19,  1),    # power factor       raw 0-2000 (verbatim, IR019-PF.md)
 }
 
 
@@ -80,11 +82,13 @@ SAFETY_TELEMETRY_A = {
     "pv1": 3201, "pv2": 3180, "grid_r": 2401, "grid_s": 2402, "grid_t": 2403,
     "freq": 5999, "iinv": 150, "veps_r": 2400, "feps": 6000, "vbus1": 3900,
     "vbus2": 3901, "vbus_p": 1950, "gen_freq": 5998, "t_rad1": 350, "t_rad2": 360,
+    "batv_inv": 530, "pf": 950,
 }
 SAFETY_TELEMETRY_B = {
     "pv1": 3195, "pv2": 3188, "grid_r": 2405, "grid_s": 2399, "grid_t": 2410,
     "freq": 6001, "iinv": 152, "veps_r": 2402, "feps": 5997, "vbus1": 3912,
     "vbus2": 3889, "vbus_p": 1948, "gen_freq": 6002, "t_rad1": 360, "t_rad2": 350,
+    "batv_inv": 525, "pf": 1050,
 }
 
 

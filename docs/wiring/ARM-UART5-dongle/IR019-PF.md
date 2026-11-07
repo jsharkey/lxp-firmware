@@ -18,4 +18,4 @@
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **Bank → IR serve (T07b):** [`arm_sim_contract.py`](../../../tests/arm_sim_contract.py) `SAFETY_TELEMETRY["pf"]` = bank `+0xaa` → IR 19, served **verbatim** (the raw 0-2000 encoded value; the client decodes the range). Our firmware's serve (`src/safety/safety_cpu.c`) is checked by [`test_arm_sim_self_only.py`](../../../tests/test_arm_sim_self_only.py) `test_safety_cpu_telemetry_reaches_modbus`; the factory getter validates the same offset in [`test_arm_sim_factory_only.py`](../../../tests/test_arm_sim_factory_only.py) when run on a ceaa-07xx image.

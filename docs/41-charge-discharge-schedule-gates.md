@@ -96,6 +96,16 @@ a decision to record, not a gap to paper over.
    the **committed slot records** (`0x2000a330…`, the slot-committer family) the way
    the config builder does, not the raw settings struct. Pin which, then the
    time/SOC gate can be driven in isolation.
+   - **T02 re-attempt (2026-11-07, scheduler now runs under `enable_rtos()`).**
+     Confirmed the committer runs and populates `0x2000a330…` from dongle writes.
+     But the verdict bytes `0x2000aa5f/60/61` still read **0** after a dongle
+     write + a scheduler run, and calling `sub_0801ed28` directly (post-commit)
+     also yields 0 — the AC-charge verdict needs its **master-enable**
+     (`settings+0x23` bit 13, which a dongle `HR 120`/`HR 66` write does not set)
+     **and** the healthy-inverter preconditions the gate shares with the relay
+     path (cf. T02b's PC6: PD8 detect, frame-trust counter, W006/W008 clear). So
+     the gate is still blocked by **non-T02** factors (an enable I can't drive from
+     the dongle + the T02b-style health setup), not by the scheduler.
 2. **A variant/image that exposes HR 67 / 74-89** (e.g. `ceaa-07xx_vE_260214`): the
    `acchg` time-window oracle (`timewindow_contract.py` `EVALUATORS["acchg"]`,
    evaluator `0x08034590`) is written for it and currently **skips** on `com_flat.bin`

@@ -97,7 +97,7 @@ call/wiring line or two to `main.c`. Rebase often.
 | Write validation | factory getters/setters range-check (unverified) | `/* TODO: validate ranges */` in `mb_wr_hold` | unknown, needs oracle |
 | Safety-CPU USART2 | wire frame → bank → IR ([`docs/33`](33-usart2-telemetry-bank.md)) | bank → IR only (`src/safety/safety_cpu.c`). **No USART2 driver or parser**; tests poke `g_safety_bank` | RX parser, IR 0 / 6 / 60-63 not published |
 | State / fault classifier | `sub_0801b480` ([`docs/22`](22-arm-dsp-core-split.md)) | **`inv_classify()`** publishes IR 0 + IR 60-63 (`src/state/classify.c`, T06a) | factory oracle (T06b) blocked on 07 re-pin; mode byte source is USART2 (T05) |
-| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (source is the **USART2** safety-CPU bank, T05 — *not* a USART3 `0x49`; corrected by T09); IR 19 PF, 77, 64/67 |
+| ARM-computed telemetry | powers, RunningTime, etc. ([`docs/22`](22-arm-dsp-core-split.md), [`ARM-UART5-dongle`](wiring/ARM-UART5-dongle/registers.md)) | **serve layer done** (`src/telemetry/`, T07: powers /10, Seps 1:1, RunningTime split) + energy integrator (`src/energy/`); internal values injected until the DSP/safety compute lands | the upstream V·I / sign-split **compute** (source is the **USART2** safety-CPU bank, T05 — *not* a USART3 `0x49`; corrected by T09). IR 19 PF + IR 107 now served from the bank (T07b); IR 77/64/67 are **not** bank-relayed (corrected T07b) |
 | DSP link RX (USART3) | **Modbus-slave + bootloader demux** (`sub_0801c3e6`); NOT a `0x49` parser — that's USART2 ([`wiring/ARM-USART3-DSP/telemetry-0x49`](wiring/ARM-USART3-DSP/telemetry-0x49.md)) | **demux + Modbus-serve done** (`src/dsp/dsp_rx.c` + `dsp_rx_port.c`, T09) | **closed (T09)**; link-loss supervision is T08 |
 | DSP config push | 9 blocks fully populated | block 0 partial, blocks 4/5 (slots) done, **1-3, 6-8 empty** (`src/dsp/dsp_config.c`) | 6 block payloads |
 | BMS / CAN | RX decode, limit derivation, keep-alive, `0x35A` | RX decode for 0x351/355/356/359 (`src/can/bms_can.c`). Keep-alive payload is "provisional" | limits → DSP, TX payload, quirks Q1-Q4 |
@@ -402,9 +402,20 @@ telemetry parser on USART2** (`sub_08025ab8` over buffer `0x20009048`, a schedul
 task that doesn't run in the harness) — so the internal quantities are
 **injected** here (as the card allows) and the real compute lands with the
 **USART2 ingest, T05** (*not* a USART3 `0x49` — the ARM's USART3 RX is a
-Modbus/bootloader demux, see **T09**). Also not yet covered: **IR 19 PF** (a bank
-field — relayed per docs/33, not ARM-computed), **IR 77 ACInputType**, **IR 64
-Tinner / 67 Tbat**, and RunningTime cross-boot persistence — left for a T07b.
+Modbus/bootloader demux, see **T09**).
+
+**T07b update (2026-11-07, after T02a landed the USART2 ingest).** The two
+bank-**relayed** fields are now served from the safety bank by `src/safety/safety_cpu.c`:
+**IR 19 PF** (bank `+0xaa`, raw 0-2000 verbatim — [`IR019-PF`](wiring/ARM-UART5-dongle/IR019-PF.md))
+and **IR 107 BatVoltSample_INV** (bank `+0x0a`, 0.1 V), both added to the shared
+`SAFETY_TELEMETRY` contract (ours proven by `test_arm_sim_self_only.py`; the factory
+oracle validates them against its getter when run on a ceaa-07xx image).
+**Correction:** **IR 64 Tinner / 67 Tbat** and **IR 77 ACInputType** are **not** in
+the recovered USART2 safety bank (docs/33's tag map carries only the radiator temps
+IR 65/66 — no inner/battery temp, no AC-input-type). So they are **not**
+bank-relayed on this image; their source is elsewhere/unrecovered — a correction to
+the earlier "relayed per docs/33" assumption. RunningTime cross-boot persistence is
+still open (T07b).
 
 Original card:
 

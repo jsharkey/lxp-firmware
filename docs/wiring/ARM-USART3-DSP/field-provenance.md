@@ -231,6 +231,16 @@ Per block, against the factory oracle ([`tests/test_dsp_push.py`](../../../tests
   commits only the time-**window** fields (blocks 4/5); the slot power/voltage/SOC
   fields are the "open one layer" above and need their writers traced or a live
   capture.
+  - **T02 re-attempt (2026-11-07, committer now runs under `enable_rtos()`).**
+    With the RTOS scheduler running, the committer *does* populate `0x2000a330…`
+    from dongle writes — confirmed live. Capturing the factory's blocks 3/6 under
+    different writes shows they are **derived from the output priority**: writing
+    **HR 145** (OutputPrioConfig = AC-First) or **HR 19** *zeroes* the grid-charge
+    slot fields of blocks 3 and 6, HR 119 drives block 3 `@0x29`, HR 120/66 drive
+    `@0x16`. So blocks 3/6 are **not** constant — a byte-exact fill must replicate
+    the output-priority-gated slot-record derivation (still the open work; T02
+    unblocked observing it, not implementing it). The **battery-limit** inputs
+    some fields read are **T11**.
 - **Header parity (separate task):** ours' frame header is still the earlier
   SN+timestamp layout; the factory header is `[0]=0x41`, `[1]=1`, `[3]=0x36` len,
   status `[5:8]` (the real builder `sub_080258ca`). The payload region is now exact,

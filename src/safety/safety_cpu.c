@@ -47,5 +47,12 @@ void safety_cpu_publish(uint16_t *input_reg, uint16_t n)
     PUT(IR_T_RADIATOR1, (uint16_t)(bank_s16(SAFETY_OFF_T_RAD1) / 10));
     PUT(IR_T_RADIATOR2, (uint16_t)(bank_s16(SAFETY_OFF_T_RAD2) / 10));
 
+    /* Inverter-side battery voltage (IR 107) and power factor (IR 19): served
+     * verbatim from the bank, matching the factory getter sweep (docs/33). PF is
+     * the raw 0-2000 encoded value (IR019-PF.md); the ARM relays it, the client
+     * decodes the range. */
+    PUT(IR_BAT_VOLT_INV, bank_u16(SAFETY_OFF_BATV_INV));
+    PUT(IR_PF,           bank_u16(SAFETY_OFF_PF));
+
 #undef PUT
 }
