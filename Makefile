@@ -129,6 +129,12 @@ coverage-check:
 regsweep: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN))
 	python3 tests/test_regsweep.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
 
+# Whole-HR write-semantics sweep (T24): boundary vectors on every ranged holding
+# register, fresh boot per value, factory verdict vs ours. SLOW (minutes) and
+# fresh-boots each value, so it is on-demand, not in the default suites.
+wrsem: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN))
+	python3 tests/test_wrsem_sweep.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
+
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
 #
@@ -258,4 +264,4 @@ test-window: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check regsweep factory hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check regsweep wrsem factory hmi-sim factory-hmi

@@ -238,6 +238,12 @@ time-window suites). The key entry points the sections point at:
   [parity scoreboard](regsweep-scoreboard.md). The per-image ledger of match /
   ours-red / known-diff; also pins the dongle framing rules (≤40, no 40-group
   crossing).
+- **`wrsem_contract.py` / `test_wrsem_sweep.py`** (T24, `make wrsem`) — the
+  **write-semantics** sweep: every ranged HR probed at min-1/min/max/max+1, fresh
+  boot per value, the factory verdict committed in
+  [`wrsem_expected.py`](../../../tests/wrsem_expected.py) and ours checked for
+  parity. Deviations (not-writable, tighter-than-spec, one-sided) are
+  [`docs/31` Q11](../../31-factory-quirks.md).
 - **`test_bms_can.c`, `test_acfirst.c`, `test_rtc.c`, `test_modbus.c`,
   `test_dsp_config.c`, `test_variant.c`, `test_hmi.c`** — pure host unit tests for
   the decoders/evaluators behind the registers.

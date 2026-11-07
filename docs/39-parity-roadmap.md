@@ -319,21 +319,34 @@ from the committed set, so new work turning `ours-red → match` is caught.
   second seeded pass to tell constant-vs-wired apart rides along with it.
 
 ### T24 — Write-semantics sweep across the whole HR surface (extends T04)
-**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**
+**Status:** 🟢 `[x] claude/019chjb 2026-11-07` ([`test_wrsem_sweep.py`](../tests/test_wrsem_sweep.py), [`wrsem_contract.py`](../tests/wrsem_contract.py), [`wrsem_expected.py`](../tests/wrsem_expected.py), [`docs/31` Q11](31-factory-quirks.md), `make wrsem`) · **Layer:** sim (table-driven) · **Independent** · **split off T24b**
 
-T04 built the mechanism but its `WRITE_VECTORS` cover only **six** registers
-(HR 9, 15, 20, 66, 101, 105). Generate vectors for **every** writable HR in the
-spec: `min-1 / min / max / max+1` from the ranges in `modbus_map.h` and the
-per-register docs, plus reserved addresses and `0x10` on non-SN/time
-registers. Record the factory verdict per register (accept / clamp / exception
-code / store-but-ignore). Q6 (one-sided range checks), Q7 (HR 22 not writable)
-and Q9 (HR 112 rejects 2) were each found by hand, so this sweep will surface
-the rest. Every deviation from the spec goes into docs/31, and every register
-file gets a coverage line.
-- Include the one identity gap left after T12: a dedicated **SN (HR 2-6)
-  `0x10` write → read-back → cold boot** test, which
-  [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) still lists as
-  uncovered.
+**Done.** Extended T04's verdict mechanism to a boundary sweep over every ranged
+holding register (curated `RANGES` from `modbus_map.h`): `min-1 / min / max / max+1`
+plus the read-only version registers, fresh boot per value, factory verdict
+recorded — **103 vectors** in the committed oracle [`wrsem_expected.py`](../tests/wrsem_expected.py).
+The test pins the factory verdicts (a re-pin/image change fails it) and checks
+**ours == factory** per vector, allowing only the recorded `OURS_DEVIATIONS`.
+- **Findings → [`docs/31` Q11](31-factory-quirks.md):** 39 accept, 43 reject:3
+  (out-of-range), **19 reject:2 (not writable: HR 22/67/74/82/83/145)**, 2 reject:4
+  (read-only HR 9/10). The factory is **tighter than the spec** (HR 20/59 max is 6
+  not 7; HR 23/24/105 narrower; one-sided bounds on HR 75/99/101/105 confirm Q6;
+  HR 112 rejects 2 = Q9; HR 22 not writable = Q7). Our `settings_validate`
+  **under-validates 58/103** vectors — recorded as the parity gap.
+- **Split: T24b** — tighten `settings_validate` to the factory bounds (collapse the
+  58 `OURS_DEVIATIONS`; a per-register implementation task, oracle is Q11), and the
+  **SN (HR 2-6) `0x10` write → read-back → cold boot** test ([`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md)
+  still uncovered — needs a write-multiple (`0x10`) master, not yet in the harness).
+- **Caveat:** verdicts are the **cold-boot** state (no mode set); registers gated on
+  a precondition (HR 113/144/146 reject-all here) may write under other states —
+  flagged in Q11 for T24b.
+
+#### T24b — tighten ours to the factory write bounds + SN 0x10 round-trip
+**Status:** ⬜ `[ ]` · **Layer:** micro + sim · **Depends:** T24 (the oracle)
+
+Implement the factory's per-register validation in `settings_validate` so
+`OURS_DEVIATIONS` (58 vectors) empties, and add the SN write-multiple round-trip
+test once the harness grows a `0x10` master.
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10

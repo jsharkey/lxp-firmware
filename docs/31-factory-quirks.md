@@ -337,3 +337,40 @@ identity/command registers (docs/39 T12), recorded so they are deliberate:
   uses the new one) and persists it (T03), re-adopting it at boot. No reboot
   needed. (Whether the *factory* switches on the same reply or after a reboot is
   the UART5-path question above — not observable here.)
+
+## Q11 — the factory's HR write-validation surface differs from the spec (and ours under-validates)
+
+- **Area:** holding-register writes (docs/04, docs/23). Found by the whole-HR
+  boundary sweep (docs/39 **T24**, [`test_wrsem_sweep.py`](../tests/test_wrsem_sweep.py)
+  / [`wrsem_contract.py`](../tests/wrsem_contract.py)): every ranged HR probed at
+  `min-1 / min / max / max+1` on a fresh boot, factory verdict recorded in
+  [`wrsem_expected.py`](../tests/wrsem_expected.py). 103 vectors → 39 accept,
+  43 `reject:3` (ILLEGAL_VALUE, out of range), 19 `reject:2` (ILLEGAL_ADDRESS —
+  **not writable**), 2 `reject:4` (SLAVE_FAILURE — read-only).
+- **Not writable at all (`reject:2`, any value):** HR 22 (StartPVVolt — was Q7),
+  **67** (ACChgSocLimit), **74/82/83** (charge-priority / forced-discharge power+SOC
+  — the registers already shown inert for the DSP push, `INERT_64_89`), and **145**
+  (OutputPrioConfig). A write is rejected regardless of value.
+- **Tighter than the documented range:** HR **20** and **59** max is **6**, not the
+  doc's 7 (7 is `reject:3`); HR **23** rejects its documented max 600; HR **24**
+  rejects both 0 and 900; HR **105** rejects 10 (min is higher than the doc's 10);
+  HR **112** rejects value **2** (slave — Q9) while 0/1/3 are taken; HR **113**,
+  **144**, **146** reject every probed value in the bare-boot state.
+- **One-sided bounds (confirms Q6):** HR **75 / 99 / 101 / 105** accept above their
+  documented max but reject below min. HR **9 / 10** are read-only (`reject:4`).
+- **Read-only ends:** HR 9/10 (versions) reject every write with exception 4.
+- **Our firmware under-validates:** on **58 of 103** vectors ours `accept`s what the
+  factory rejects — `settings_validate` only range-checks the handful T04 wired, so
+  it is far more permissive than the factory. The full list is
+  `wrsem_expected.OURS_DEVIATIONS`; `test_wrsem_sweep.py` guards that it does not
+  **grow**. Tightening `settings_validate` to the factory's per-register bounds is
+  the **T24b** follow-up (a per-register implementation task; the oracle here is its
+  spec).
+- **Caveat — verdicts are the cold-boot state.** Each probe is a fresh boot with no
+  operating mode set, so registers the factory gates on a precondition (a running
+  state, a mode, standby-only writes) show as `reject` here; that is the inverter's
+  state at probe time, not proof the register is permanently unwritable. The
+  `reject:2` set is stable across boots; the `reject:3`-for-all cases (HR 113/144/146)
+  are the ones most likely to be precondition-gated — flagged for T24b.
+- **Status:** confirmed (ceaa-07xx, black-box, cold-boot). Oracle committed; ours
+  parity gap recorded.
