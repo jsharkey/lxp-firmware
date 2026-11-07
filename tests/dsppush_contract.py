@@ -44,10 +44,13 @@ DSP_PUSH = {
 }
 
 # Live (writable) registers in the HR 64-89 schedule block, as the factory image
-# exposes them. 67 (AC-charge SOC) and 74-89 (charge-priority + forced-discharge)
-# are inert -- a dongle write does not store (read-back stays at the default).
-WRITABLE_64_89 = {64, 65, 66, 68, 69, 70, 71, 72, 73}
-INERT_64_89    = {67} | set(range(74, 90))
+# exposes them. 67 (AC-charge SOC) and 74/76-89 (charge-priority power/windows +
+# forced-discharge) are inert -- a dongle write does not store (read-back stays at
+# the default). HR 75 (HR_CHGFIRST_SOC, charge-priority SOC limit) IS writable, and
+# the factory pushes it to block 4 @0x26 (verified) -- our firmware does not emit
+# that field yet, so it is kept out of DSP_PUSH (below) until the ours side lands.
+WRITABLE_64_89 = {64, 65, 66, 68, 69, 70, 71, 72, 73, 75}
+INERT_64_89    = {67, 74} | set(range(76, 90))
 
 # window A/B: two valid, distinct times (09:10 and 21:34), hour|minute<<8.
 WIN_A = (10 << 8) | 9
@@ -170,6 +173,16 @@ class _Backend:
         mb.write_single(reg, value)
         ctx = sim.uc.context_save()
         saved = {k: getattr(sim, k) for k in self._ENGINE_VARS}
+        # Quiesce the RTOS engine for the duration of the builds: the factory's live
+        # RTOS leaves a SysTick/PendSV/IRQ pending after boot, and the block hook
+        # would emu_stop() on the first block of each sim.call() -- running zero
+        # instructions of the builder. Cleared here, restored in finally (all of
+        # these are _ENGINE_VARS). Harmless for our firmware (nothing pending).
+        if hasattr(sim, "_systick_due"):
+            sim._systick_due = False
+            sim._pendsv_set = False
+            sim._pending_irqs = []
+            sim._tick_mark = sim._insns + 1_000_000_000
         try:
             return {blk: self._build_block(sim, blk) for blk in range(NBLOCKS)}
         finally:
@@ -196,19 +209,21 @@ class FactoryBackend(_Backend):
         self.symbols = symbols or os.path.join(
             os.path.dirname(__file__), "..", "reference", "symbols.csv")
 
-    # Per-block filler (the real builder). Resolve by name when the symbol map
-    # carries it, else fall back to the stable flash address for the 07-series
-    # com_flat.bin -- symbol-map regenerations relabel/merge functions, but the
-    # address is fixed for this image (calling it mid-"function" is identical, it
-    # is the same bytes). docs/wiring/ARM-USART3-DSP/field-provenance.md.
-    _FILL_ADDR = 0x08024dfc
+    # Per-block filler (the real builder) in 07-series com_flat.bin, flat base
+    # 0x08000000: fn_fill_cfg_block(buf, off, block_id) -- buf[off]=block_id, then
+    # the block's big-endian fields from the ARM working RAM into buf[off+1]+. This
+    # is docs/10's FUN_08026830 read at the CORRECT flat base; an earlier
+    # field-provenance pass mis-converted it (assuming a 0x08005000 Ghidra base) to
+    # "sub_08024dfc", which is a 05-era artifact that lands mid-function here and
+    # writes nothing. docs/wiring/ARM-USART3-DSP/field-provenance.md.
+    _FILL_ADDR = 0x08026830
 
     def _new_sim(self):
         from arm_sim import ArmSim, load_symbols_csv
         if not os.path.exists(self.image):
             raise FileNotFoundError(self.image)
         syms = load_symbols_csv(self.symbols)
-        self._fill = syms.get("sub_08024dfc", self._FILL_ADDR)
+        self._fill = syms.get("fn_fill_cfg_block", self._FILL_ADDR)
         return ArmSim(self.image, syms)
 
     def _build_block(self, sim, blk):

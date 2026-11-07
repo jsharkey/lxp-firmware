@@ -6,18 +6,28 @@
 
 ## The real builder (in `ceaa-07xx_vE_260214.bin`)
 
-docs/10 named the push builder `FUN_080273b4`/`FUN_08026830` — those are addresses
-from a Ghidra import **based at `0x08005000`**, so they don't resolve in our flat
-image (`0x08000000`). The equivalent functions in `reference/ceaa-07xx_vE_260214.bin` are:
+docs/10 named the push builder `FUN_080273b4`/`FUN_08026830`. Those Ghidra addresses
+are **flat `0x08000000`-based** (the whole image, bootloader + App), so they resolve
+directly in `reference/com_flat.bin`:
 
 | function | role |
 |---|---|
-| `sub_080258ca` | **frame builder**: writes the 20-byte header (`[0]=0x41`, `[1]=1`, `[3]=0x36`, status `[5:8]` from `STATUS 0x2000a0d8+0x88`, …) then calls the per-block filler and rotates the block-id counter `0x2000a9eb` |
-| `sub_08024dfc(buf, 0x14, block_id)` | **per-block filler**: `buf[0x14]=block_id`, then big-endian field values from ARM RAM into `buf[0x15]+` — the mirror of the DSP's `FUN_00092EE2` |
+| `0x080273b4` | **frame builder**: writes the header (`[0]=0x41`, `[1]=1`, `[2]=0`, `[3]=0x36` length, `[4]=0`, status from the 07 STATUS struct), then calls the per-block filler per block id |
+| `0x08026830(buf, 0x14, block_id)` | **per-block filler**: `buf[0x14]=block_id`, then big-endian field values from the ARM working RAM into `buf[0x15]+` — the mirror of the DSP's `FUN_00092EE2` |
 
-The maps below are from emulating `sub_08024dfc` for each block id 0–8 and recording,
-for every payload byte it writes, **which RAM address it read** (reliable — it is the
-real builder, not a guess).
+> **Correction (05→07 re-pin).** An earlier revision of this section "converted" the
+> Ghidra addresses by *subtracting* a `0x5000` App base, landing on `sub_080258ca` /
+> `sub_08024dfc`. Those are 05-era artifacts: at `0x08024dfc` in this 07 flat image
+> the code is **mid-function** (it dereferences the `0x14` arg as a pointer and writes
+> nothing), which is why the config-push oracle returned all-zeros. The correct
+> builder/filler are the Ghidra addresses read as-is at the flat base (above). The
+> live oracle (`tests/dsppush_contract.py`) now uses `0x08026830` and, after quiescing
+> the RTOS engine for the call, reproduces every block — blocks 2/7/8 come out unity
+> `0x0400` byte-for-byte, confirming the spec.
+
+The maps below are from emulating the filler `0x08026830` for each block id 0–8 and
+recording, for every payload byte it writes, **which RAM address it read** (reliable —
+it is the real builder, not a guess).
 
 ## The key finding: the push serializes DERIVED WORKING state, not raw registers
 

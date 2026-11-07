@@ -486,38 +486,47 @@ assembling Modbus/bootloader).
   T05 (USART2 ingest), not at this task.
 
 ### T10 — Fill the DSP config-push payloads (blocks 1, 2, 3, 6, 7, 8 + rest of 0)
-**Status:** `[~] claude 2026-11-07` — calibration-gain blocks **2/7/8 done** (byte-identical); rest handed off below · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
+**Status:** `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07 (oracle re-pinned)` — blocks **1/2/7/8 verified byte-identical**; the live oracle is now functional; blocks **0/3/4/5/6 differ** (quantified below) · **Layer:** sim (byte-exact frame diff) · **Independent** (per-block, parallelisable: one agent per block is fine)
 
 Block meanings are recovered ([`wiring/ARM-USART3-DSP/`](wiring/ARM-USART3-DSP/fields.md):
 1 = battery limits, 2/7/8 = calibration gains, 3/6 = grid-charge slots), but
-`dsp_config.c` sent them **empty**. `tests/test_dsp_push.py` captures the factory's
-frames off USART3.
+`dsp_config.c` sends 0/3/4(partial)/5(partial)/6 **empty**. `tests/test_dsp_push.py`
+captures the factory's frames off USART3.
 
-**Done (this pass):**
-- Frame is now **fixed-length** (payload `0x15..0x33`, CRC `0x34..0x35`, total `0x36`
-  = the factory length byte), so payload bytes are directly comparable. The CRC
-  byte order stays little-endian (`DSP_CRC_MSB_FIRST 0`); the capture compares only
-  the payload region, so the trailing CRC order is not yet independently pinned.
-- **Blocks 2, 7, 8 (measurement-calibration gains):** emitted as the constant Q10
-  **unity** default (`0x0400`), **byte-identical** to the factory for any settings/BMS
-  state (no holding register feeds them). `src/dsp/dsp_config.c`;
-  [`tests/test_dsp_push.py`](../tests/test_dsp_push.py)`::test_{factory,ours}_calibration_gains*`.
-  Docs: [`block-02`](wiring/ARM-USART3-DSP/block-02.md)/[`07`](wiring/ARM-USART3-DSP/block-07.md)/[`08`](wiring/ARM-USART3-DSP/block-08.md),
-  [`field-provenance` §Reimplementation](wiring/ARM-USART3-DSP/field-provenance.md).
+**The oracle was broken — now fixed (the real blocker, a 05→07 address drift).**
+`dsppush_contract.py` called the factory per-block filler at `sub_08024dfc`, a 05-era
+"conversion" of docs/10's `FUN_08026830`. In this 07 flat image (`0x08000000` base)
+that address is **mid-function** and writes nothing → the live factory capture
+returned all-zeros, so blocks 2/7/8 were only ever checked against the derived spec,
+not a live capture. Fixed: the real filler is **`0x08026830`** read at the flat base
+(builder `0x080273b4`), and the call must **quiesce the RTOS engine** first (the
+factory's live SysTick/PendSV would `emu_stop` the single-shot `sim.call`). With
+that, the filler reproduces every block from the real 07 working RAM — blocks 2/7/8
+come out unity `0x0400` byte-for-byte (`test_dsp_push.py` now **6/6 green**, was 1/6).
+[`field-provenance` §The real builder](wiring/ARM-USART3-DSP/field-provenance.md).
 
-**Hand-offs (remaining blocks):**
-- **Block 1** — battery charge/discharge limit set, from the working struct
-  `0x2000a68c…`. **Blocked on T11** (BMS-limit derivation). Empty today; matches the
-  factory only at the no-BMS boot state.
-- **Blocks 0, 3, 6** — need the grid-charge **slot-record** derivation
-  (`0x2000a330…a360`): the committer in `src/dsp/dsp_slots.c` does only the time
-  **windows** (blocks 4/5); the slot power/voltage/SOC fields are the "open one
-  layer" in field-provenance (trace the writers or do a live USART3 capture).
-- **Block 0 layout** — ours' block-0 is a best-effort stub in *ours'* own order
-  (priority @`0x15`); the factory puts priority @`0x1e` and reads mostly slot
-  records. Rework alongside the slot-record derivation.
-- **Header parity** — payload region is exact; the frame **header** is still ours'
-  SN+timestamp layout vs the factory's `0x41`/len/status (`sub_080258ca`). Separate
+**Verified per-block (ours vs the now-working factory oracle, default boot + HR 68):**
+- **Blocks 2, 7, 8** (calibration gains): **MATCH** — constant Q10 unity `0x0400`
+  (no holding register feeds them). `src/dsp/dsp_config.c`.
+- **Block 1** (battery limits): **MATCH** at the no-BMS boot state (both empty);
+  the populated case is the T11 limit derivation.
+- **Block 4** (AC-charge): window times `0x17..0x22` MATCH; the slot
+  power/voltage/SOC at `0x23+` (incl. **HR 75 charge-priority SOC → `0x26`**, which
+  the factory pushes and ours does not yet) still differ.
+- **Blocks 0, 3, 5, 6**: **DIFFER** (ours empty) — need the slot-record / output-
+  priority derivation.
+
+**Remaining (now unblocked + each verifiable against the live oracle):**
+- **Blocks 0, 3, 6** and the `0x23+` tails of **4, 5** — the grid-charge **slot-record**
+  derivation (`0x2000a330…`, real 07 addresses): slot power/voltage/SOC. `src/dsp/dsp_slots.c`
+  does only the time windows today.
+- **Block 0 layout** — priority belongs at `0x1e` (`HR 145 → working 0x2000a343 →
+  block0[0x1e]`, field-provenance), not ours' `0x15` stub.
+- **Block 1 populated** — battery limits from the working struct (depends on T11).
+- **HR 75** (`HR_CHGFIRST_SOC`): writable + factory-pushed to **block 4 `0x26`**;
+  ours doesn't emit it yet (so it's held out of the `DSP_PUSH` spec until implemented).
+- **Header parity** — payload region exact; the frame header is still ours'
+  SN+timestamp vs the factory's `0x41`/len/status (`0x080273b4`). Separate
   [`frame-header`](wiring/ARM-USART3-DSP/frame-header.md) follow-up.
 - **Done when:** every block's payload is byte-identical to the factory's for the
   same settings + BMS state.
