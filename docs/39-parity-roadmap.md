@@ -287,26 +287,29 @@ hardcode this model-specific default blob into the push builder.
   same settings + BMS state.
 
 ### T23 — Whole-surface read sweep: every register, both images, one diff
-**Status:** 🟡 `[~] claude/019chjb 2026-11-07` · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
+**Status:** 🟢 `[x] claude/019chjb 2026-11-07` ([`test_regsweep.py`](../tests/test_regsweep.py), [`regsweep_contract.py`](../tests/regsweep_contract.py), [`regsweep_expected.py`](../tests/regsweep_expected.py), [scoreboard](wiring/ARM-UART5-dongle/regsweep-scoreboard.md), `make regsweep`) · **Layer:** sim (common) · **Independent** · **Highest-leverage coverage task**
 
-Most registers are tested one at a time, on the path some feature happened to
-need. Nothing yet checks the **whole map**. Add one common sim test (warm once,
-clone per case) that boots both images into the **same seeded state**:
-settings written via T03's table, bank and CAN snapshots from the existing
-contracts, and a fixed RTC. It then reads **every IR 0-159, IR 5000-5126 and
-HR 0-255** in spec-legal chunks (≤40 registers, no 40-group crossing) and
-diffs value **or exception code** per register.
-- It also asserts the framing rules on both images: a read crossing a 40-group
-  boundary, a read longer than 40, a zero-length read, and an out-of-map
-  address (which exception, or silence?).
-- **Output:** a committed expected-diff table. Every register is one of
-  `match`, `known-diff → docs/31 Qn` or `ours-red (task Txx)`. That table *is*
-  the parity scoreboard: new work turns `ours-red` into `match`. Reserved
-  registers and spec-only (`idx`) registers get covered for free: they read
-  back *something*, and now we pin what.
-- Run a second pass with a different seeded snapshot. A register that doesn't
-  change between passes is either constant or not wired, and the doc should
-  say which.
+**Done.** One sweep (warm once, clone per case) boots both images into the same
+seeded state (a fixed battery CAN snapshot + default RTC), reads **every IR 0-159,
+IR 5000-5126, HR 0-255** in spec-legal chunks (≤40, no 40-group crossing) via the
+new `ModbusMaster.probe_read` (value / exception / silent), and diffs ours vs the
+factory into a committed classification ([`regsweep_expected.py`](../tests/regsweep_expected.py),
+230 non-matches) — the **parity scoreboard** ([full breakdown](wiring/ARM-UART5-dongle/regsweep-scoreboard.md)).
+On `ceaa-07xx`: **313 match**, **127 ours-red** (per-pack IR 5000-5126), **91**
+HR power-on-default gaps, **8** unpopulated IR telemetry, **Q1/Q2** quirks, **2**
+value-diffs (HR 9 version, IR 62 warn). The test fails if the live diff drifts
+from the committed set, so new work turning `ours-red → match` is caught.
+- **Framing** asserted on both: ours enforces the dongle rule (cross-40 / >40 /
+  zero-length / out-of-map → exception 2); the factory's **USART3 fallback slave**
+  (not its real UART5 dongle handler, a T02 task) is lenient — recorded, not
+  asserted equal.
+- **Carve-outs / follow-ups:** HR settings are **not** seeded — writing them
+  silences the factory USART3 slave (SysEnable/SysType/FuncEn/ComAddr take it out
+  of the answering state), so the HR surface is cold and the 91 "no-default" diffs
+  reflect ours having no power-on defaults (settings parity is proven per-register
+  by T03/T04). Seeding every HR and re-sweeping both — collapsing those 91 — is
+  **T23b** (blocked on keeping the USART3 slave alive under settings writes); a
+  second seeded pass to tell constant-vs-wired apart rides along with it.
 
 ### T24 — Write-semantics sweep across the whole HR surface (extends T04)
 **Status:** ⬜ `[ ]` · **Layer:** sim (table-driven) + micro where a setter is isolatable · **Independent**

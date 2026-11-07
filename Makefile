@@ -123,6 +123,12 @@ coverage-report:
 coverage-check:
 	@python3 tools/reg_coverage.py --check
 
+# Whole-surface parity sweep (T23): read every register on both images from one
+# seeded state and diff into the committed scoreboard. SLOW (seeds + warm-clones
+# each image; minutes), so it is NOT in the default suites -- run on demand.
+regsweep: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(FACTORY_BIN))
+	python3 tests/test_regsweep.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
+
 # GPIO-behaviour tests on the Unicorn harness (tools/arm_sim.py). Needs: pip
 # install unicorn.
 #
@@ -252,4 +258,4 @@ test-window: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check factory hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check regsweep factory hmi-sim factory-hmi

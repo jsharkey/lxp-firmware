@@ -232,6 +232,12 @@ time-window suites). The key entry points the sections point at:
   109, 110, 112, 119, 120, 147, 151-157; slot 5: 23, 25-40, 43-53, 59-66, 75.
 - **`dsppush_contract.py` / `test_dsp_push.py`** — which holding writes are pushed
   to the DSP config blocks.
+- **`regsweep_contract.py` / `test_regsweep.py`** (T23, `make regsweep`) — the
+  **whole-surface** sweep: reads every IR 0-159, IR 5000-5126, HR 0-255 on both
+  images from one seeded state and diffs them into the committed
+  [parity scoreboard](regsweep-scoreboard.md). The per-image ledger of match /
+  ours-red / known-diff; also pins the dongle framing rules (≤40, no 40-group
+  crossing).
 - **`test_bms_can.c`, `test_acfirst.c`, `test_rtc.c`, `test_modbus.c`,
   `test_dsp_config.c`, `test_variant.c`, `test_hmi.c`** — pure host unit tests for
   the decoders/evaluators behind the registers.

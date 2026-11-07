@@ -89,6 +89,34 @@ def _crc_ok(resp):
         crc16(resp[:-2]) == (resp[-2] | (resp[-1] << 8))
 
 
+def _scan_reply(tx, addr, func, n):
+    """Scan a captured TX byte stream for this request's reply (used by the whole-
+    surface sweep, T23). Returns one of:
+      ("ok", [v0..v(n-1)])  -- a valid func read-response for n registers
+      ("exc", code)         -- a Modbus exception (func|0x80) with its code
+      None                  -- nothing valid seen yet
+    A read-response is  addr func SN[10] start(2) nBytes(=2n) data(2n) CRC; an
+    exception is the short addr func|0x80 ... code CRC frame (len 5..20)."""
+    i, N = 0, len(tx)
+    resp_len = _HDR + 3 + 2 * n + _CRC
+    while i < N - 4:
+        if tx[i] == addr:
+            f1 = tx[i + 1]
+            if f1 == func and i + resp_len <= N:
+                fr = bytes(tx[i:i + resp_len])
+                if fr[_HDR + 2] == 2 * n and _crc_ok(fr):
+                    return ("ok", [struct.unpack_from("<H", fr, _HDR + 3 + 2 * k)[0]
+                                   for k in range(n)])
+            if f1 == (func | 0x80):
+                for ln in range(5, 21):
+                    if i + ln <= N:
+                        fr = bytes(tx[i:i + ln])
+                        if crc16(fr[:-2]) == (fr[-2] | (fr[-1] << 8)):
+                            return ("exc", fr[-3])
+        i += 1
+    return None
+
+
 class _ModbusMaster:
     """Drive `sim` (an already-constructed ArmSim) as a Modbus master on ONE
     UART. Boots the image into its main loop on construction; then
@@ -216,6 +244,28 @@ class _ModbusMaster:
         if resp is None:
             return None
         return [struct.unpack_from("<H", resp, _HDR + 3 + 2 * i)[0] for i in range(n)]
+
+    def probe_read(self, func, reg, n):
+        """Like read_*, but classifies the reply for the whole-surface sweep (T23):
+        returns ("ok", [values]) | ("exc", code) | ("silent",). Stops as soon as a
+        reply (response OR exception) appears, so out-of-map reads are not slow."""
+        req = _frame(self.addr, func, struct.pack("<HH", reg, n), self.sn)
+        self._rx = list(req)
+        self._tx = bytearray()
+        self._rlen = 0
+        self._match = lambda w: False        # don't early-stop in the hook; we scan
+        self._resp = None
+        remaining = self._txn_insn
+        while remaining > 0:
+            cr1 = self.sim.r32(self.cr1)
+            if (cr1 & CR1_RXNEIE and self._rx) or (cr1 & CR1_TXEIE):
+                self.sim.pend_irq(self.vec)
+            self.sim.run(_TXN_CHUNK)
+            remaining -= _TXN_CHUNK
+            r = _scan_reply(self._tx, self.addr, func, n)
+            if r is not None:
+                return r
+        return ("silent",)
 
 
 class ModbusDongle(_ModbusMaster):
