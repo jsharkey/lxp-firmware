@@ -51,6 +51,30 @@ int main(void)
     CHECK(inv_dischg_soc_gate(true, 39, SSTART, SSTOP) == false, "soc on: 39 < stop -> off");
     CHECK(inv_dischg_soc_gate(true, 45, SSTART, SSTOP) == true,  "soc on: 45 in band -> stays on");
 
+    /* --- combined permit controller (DischgCtrlType 0 / 1 / 2) --------------- */
+    inv_dischg_state_t st = {0};
+    /* mode 0 (by voltage): permit tracks the voltage gate; SOC irrelevant. */
+    CHECK(inv_dischg_permit(&st, 0, BANK(500), START, STOP, 10, SSTART, SSTOP) == true,
+          "permit mode0: V up -> permit even with low SOC");
+    CHECK(inv_dischg_permit(&st, 0, BANK(450), START, STOP, 90, SSTART, SSTOP) == false,
+          "permit mode0: V below stop -> no permit even with high SOC");
+    /* mode 1 (by SOC): permit tracks the SOC gate; voltage irrelevant. */
+    st = (inv_dischg_state_t){0};
+    CHECK(inv_dischg_permit(&st, 1, BANK(450), START, STOP, 60, SSTART, SSTOP) == true,
+          "permit mode1: SOC up -> permit even with low V");
+    CHECK(inv_dischg_permit(&st, 1, BANK(500), START, STOP, 30, SSTART, SSTOP) == false,
+          "permit mode1: SOC below stop -> no permit even with high V");
+    /* mode 2 (both = AND): permit only when BOTH gates are on. */
+    st = (inv_dischg_state_t){0};
+    CHECK(inv_dischg_permit(&st, 2, BANK(500), START, STOP, 60, SSTART, SSTOP) == true,
+          "permit mode2: V and SOC both up -> permit");
+    st = (inv_dischg_state_t){0};
+    CHECK(inv_dischg_permit(&st, 2, BANK(500), START, STOP, 30, SSTART, SSTOP) == false,
+          "permit mode2: V up but SOC down -> no permit (AND)");
+    st = (inv_dischg_state_t){0};
+    CHECK(inv_dischg_permit(&st, 2, BANK(450), START, STOP, 60, SSTART, SSTOP) == false,
+          "permit mode2: SOC up but V down -> no permit (AND)");
+
     printf("%s: %d/%d checks passed\n", g_fail ? "FAILED" : "OK", g_run - g_fail, g_run);
     return g_fail ? 1 : 0;
 }

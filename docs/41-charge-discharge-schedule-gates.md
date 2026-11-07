@@ -91,6 +91,22 @@ against the factory** ([`test_dischg_gate.py`](../tests/test_dischg_gate.py)
 `test_factory_soc_matches_spec` + [`dischg_gate_contract.py`](../tests/dischg_gate_contract.py)
 `soc_verdict`, on the canonical 07 image).
 
+## Combined permit controller (`inv_dischg_permit`)
+
+`inv_dischg_permit()` composes the two gates per **DischgCtrlType** (HR 120 bits
+4-5): mode 0 → voltage gate, mode 1 → SOC gate, mode 2 → voltage **AND** SOC. It
+steps both gates each call so neither latch goes stale across a mode change. The two
+individual gates are each oracle-pinned above; the **mode-2 "both" = AND is ours'
+composition**, not separately pinned to the factory's combined sub-verdict
+(`0x2000dbc5/c6`, medium confidence). Host-tested (`test_dischg_gate.c`).
+
+**Wiring it live is not done** and needs infrastructure ours lacks: the gate
+thresholds (`settings+0x46/+0x48` V, `+0x4a/+0x4b` SOC) are **not pinned to HR
+numbers** in ours' settings map (unfinished config-writer RE — not in docs/23), and
+there is **no discharge power controller** in ours to consume the permit (the factory
+consumer is the main power-control function). The permit's other inputs are live
+(battery V bank `+0x0a`, SOC from BMS/CAN, DischgCtrlType HR 120).
+
 ### How it was verified
 
 The discharge-by-voltage decision is the self-contained block

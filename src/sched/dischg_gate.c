@@ -29,3 +29,19 @@ bool inv_dischg_soc_gate(bool active, uint8_t soc,
         return soc >= stop_soc;         /* stay on until SOC drops below stop */
     return soc >= start_soc;            /* turn on once SOC reaches start      */
 }
+
+bool inv_dischg_permit(inv_dischg_state_t *st, uint8_t ctrl_type,
+                       uint16_t vbat_bank, uint16_t v_start, uint16_t v_stop,
+                       uint8_t soc, uint8_t s_start, uint8_t s_stop)
+{
+    /* Step both gates every call so neither latch goes stale across a mode change. */
+    st->v_active = inv_dischg_volt_gate(st->v_active, vbat_bank, v_start, v_stop);
+    st->s_active = inv_dischg_soc_gate(st->s_active, soc, s_start, s_stop);
+
+    switch (ctrl_type & 0x3u) {
+    case 1:  return st->s_active;                      /* by SOC     */
+    case 2:  return st->v_active && st->s_active;      /* both (ours' AND) */
+    case 0:
+    default: return st->v_active;                      /* by voltage */
+    }
+}

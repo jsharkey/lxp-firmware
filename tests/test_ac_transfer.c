@@ -13,7 +13,14 @@ static int g_fail = 0, g_run = 0;
 static void expect(bool en, uint32_t grid, int epa12, int epb3, const char *m)
 {
     bool pa12 = false, pb3 = false;
-    inv_ac_transfer_decide(en, grid, &pa12, &pb3);
+    inv_ac_transfer_decide(en, false, grid, &pa12, &pb3);   /* dsp_force = false */
+    CHECK(pa12 == (bool)epa12 && pb3 == (bool)epb3, m);
+}
+
+static void expect_force(bool en, uint32_t grid, int epa12, int epb3, const char *m)
+{
+    bool pa12 = false, pb3 = false;
+    inv_ac_transfer_decide(en, true, grid, &pa12, &pb3);    /* dsp_force = true */
     CHECK(pa12 == (bool)epa12 && pb3 == (bool)epb3, m);
 }
 
@@ -32,6 +39,12 @@ int main(void)
     expect(true,  0,            1, 1, "enabled no grid (bit20 clear) -> PA12=1 PB3=1");
     expect(true,  B20 | MODE(2),1, 1, "enabled grid mode 2 (bad) -> PA12=1 PB3=1");
     expect(true,  MODE(1),      1, 1, "enabled bit20 clear + mode1 -> PA12=1 PB3=1");
+
+    /* DSP force bit ("transfer to backup"): PA12=1/PB3=1 regardless of enable/grid
+     * (factory test_factory_dsp_bit_forces_transfer). */
+    expect_force(false, 0,            1, 1, "force + disabled + no grid -> PA12=1 PB3=1");
+    expect_force(true,  B20,          1, 1, "force + grid-ok -> PA12=1 PB3=1 (overrides grid)");
+    expect_force(true,  B20 | MODE(2),1, 1, "force + grid-bad -> PA12=1 PB3=1");
 
     printf("%s: %d/%d checks passed\n", g_fail ? "FAILED" : "OK", g_run - g_fail, g_run);
     return g_fail ? 1 : 0;

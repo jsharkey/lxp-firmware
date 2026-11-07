@@ -210,6 +210,15 @@ function's RAM fields), `tools/gpio_map.py`, `tools/periph_map.py`.
 > ([`test_ac_transfer.c`](../tests/test_ac_transfer.c)) and factory-oracle-checked
 > ([`test_ac_transfer.py`](../tests/test_ac_transfer.py), `make test-sim`).
 >
+> **Wired live (2026-11-07, T14):** `relay_poll()` now drives PA12/PB3 from
+> `inv_ac_transfer_decide(enabled, dsp_force, dsp_grid, …)` in normal (non-manual)
+> mode, and `main.c` feeds the inputs from the safety bank each loop — `dsp_force` =
+> `+0xca` bit 4 (decoded by our USART2 RX, live), `dsp_grid` = `+0xbc` dword (not yet
+> in our tag decode → 0 until that lands). The pure function gained the **force bit**
+> (`dsp_force` → PA12=1/PB3=1 regardless of grid, the DSP "transfer to backup"
+> command). PC6 now also follows the live IR_STATE in the loop. Ours sim:
+> `test_ac_transfer_relays_driven_live` ([`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py)).
+>
 > **Sequencing — MEASURED (2026-11-07):** the transfer **PA12** switches behind a
 > **symmetric 50-tick debounce** (`0x2000dba4/5/6`, matching the `0x32` compares):
 > once enabled+settled, flipping the grid qualification takes **exactly 50**

@@ -63,4 +63,25 @@ bool inv_dischg_volt_gate(bool active, uint16_t vbat_bank,
 bool inv_dischg_soc_gate(bool active, uint8_t soc,
                          uint8_t start_soc, uint8_t stop_soc);
 
+/*
+ * Combined discharge-permit controller (T15): selects the by-voltage and/or
+ * by-SOC gate per DischgCtrlType (HR 120 bits 4-5) and returns whether battery
+ * discharge is currently permitted. Both gates are stepped every call so their
+ * latches stay warm across a mode change; the returned permit is:
+ *   ctrl_type 0 (by voltage) -> the voltage gate's verdict
+ *   ctrl_type 1 (by SOC)     -> the SOC gate's verdict
+ *   ctrl_type 2 (both)       -> voltage AND SOC
+ * The two gates are each factory-verified (above); the mode-2 "both" combination
+ * is ours' composition (AND) and is NOT separately oracle-pinned to the factory's
+ * combined sub-verdict (0x2000dbc5/c6) — see docs/41.
+ */
+typedef struct {
+    bool v_active;   /* latched by-voltage verdict */
+    bool s_active;   /* latched by-SOC verdict     */
+} inv_dischg_state_t;
+
+bool inv_dischg_permit(inv_dischg_state_t *st, uint8_t ctrl_type,
+                       uint16_t vbat_bank, uint16_t v_start, uint16_t v_stop,
+                       uint8_t soc, uint8_t s_start, uint8_t s_stop);
+
 #endif /* INV_DISCHG_GATE_H */

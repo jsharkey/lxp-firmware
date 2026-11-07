@@ -422,7 +422,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** 🚧 `[~] claude 2026-11-07` — **AC-transfer (PA12/PB3) state→relay map cracked + reimplemented + factory-verified** (T14a enable prerequisite solved); gen/AC-couple (PC5), dry-contact (PD11), enable *provenance* + sequencing *timing* remain · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
+**Status:** 🚧 `[~] claude 2026-11-07` — **AC-transfer (PA12/PB3) cracked + reimplemented + factory-verified + WIRED LIVE** (incl. the DSP force bit); run-enable (PC6) now follows live IR_STATE in the loop; gen/AC-couple (PC5) + dry-contact (PD11) are debounce-timing micro-tests (not vector tables), enable *provenance* + the `+0xbc` tag-decode remain · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
 
 **Done (AC-transfer pair, 2026-11-07).** Cracked the T14a prerequisite the prior
 attempt was stuck on: the AC-transfer enable is **`0x2000d9ca` bit 3 OR `0x2000d810`
@@ -456,13 +456,25 @@ enables the path **and forces the transfer state (PA12=1/PB3=1) regardless of gr
 — i.e. it is the DSP's **"transfer to backup" command**, not a clean enable. Locked
 by [`test_ac_transfer.py`](../tests/test_ac_transfer.py)`::test_factory_dsp_bit_forces_transfer`.
 
+**Wired live (2026-11-07).** The `+0xca` "force transfer" refinement is **added to
+the pure function** (`inv_ac_transfer_decide(enabled, dsp_force, dsp_grid, …)` —
+force → PA12=1/PB3=1, matching `test_factory_dsp_bit_forces_transfer`; host
+[`test_ac_transfer.c`](../tests/test_ac_transfer.c) now 11 checks). `relay_poll()`
+**drives PA12/PB3 live** from the decision, and `main.c` feeds the inputs each loop
+from the safety bank: `dsp_force` = `+0xca` bit 4 (**decoded by our USART2 RX** —
+live), `dsp_grid` = `+0xbc` dword. `relay_set_mode()` is now called each loop with
+the published IR_STATE so PC6 tracks the live state too. Ours sim test
+`test_ac_transfer_relays_driven_live` ([`test_arm_sim_self_only.py`](../tests/test_arm_sim_self_only.py))
+drives `relay_set_transfer_inputs()`→`relay_poll()`→PA12/PB3 for all four cases.
+
 **Remaining:**
+- **`+0xbc` DSP grid-status dword is not in our USART2 tag decode yet** (reads 0 in
+  ours, so the grid-qualified transfer branch is inert live until that lands — a
+  **T05** tag-decode follow-on). The DSP **force** path works live today.
 - **ARM-local enable `d9ca` bit 3 / `d810` bit 4 provenance** still open:
   `sub_0801887c` (clocked 800×) sets `d9ca` bit 1 from config `+4` bit 9, never bit 3;
-  the other 3 `d9ca` writers don't either.
-- **Wire `inv_ac_transfer_decide()` live**: needs the safety bank's `+0xbc`/`+0xca`
-  fields populated in ours (not in our USART2 tag map yet — a **T05/T09** tag-decode
-  follow-on) and the `+0xca` "force transfer" refinement added to the pure function.
+  the other 3 `d9ca` writers don't either. So ours leaves the ARM-local enable false
+  and transfers on the DSP command (the one pinned enabler).
 - **PC5 (gen/AC-couple, `sub_08017022`)** and **PD11 (dry-contact, `sub_08035ef2`)**
   are **not** clean state→relay maps (executed decode, docs/18): PD11 only ever
   *closes* (grid/EPS `+0xc4` bit1 latch → GPIOD bit11, debounce 10/25/250); PC5 is
@@ -523,12 +535,27 @@ byte-for-byte** against the factory (`test_dischg_gate.py` `test_factory_soc_mat
 earlier note's claim) — it uses settings thresholds + the relayed SOC byte, so it has
 no T11 dependency (docs/41 "The SOC half").
 
-**Remaining:** wiring the gate verdicts into a discharge controller (none yet in
-ours — the factory consumer is the main power-control function; overlaps T14/relay +
-BMS-switch control); the HR 64-89 **time-window** schedules (charge-priority /
-forced-discharge / AC-charge-SOC are **inert / not dongle-writable** on this image,
-so they can't be configured or oracled here — blocked pending the features being
-exposed).
+**Done (combined permit controller, 2026-11-07).** `inv_dischg_permit()`
+([`src/sched/dischg_gate.c`](../src/sched/dischg_gate.c)) composes the two
+factory-verified gates per **DischgCtrlType** (HR 120 bits 4-5): mode 0 → voltage
+gate, mode 1 → SOC gate, mode 2 → voltage **AND** SOC. Both gates are stepped every
+call so their latches stay warm across a mode change. Host-tested
+([`test_dischg_gate.c`](../tests/test_dischg_gate.c), 31 checks). The two gates are
+each oracle-pinned; the mode-2 "both" AND is **ours' composition**, not separately
+pinned to the factory's combined sub-verdict (`0x2000dbc5/c6`) — noted in docs/41.
+
+**Remaining (needs infrastructure that does not exist in ours yet):**
+- **A live consumer for the permit.** Driving it live needs (a) the discharge-gate
+  **threshold HR mapping** — settings `+0x46/+0x48` (V) and `+0x4a/+0x4b` (SOC) are
+  not pinned to HR numbers in ours' settings map (unfinished config-writer RE, not in
+  docs/23), and (b) a **discharge power controller** to consume the permit (the
+  factory consumer is the main power-control function; ours has none — overlaps
+  T14/relay). The permit's inputs that ARE live in ours: battery V (bank `+0x0a`),
+  SOC (BMS/CAN), DischgCtrlType (HR 120). So the controller logic is complete and
+  verified; only the threshold source + the consumer remain.
+- The HR 64-89 **time-window** schedules (charge-priority / forced-discharge /
+  AC-charge-SOC are **inert / not dongle-writable** on this image, so they can't be
+  configured or oracled here — blocked pending the features being exposed).
 
 **Finding ([`docs/41`](41-charge-discharge-schedule-gates.md)).** The three
 schedule features' "active now" verdicts are computed by one combined ARM

@@ -23,9 +23,14 @@
 #define DSP_GRID_MODE_MASK  0x3u
 #define DSP_GRID_MODE_BAD   2u
 
-void inv_ac_transfer_decide(bool enabled, uint32_t dsp_grid,
+void inv_ac_transfer_decide(bool enabled, bool dsp_force, uint32_t dsp_grid,
                             bool *pa12, bool *pb3)
 {
+    if (dsp_force) {                 /* DSP "transfer to backup": force both closed */
+        if (pa12) *pa12 = true;
+        if (pb3)  *pb3  = true;
+        return;
+    }
     if (!enabled) {                 /* feature disabled: both contactors open */
         if (pa12) *pa12 = false;
         if (pb3)  *pb3  = false;
@@ -46,6 +51,12 @@ void inv_ac_transfer_decide(bool enabled, uint32_t dsp_grid,
 static uint16_t s_override_cmd;
 static uint8_t  s_manual;
 static uint8_t  s_mode;          /* operating mode = IR_STATE (inv/states.h) */
+
+/* Live AC-transfer inputs (T14 wiring): the ARM-local enable, the DSP force bit, and
+ * the DSP grid-status word. Default disabled -> both transfer contactors open. */
+static bool     s_transfer_enabled;
+static bool     s_transfer_force;
+static uint32_t s_transfer_grid;
 
 void relay_init(void)
 {
@@ -69,6 +80,13 @@ void relay_set_mode(uint8_t ir_state)
     s_mode = ir_state;
 }
 
+void relay_set_transfer_inputs(bool enabled, bool dsp_force, uint32_t dsp_grid)
+{
+    s_transfer_enabled = enabled;
+    s_transfer_force   = dsp_force;
+    s_transfer_grid    = dsp_grid;
+}
+
 void relay_poll(void)
 {
     if (s_manual) {                 /* manual / AutoTest override drives the transfer relays */
@@ -81,4 +99,12 @@ void relay_poll(void)
      * programming (factory sub_08016ec6 gate on IR_STATE; docs/18). */
     if (s_mode > STATE_PROGRAMMING) GPIOC->BSRR = RELAY_PC6;
     else                            GPIOC->BRR = RELAY_PC6;
+
+    /* AC transfer pair (PA12/PB3): the grid-eval decision (T14), driven from the
+     * live inputs fed by the main loop. Default inputs leave both contactors open. */
+    bool pa12, pb3;
+    inv_ac_transfer_decide(s_transfer_enabled, s_transfer_force, s_transfer_grid,
+                           &pa12, &pb3);
+    if (pa12) GPIOA->BSRR = RELAY_PA12; else GPIOA->BRR = RELAY_PA12;
+    if (pb3)  GPIOB->BSRR = RELAY_PB3;  else GPIOB->BRR = RELAY_PB3;
 }

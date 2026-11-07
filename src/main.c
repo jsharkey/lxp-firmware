@@ -449,7 +449,23 @@ int main(void) {
         }
 
         pb7_sample_poll();      /* debounced PB7 line (mirrors factory sub_0802e452) */
-        relay_poll();           /* apply AC transfer-relay state (PA12/PB3) */
+        /* Relays under the live mode (T14): the run-enable relay (PC6) follows the
+         * published operating state, and the AC-transfer pair (PA12/PB3) follows the
+         * grid-eval decision. Inputs from the safety bank: +0xca bit 4 = DSP
+         * "transfer to backup" force (decoded by our USART2 RX); +0xbc = DSP
+         * grid-status dword (not yet in our tag decode -> 0 until that lands, a
+         * T05/T09 follow-on). The ARM-local enable's source is still open (docs/18),
+         * so it is left false -- ours transfers on the DSP command. */
+        relay_set_mode((uint8_t)g_rt.input_reg[IR_STATE]);
+        {
+            uint32_t dsp_grid = (uint32_t)g_safety_bank[0xbc]
+                              | ((uint32_t)g_safety_bank[0xbd] << 8)
+                              | ((uint32_t)g_safety_bank[0xbe] << 16)
+                              | ((uint32_t)g_safety_bank[0xbf] << 24);
+            bool dsp_force = (g_safety_bank[0xca] & 0x10u) != 0;   /* +0xca bit 4 */
+            relay_set_transfer_inputs(false, dsp_force, dsp_grid);
+        }
+        relay_poll();           /* apply run-enable (PC6) + AC transfer (PA12/PB3) */
 
         /* AC-First load-priority windows vs. the wall clock (docs/25, docs/36).
          * The ARM owns the clock (g_rtc): HR 12-14 writes set it and rtc_tick()

@@ -90,6 +90,30 @@ def test_relay_follows_working_mode():
         assert _run_relay_ours(st) == 0, "ours: PC6 should be open for state 0x%02x" % st
 
 
+def _run_transfer_ours(enabled, force, grid):
+    sim = _ours()
+    sim.call("relay_set_override", (0, 0))        # not manual
+    sim.call("relay_set_mode", (0,))              # standby (PC6 path irrelevant here)
+    sim.call("relay_set_transfer_inputs", (1 if enabled else 0, 1 if force else 0, grid))
+    sim.clear_drives()
+    sim.call("relay_poll")
+    return (sim.get_output("PA12"), sim.get_output("PB3"))
+
+
+def test_ac_transfer_relays_driven_live():
+    """The AC-transfer pair (PA12/PB3) is driven live by relay_poll() from the
+    transfer inputs (T14 wiring): disabled -> both open; enabled + grid qualified
+    -> PA12 open / PB3 closed; enabled + grid not qualified -> both closed; and the
+    DSP force bit -> both closed regardless of grid. Matches inv_ac_transfer_decide()
+    and the factory oracle (tests/test_ac_transfer.py)."""
+    B20 = 1 << 20
+    assert _run_transfer_ours(False, False, 0)       == (0, 0), "disabled -> both open"
+    assert _run_transfer_ours(True,  False, B20)     == (0, 1), "enabled grid-ok -> PA12=0 PB3=1"
+    assert _run_transfer_ours(True,  False, 0)       == (1, 1), "enabled no-grid -> PA12=1 PB3=1"
+    assert _run_transfer_ours(True,  False, B20 | (2 << 29)) == (1, 1), "enabled grid-bad -> 1/1"
+    assert _run_transfer_ours(False, True,  B20)     == (1, 1), "DSP force -> both closed (overrides grid)"
+
+
 # --- SysTick-driven tick counter (our g_ticks) ------------------------------
 def test_systick_advances_tick_counter():
     """The harness has no real timer, so tick-driven firmware logic freezes after
