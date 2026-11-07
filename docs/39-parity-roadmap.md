@@ -510,7 +510,7 @@ frames off USART3.
 ## P2 — features and commands
 
 ### T12 — Identity and command registers: HR 11, HR 15, SN (HR 2-6), FW versions (HR 9-10)
-**Status:** `[ ]` · **Layer:** sim · **Depends:** T03 (persistence of addr / SN)
+**Status:** `[~] claude 2026-11-07` · **Layer:** sim · **Depends:** T03 (persistence of addr / SN)
 
 - **HR 11 ResetSetting** ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
   [`docs/23`](23-arm-config-writer.md) §Reset-to-default): find out what each
