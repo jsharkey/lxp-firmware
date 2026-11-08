@@ -26,4 +26,13 @@ DATA MENU **UPS tab**: `VepsL1N`/`VepsL2N` (L1-N/L2-N load voltage), `PepsL1N`/`
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
-_No automated test exercises this register yet — a focused test is welcome._
+- **IR 127 / 128 (EPSVoltL1N / L2N):** live safety-bank mirrors (`+0x30` / `+0x32`),
+  served verbatim. In the shared `SAFETY_TELEMETRY` contract
+  ([`arm_sim_contract.py`](../../../tests/arm_sim_contract.py)) and asserted ours==factory
+  by `test_safety_cpu_telemetry_reaches_modbus` and the per-image
+  `test_arm_sim_self_only.py` / `test_arm_sim_factory_only.py` sweeps (T27). Our
+  firmware serves them from the bank in [`safety_cpu.c`](../../../src/safety/safety_cpu.c)
+  (`PUT(IR_EPS_VOLT_L1N/L2N, +0x30/+0x32)`); verified on ceaa-07xx.
+- **IR 129-138 (Peps / Seps / Eeps L1N/L2N):** ARM-computed / accumulated per leg —
+  like the gen power/energy (IR 123-125), these need the EPS power path + accumulator
+  exercised, not reachable through telemetry ingest alone. A characterized hand-off.

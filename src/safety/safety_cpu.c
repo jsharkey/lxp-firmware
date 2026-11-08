@@ -86,6 +86,11 @@ void safety_cpu_publish(uint16_t *input_reg, uint16_t n)
      * image, so IR 121 == IR 13. Empirically confirmed on ceaa-07xx -- feeding a
      * USART2 tag-2 frame makes both read the fed grid_s value (T26, docs/33). */
     PUT(IR_GEN_VOLT, bank_u16(SAFETY_OFF_VAC_S));
+    /* EPS split-phase output voltages (IR 127/128): per-leg L1-N / L2-N, the detail
+     * of the aggregate EPS output (IR 20/21). Live USART2 bank words +0x30/+0x32,
+     * served verbatim; confirmed on ceaa-07xx (T27, docs/33). */
+    PUT(IR_EPS_VOLT_L1N, bank_u16(SAFETY_OFF_EPS_L1N));
+    PUT(IR_EPS_VOLT_L2N, bank_u16(SAFETY_OFF_EPS_L2N));
 
     /* Inverter current RMS: the factory getter scales the bank field x10. */
     PUT(IR_IINV_RMS, (uint16_t)(bank_u16(SAFETY_OFF_IINV) * 10u));
