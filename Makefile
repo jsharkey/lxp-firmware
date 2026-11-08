@@ -202,6 +202,9 @@ SIM_DGATE       = python3 tests/test_dischg_gate.py $(if $(HAVE_FACTORY),$(FACTO
 # AC-transfer relay decision: factory oracle (sub_08018a7c) vs the T14 spec; ours'
 # pure inv_ac_transfer_decide() is covered by the host test test_ac_transfer.c.
 SIM_ACXFER      = python3 tests/test_ac_transfer.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
+# PD11 dry-contact relay debounce: factory timing micro-test (sub_08035ef2). No ours
+# reimplementation -- it is a change/debounce behaviour, not a state->relay map (T14).
+SIM_RLYDEB      = python3 tests/test_relay_debounce.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
 # Generator-charge-by-voltage hysteresis gate: factory oracle (sub_08035050) vs the
 # T16 spec; ours' pure inv_gen_charge_volt_gate() is covered by test_gen_charge.c.
 SIM_GCHG        = python3 tests/test_gen_charge.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),)
@@ -241,7 +244,7 @@ factory-coverage: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(FACTORY_BIN)
 # never hides the blocks after it. Each file @-prints its own banner header,
 # which stays the sole block delimiter (the recipes are @-silent).
 test-sim-ours: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf
-	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; $(SIM_ENERGY) || rc=1; $(SIM_WRSEM) || rc=1; $(SIM_TELEM) || rc=1; $(SIM_DSPRX) || rc=1; $(SIM_CANTX) || rc=1; $(SIM_DGATE) || rc=1; $(SIM_ACXFER) || rc=1; $(SIM_GCHG) || rc=1; exit $$rc
+	@rc=0; $(SIM_OURS_COMMON) || rc=1; $(SIM_OURS_SELF) || rc=1; $(SIM_PUSH) || rc=1; $(SIM_ENERGY) || rc=1; $(SIM_WRSEM) || rc=1; $(SIM_TELEM) || rc=1; $(SIM_DSPRX) || rc=1; $(SIM_CANTX) || rc=1; $(SIM_DGATE) || rc=1; $(SIM_ACXFER) || rc=1; $(SIM_RLYDEB) || rc=1; $(SIM_GCHG) || rc=1; exit $$rc
 
 test-sim-factory: $(FACTORY_BIN)
 	@rc=0; $(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; exit $$rc
@@ -274,6 +277,7 @@ test-sim: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),$(F
 	$(SIM_CANTX) || rc=1; \
 	$(SIM_DGATE) || rc=1; \
 	$(SIM_ACXFER) || rc=1; \
+	$(SIM_RLYDEB) || rc=1; \
 	$(SIM_GCHG) || rc=1; \
 	$(if $(HAVE_FACTORY),$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1;,echo "# test-sim: no factory image (set LXP_FACTORY_HEX=... or 'make factory'); ran ours only";) \
 	exit $$rc

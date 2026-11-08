@@ -422,7 +422,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** 🚧 `[~] claude 2026-11-07` — **AC-transfer (PA12/PB3) cracked + reimplemented + factory-verified + WIRED LIVE** (incl. the DSP force bit); run-enable (PC6) now follows live IR_STATE in the loop; gen/AC-couple (PC5) + dry-contact (PD11) are debounce-timing micro-tests (not vector tables); `d9ca` bit-3 enable *provenance* **resolved via T16** (= generator-charge-active, see docs/18), `d810` bit 4 + the `+0xbc` tag-decode remain · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
+**Status:** `[~] claude 2026-11-08` — **AC-transfer (PA12/PB3) cracked + reimplemented + factory-verified + WIRED LIVE** (incl. DSP force bit); PC6 follows live IR_STATE; **PD11 debounce micro-tested**, PC5 characterized. Enable `d9ca` bit 3 **resolved via T16** (= generator-charge-active, docs/18). The remainders are **external blockers**, not ours' logic: `+0xbc` grid word has no pinned USART2 source (not a tag field), and `d810` bit 4's provenance is open · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
 
 **Done (AC-transfer pair, 2026-11-07).** Cracked the T14a prerequisite the prior
 attempt was stuck on: the AC-transfer enable is **`0x2000d9ca` bit 3 OR `0x2000d810`
@@ -468,19 +468,28 @@ the published IR_STATE so PC6 tracks the live state too. Ours sim test
 drives `relay_set_transfer_inputs()`→`relay_poll()`→PA12/PB3 for all four cases.
 
 **Remaining:**
-- **`+0xbc` DSP grid-status dword is not in our USART2 tag decode yet** (reads 0 in
-  ours, so the grid-qualified transfer branch is inert live until that lands — a
-  **T05** tag-decode follow-on). The DSP **force** path works live today.
-- **ARM-local enable `d9ca` bit 3 / `d810` bit 4 provenance** still open:
-  `sub_0801887c` (clocked 800×) sets `d9ca` bit 1 from config `+4` bit 9, never bit 3;
-  the other 3 `d9ca` writers don't either. So ours leaves the ARM-local enable false
-  and transfers on the DSP command (the one pinned enabler).
-- **PC5 (gen/AC-couple, `sub_08017022`)** and **PD11 (dry-contact, `sub_08035ef2`)**
-  are **not** clean state→relay maps (executed decode, docs/18): PD11 only ever
-  *closes* (grid/EPS `+0xc4` bit1 latch → GPIOD bit11, debounce 10/25/250); PC5 is
-  state-*change*-triggered behind a long debounce (`0x2000daae`). Their content is
-  debounce timing (micro-test), not a vector table — so no oracle-vector
-  reimplementation like the transfer pair.
+- **`+0xbc` DSP grid-status dword — source not pinned (blocker, 2026-11-08).** It is
+  **not** one of the USART2 tag records (tags 0-4, docs/33 §1a don't write `+0xbc`),
+  so it can't simply be added to our tag decode; it is a DSP status dword (also served
+  to IR 90/91) whose USART2 relay path, if any, is unpinned — so it reads 0 in ours and
+  the grid-qualified transfer branch stays inert live. The DSP **force** path (`+0xca`
+  bit 4, a real tag field) works live today. Pinning `+0xbc`'s source is the one
+  remaining unlock for the grid branch.
+- **ARM-local enable provenance:** `d9ca` bit 3 is **resolved via T16** — it is the
+  *generator-charge-active* flag (docs/18, docs/39 T16). `d810` bit 4's provenance is
+  still open (`sub_0801887c`, clocked 800×, sets `d9ca` bit 1 from config `+4` bit 9,
+  never bit 3/4). Ours leaves the ARM-local enable false and transfers on the DSP
+  command (the pinned enabler); the generator-charge enable can be wired from T16's
+  flag once ours tracks it.
+- **PD11 (dry-contact, `sub_08035ef2`) — micro-tested (done, 2026-11-08).**
+  [`test_relay_debounce.py`](../tests/test_relay_debounce.py) locks it: PD11 closes
+  at **tick 10** (`+0xc4` bit 1 set, d9c8-bit10 latch) and **tick 25** (bit clear,
+  da3a-bit1 path), only ever *closing* (GPIOD bit 11 via `sub_08033556`). It is a
+  debounce behaviour, not a state→relay map, so ours mirrors no verdict table for it.
+- **PC5 (gen/AC-couple, `sub_08017022`) — characterized (executed decode, docs/18).**
+  State-*change*-triggered behind a ~1501-tick debounce (`0x2000daae`); like PD11 a
+  timing behaviour, not a vector table. Left at the decode level (deterministic
+  isolation-drive of a 1501-tick state-change is low value vs. PD11).
 
 [`docs/18`](18-power-path-relays.md) names 6 relay pins and 4 logic functions;
 we mirror 2 contracts (run-enable PC6, manual override PA12/PB3). The rest is
@@ -499,7 +508,7 @@ missing:
 > debounce *sequencing* are the remaining pieces, with PC5/PD11 next.
 
 ### T15 — Charge/discharge schedules with SOC/voltage gates (HR 64-89, 158-169)
-**Status:** 🚧 `[~] claude 2026-11-07` — **discharge-by-voltage AND discharge-by-SOC hysteresis gates cracked + reimplemented + factory-verified**; discharge-controller wiring + HR 64-89 window schedules remain ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
+**Status:** `[~] claude 2026-11-08` — **discharge-by-voltage AND discharge-by-SOC gates + the combined permit controller cracked + reimplemented + factory-verified**. The remaining wiring is **blocked by the image's config surface, not ours**: the discharge-gate thresholds have no dongle HR (writer-map gap HR 73→147) and there is no discharge-power consumer in ours (BMS `0x35C` switch-TX unpinned). HR 64-89 windows are inert on this image ([`docs/41`](41-charge-discharge-schedule-gates.md)) · **Layer:** **micro (window × SOC × V boundaries)** + sim · **Independent**
 
 **Done (voltage gate, 2026-11-07).** The discharge-control gate (HR 120
 **DischgCtrlType**) by-voltage path is a **latched hysteresis** on battery
@@ -544,15 +553,23 @@ call so their latches stay warm across a mode change. Host-tested
 each oracle-pinned; the mode-2 "both" AND is **ours' composition**, not separately
 pinned to the factory's combined sub-verdict (`0x2000dbc5/c6`) — noted in docs/41.
 
-**Remaining (needs infrastructure that does not exist in ours yet):**
-- **A live consumer for the permit.** Driving it live needs (a) the discharge-gate
-  **threshold HR mapping** — settings `+0x46/+0x48` (V) and `+0x4a/+0x4b` (SOC) are
-  not pinned to HR numbers in ours' settings map (unfinished config-writer RE, not in
-  docs/23), and (b) a **discharge power controller** to consume the permit (the
-  factory consumer is the main power-control function; ours has none — overlaps
-  T14/relay). The permit's inputs that ARE live in ours: battery V (bank `+0x0a`),
-  SOC (BMS/CAN), DischgCtrlType (HR 120). So the controller logic is complete and
-  verified; only the threshold source + the consumer remain.
+**Remaining — blocked by the image's config surface, NOT by ours (2026-11-08):**
+- **The discharge-gate thresholds are not dongle-writable on this image.** The config
+  writer's HR→offset field map (docs/23) jumps from HR 73 (`+0x44`) straight to HR 147
+  (`+0x70`) / HR 152 (`+0x64`): **no dongle HR maps to `+0x46/+0x48` (V) or
+  `+0x4a/+0x4b` (SOC)**. So the discharge-control hysteresis thresholds are internal
+  settings with no register to write them over the dongle (the same class as HR 67 /
+  74-89 being inert here). Ours can't source configurable thresholds because the
+  factory doesn't expose them on this firmware. (The EG4 PDF's HR 158-169 are the
+  **AC-charge / BatLow** thresholds — ACChgStartVolt etc. — a different feature, not
+  these.)
+- **No consumer for the permit in ours.** The factory consumes the discharge verdict
+  in its main power-control function; ours has **no discharge power controller**, and
+  the BMS discharge-switch command TX (`0x35C` payload) is itself unpinned (docs/20),
+  so there is no actuator to gate. The permit's live inputs (battery V bank `+0x0a`,
+  SOC from BMS/CAN, DischgCtrlType HR 120) are all present; only the threshold source
+  and the consumer are absent, and both are external blockers. **The controller logic
+  is complete and verified** — this is as far as the image allows.
 - The HR 64-89 **time-window** schedules (charge-priority / forced-discharge /
   AC-charge-SOC are **inert / not dongle-writable** on this image, so they can't be
   configured or oracled here — blocked pending the features being exposed).

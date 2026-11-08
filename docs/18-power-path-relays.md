@@ -161,6 +161,13 @@ Driven **together**, which is the signature of the grid/EPS transfer switch.
 - **Name (reasoned):** **EPS/backup or load-control relay** — or the user
   **dry-contact**. Given it only closes here, a normally-closed interpretation fits.
 - **Confidence:** low-medium (role); the debounce structure is pinned.
+- **Micro-test (locked, T14):** [`test_relay_debounce.py`](../tests/test_relay_debounce.py)
+  (`make test-sim`) drives `sub_08035ef2` in isolation and confirms PD11 closes at
+  **tick 10** with `+0xc4` bit 1 **set** (d9c8-bit10 latch) and at **tick 25** with
+  it **clear** (da3a-bit1 path) — the "only ever closes" decode, as a regression lock.
+  PC5 (`sub_08017022`) is left at the executed-decode level above (state-*change*
+  triggered behind a ~1501-tick debounce — harder to drive deterministically and
+  lower value, since like PD11 it is a timing behaviour, not a state→relay map).
 
 ## Authoritative summary
 
