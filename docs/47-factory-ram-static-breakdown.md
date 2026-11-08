@@ -8,7 +8,8 @@ static `.data+.bss` (`0x20000000`–`0x2000dbd8`) vs our ~4.3 KB — **what is t
 
 **Bottom line:** the gap is **whole features we haven't built**, not shrunken
 copies of buffers we have. The biggest consumers are a ~12 KB SPI-flash
-update/decode staging area, a ~11 KB cluster of HMI/display/fault buffers, a
+update/decode staging area (fully decoded in [`docs/48`](48-arm-spiflash-update-staging.md),
+with a plan to do it in ~1–2 KB), a ~11 KB cluster of HMI/display/fault buffers, a
 4 KB CAN-frame log, and ~4 KB of DSP-link buffers. Our I/O rings are **as large
 or larger** than the factory's equivalents, with one thing to watch (CAN burst
 buffering — see below).

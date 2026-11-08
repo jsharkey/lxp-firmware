@@ -811,6 +811,43 @@ IR 0 = `0x02`. Needed eventually so that field updates of the DSP keep working
 under our firmware. Our own ARM update path (the bootloader layout in docs/11)
 is a separate, later question.
 
+### T28 — SPI-flash decode/update staging (the factory's ~12 KB path)
+**Status:** ⬜ `[ ]` · **Layer:** micro (codec + framer) + driver · **Depends:** T18 (update context), the bootloader side of [`docs/43`](43-firmware-update-bootloader.md) · **Independent of the register parity work.** See [`docs/48`](48-arm-spiflash-update-staging.md).
+
+The factory ARM App reads a **compressed blob from external SPI flash, LZSS-decodes
+it, and writes the decoded bytes back to SPI flash** — `sub_08036d68`, the single
+biggest static-RAM consumer (~12 KB: an 8 KB compressed-read buffer + a 4 KB decode
+output). It is the decompress-**staging** step that prepares a field update (the
+dongle delivers the compressed image over RS-485 Modbus, ARM = slave; delivery is
+paced/ACKed/retried by the dongle for free). Fully decoded in [`docs/48`](48-arm-spiflash-update-staging.md):
+chunk framer (4-byte `clen`/`dlen` header, 10-chunk loop, end marker, `decoded==dlen`
+check), two LZSS variants (format = header byte's top 3 bits), bit-banged SPI target.
+
+**Decide first: interop vs own path** (sets everything below):
+- **Interop** — accept EG4's official compressed update images: must implement both
+  LZSS variants + the exact chunk framer. Window ≤ 4 KB (their packer's).
+- **Own path** — our own update tool/format: can skip LZSS and stream raw 256 B pages
+  (near-zero RAM); no factory-image compatibility.
+
+**Implementation sub-tasks (interop build):**
+1. **Bit-banged SPI-flash driver** — read / 256 B page-program / sector-erase for the
+   external chip (`0x40010800` GPIO block; model the pins from [`docs/16`](16-arm-io-map.md)).
+2. **The two LZSS decoders** — pure, host-testable functions; oracle them against the
+   factory `sub_08038950` / `sub_08038aba` on sample chunks (contract-parity like the
+   gate/telemetry contracts).
+3. **The chunk framer** `sub_08036d68` — pure stepper over (header, decode, program),
+   host-tested; sim-oracle the loop + integrity check.
+4. **Wire the trigger** (`sub_08036d68` is dispatched indirectly — pin the command
+   that starts it; relates to T18 / the `State = Programming` path).
+
+**Buffer-reduction (the point of this card — do NOT copy the 12 KB blindly):**
+- **Stream the compressed input** → the 8 KB read buffer becomes a 256 B–1 KB window
+  (the decoder consumes input forward-only). ~7 KB saved, works for factory images.
+- **Page-flush the decode output** as the LZSS window slides → output ≈ max-match-
+  distance + one page, not the whole 4 KB chunk.
+- Target: **~1–2 KB total** for the interop build (vs 12 KB), or **~256 B** for an own
+  raw-page path. See [`docs/48`](48-arm-spiflash-update-staging.md) §"Can we use less".
+
 ### T19 — Grid self-test (AutoTest, HR 98 / IR 71-75), parallel systems (HR 112-114, IR 113), AFCI (IR 140-152)
 **Status:** ⬜ `[ ]` · Mostly hybrid/region-specific and likely inactive on a
 standalone 12000XP. First **prove whether each one is live on `ceaa-07xx`**
