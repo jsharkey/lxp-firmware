@@ -736,33 +736,6 @@ which is a natural micro-test), #9 battery warning buzzer (find the GPIO via
 Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
 
-### T26 — Document + test the spec-only (`idx`) registers
-**Status:** 🚧 `[~] claude 2026-11-08` — generator-telemetry IR group **121-126 done** (IR 121 cracked + served + tested this round; 122/126-bit8 already had tests; 123/124/125 characterized hand-off); other register groups still open, one agent per group · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
-
-**Generator-telemetry IR group (2026-11-08).** Empirically characterized IR 121-126 on
-the canonical 07 image (boot RTOS + USART2 tag-2 feed, read IRs). Key finding: **IR 121
-(GenVolt) is a live mirror of IR 13 (VacS)** — both served from safety bank `+0x28`
-(the gen input shares the grid S-phase sense), *proving* the doc's prior inference.
-Added the mirror to our firmware (`safety_cpu.c` `PUT(IR_GEN_VOLT, +0x28)`) and a
-both-images test `test_gen_volt_mirrors_grid_s`. IR 123/124/125 (gen power/energy) are
-ARM-computed/accumulated — read 0 / persisted on a quiescent image, so a parity test
-needs the gen-charge path + energy accumulator active (characterized in
-[`IR121_126-generator.md`](wiring/ARM-UART5-dongle/IR121_126-generator.md), hand-off).
-
-These spec registers have **no file** in `ARM-UART5-dongle/` and no test:
-**HR** 63, 92-97, 104, 106-109, 114-119, 121-125, 132-144, 149-151, 158-193;
-**IR** 108-112. Some of them are **already persisted** by T03 (HR 107,
-109, 119, 151) without a doc. For each group:
-1. find the factory getter/setter case;
-2. classify it as live / persisted / pushed to DSP / dormant (T23 and T25
-   give most of this);
-3. write the register file in the house format (meaning, provenance,
-   side-effects, `## Test coverage`);
-4. add it to the T24 vectors.
-
-HR 158-169 overlaps T15 and HR 170-193 overlaps T19. Coordinate through those
-cards rather than duplicating. AFCI IR 140-152 stays with T19.
-
 ### T27 — Input registers that still have no test
 **Status:** ⬜ `[ ]` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
 
@@ -1306,3 +1279,34 @@ schedule (a separate factory-dongle harness — not T02, which is done).
   `test_w008_tracks_relayed_peer_identity`). **Open (→ T06b):** how that health bit
   gates into the Modbus WarningCode is not yet pinned (it does not surface in the bare
   harness). Decisions recorded in [`docs/31`](31-factory-quirks.md).
+
+### T26 — Document + test the spec-only (`idx`) registers
+**Status:** ✅ `[x] claude 2026-11-08` — every spec-only (`idx`) register in T26's own scope now has a house-format doc + classification + parity coverage; the T15/T19 overlaps are carved out to those cards · **Layer:** RE + sim · **Independent** (was split by group)
+
+**Done.** Every `idx` register the card listed (outside the explicit T15/T19 carve-out)
+now has a doc under [`docs/wiring/ARM-UART5-dongle/`](wiring/ARM-UART5-dongle/registers.md),
+classified from the T23 whole-surface sweep (the card's step 2) and the register index,
+with a `## Test coverage` section. New docs this task:
+
+- **Generator telemetry IR 121-126** — **IR 121 (GenVolt) cracked = a live mirror of
+  IR 13 (VacS)** (safety bank `+0x28`), served in ours (`safety_cpu.c`) + tested on both
+  images (`test_gen_volt_mirrors_grid_s`); IR 123/124/125 (gen power/energy)
+  characterized as ARM-computed/accumulated (hand-off). [`IR121_126-generator.md`](wiring/ARM-UART5-dongle/IR121_126-generator.md)
+- **HR 63** PowerSoftStartSlope · **HR 92-97** reactive PF/Q(V) curve · **HR 104**
+  DischgChgSWCMD command · **HR 106-109** lead-acid temp limits (HR107/109 persisted) ·
+  **HR 114-119** ClearFunction + derates (HR119 persisted) · **HR 121-125** Q2_QV /
+  OVFDerateEnd / SOCLowLimitForEPS · **HR 132-143** BatCell/derate + hi-res
+  PowerPercentCMD · **HR 149-151** lead-acid equalization (HR151 persisted).
+- **IR 108-112** aux temperatures — **dormant** (read 0 on both images, verified via the
+  RTOS-harness probe; `IR_T1` wired nowhere, BMS temp lands on IR 105/67); pinned by
+  `test_aux_temp_regs_dormant`. [`IR108_112-aux-temps-dormant.md`](wiring/ARM-UART5-dongle/IR108_112-aux-temps-dormant.md)
+
+All linked from the [register index](wiring/ARM-UART5-dongle/registers.md) (every
+remaining `idx` row there is now only a T15/T19 overlap). `reg_coverage --check` green
+(the T03 persistence coverage for HR 107/109/119/151 is recorded in the new docs).
+
+**Carve-out (not T26's, tracked elsewhere, per the card):** HR 158-169 → **T15**;
+HR 170-193 → **T19**; AFCI IR 140-152 → **T19**. **Follow-on hand-offs** (enhancements,
+not doc gaps): add the default-off settings (HR 63, 92-97, 106/108, 114-118, 121/124/125,
+132-143, 149/150) to the T03/T24 vectors, and behavioural tests for the command
+registers (HR 104, 114) and the ARM-computed gen power/energy (IR 123-125).
