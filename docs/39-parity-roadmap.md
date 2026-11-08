@@ -358,7 +358,7 @@ rejected; `make test` + common sim green.
   still needs a write-multiple (`0x10`) master the harness lacks; carried below.
 
 #### T24c — SN (HR 2-6) write-multiple round-trip
-**Status:** ⬜ `[ ]` · **Layer:** sim · **Depends:** a `0x10` (write-multiple) harness master
+**Status:** 🟡 `[~] claude/019chjb 2026-11-08` · **Layer:** sim · **Depends:** a `0x10` (write-multiple) harness master
 
 Add a write-multiple master to `arm_sim_modbus.py`, then a test that sets the SN via
 `0x10`, reads it back (HR 2-6), cold-boots, and confirms it persists — the identity
