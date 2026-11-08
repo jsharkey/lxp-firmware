@@ -752,7 +752,19 @@ register/setting located, a factory oracle, then ours.
   **debug-trace** table (with `Fgrid`/`Vgen`/`Pinv`/`Run_Trace`…), not clean Modbus
   registers, so the monitoring IRs for them still need a separate source hunt. Lower
   priority than the register features.
-- **#6 Quick Charge**, **#9 buzzer** — not started.
+- **#6 Quick Charge** (`Quick Charge Start`, `System Charge SOC/Volt Limit`) — **not
+  spec-mapped.** The EG4 protocol register table (lxp-factory) runs to HR 198 and its
+  170-198 slots are SOCCurve / grid-support (VoltWatt/QV/QP) / gen-charge — none of the
+  Quick/System-Charge labels appear. So, like the gen-timers (T16), these need the HMI
+  menu→HR dispatch unwound or a write-probe sweep of the unmapped HRs to locate them;
+  no spec shortcut. (The #7 BatLow set, by contrast, *was* in the spec at 162-165.)
+  **Starting point (read-sweep, 2026-11-08):** the appended 07-new block is live at
+  **HR ≈199-254** on `ceaa-07xx` — e.g. HR 201=595, 213=540, 214=480, 222=500, 228=595
+  (voltage-shaped, 0.1 V) and 215=90 / 216=60 / 220=50 / 221=90 / 227=101 (SOC-shaped,
+  %). Next pass: write-probe these for store offset + dongle verdict and correlate with
+  the settings-menu order to pin `System Charge Volt/SOC Limit` and `Quick Charge Start`.
+- **#9 buzzer** (`Buzzer On ExCfg Enable`) — not started; needs the enable HR + the
+  buzzer GPIO (docs/16) + the warning trigger. GPIO is RTOS-driven (harder oracle).
 
 ### T27 — Input registers that still have no test
 **Status:** 🚧 `[~] claude 2026-11-08` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
