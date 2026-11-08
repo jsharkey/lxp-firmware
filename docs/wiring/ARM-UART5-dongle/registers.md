@@ -118,7 +118,7 @@ RE-traced; `rsvd` = reserved/unused.
 | 81-106 | BMS block | various | battery data over CAN1 | [→](IR081_106-BMS.md) |
 | 107 | BatVoltSample_INV | 0.1 V | inverter-side battery sample | [→](IR107-BatVoltSample_INV.md) |
 | 108-112 | T1 (aux temps) | 0.1 °C | 12K BT temperature — dormant | [→](IR108_112-aux-temps-dormant.md) |
-| 109-112 | T2-T5 | 0.1 °C | reserved | idx |
+| 109-112 | T2-T5 | 0.1 °C | reserved — dormant | [→](IR108_112-aux-temps-dormant.md) |
 | 113 | ParallelInfo | — | master/slave, phase, parallel count | [→](IR113-ParallelInfo.md) |
 | 114-119 | — | | rsvd | — |
 | 120 | VBusP | 0.1 V | half-bus voltage | [→](IR120-VBusP.md) |
@@ -149,7 +149,7 @@ RE-traced; `rsvd` = reserved/unused.
 | 22 | StartPVVolt | 0.1 V (900-5000) | PV start voltage | [→](HR022-StartPVVolt.md) |
 | 23-24 | ConnectTime / ReconnectTime | s | grid connect / reconnect wait | [→](HR023_024-ConnectTime_ReconnectTime.md) |
 | 25-62 | grid-code protection + reactive (V/F levels, Q(V), PF) | per grid code | protection curves | [→](HR025_062-grid-protection.md) |
-| 63 | PowerSoftStartSlope | ‰/min | loading rate | idx |
+| 63 | PowerSoftStartSlope | ‰/min | loading rate | [→](HR063-PowerSoftStartSlope.md) |
 | 64-89 | AC-charge / charge-priority / forced-discharge schedule | % / hour\|min | 3 features × (power, SOC, 3 windows) | [→](HR064_089-charge-discharge-schedule.md) |
 | 90-91 | EPSVoltageSet / EPSFreqSet | 1V / 1Hz | off-grid output V/F | [→](HR090_091-EPS-output.md) |
 | 92-97 | PF/Q(V) lock-in/out, delay | — | reactive-curve params | [→](HR092_097-reactive-power-curve.md) |
@@ -174,7 +174,7 @@ RE-traced; `rsvd` = reserved/unused.
 | 145 | OutputPrioConfig | 0-3 | 0 bat-first / 1 PV-first / 2 AC-first | [→](HR145-OutputPrioConfig.md) |
 | 146 | LineMode | 0-2 | APL / UPS / GEN | [→](HR146-LineMode.md) |
 | 147-148 | Battery capacity / nominal voltage | Ah / 0.1 V | unmatched batteries | [→](HR147_148-battery-capacity.md) |
-| 149-151 | Equalization volt/interval/time | — | lead-acid equalization | idx |
+| 149-151 | Equalization volt/interval/time | — | lead-acid equalization | [→](HR149_151-equalization.md) |
 | 152-157 | AC-First load time windows | hour\|min | 3 AC-First windows | [→](HR152_157-ACFirst-windows.md) |
 | 158-169 | ACChg by V/SOC, bat-low protection, OngridEOD | — | battery/AC-charge thresholds | idx |
 | 170-193 | SOCCurve, grid/gen power caps, FunctionEn2, VoltWatt/QV/QP | — | advanced curves | idx |
