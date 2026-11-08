@@ -40,7 +40,7 @@ OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
 CPU     := -mcpu=cortex-m3 -mthumb
 CFLAGS  := $(CPU) -std=c11 -Og -g3 -ffunction-sections -fdata-sections \
-           -Wall -Wextra -Iinclude $(VARIANT_DEF)
+           -Wall -Wextra -Iinclude $(VARIANT_DEF) -MMD -MP
 LDFLAGS := $(CPU) -T$(LDSCRIPT) -nostartfiles -Wl,--gc-sections \
            -Wl,-Map=$(BUILD)/$(TARGET).map --specs=nano.specs --specs=nosys.specs
 
@@ -52,6 +52,11 @@ $(BUILD)/%.o: src/%.c | $(BUILD)
 
 $(BUILD)/$(TARGET).elf: $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
+
+# Header dependencies: -MMD/-MP (CFLAGS) emit a .d per object listing the headers
+# it included, so editing a header (e.g. include/inv/settings_map.h) rebuilds every
+# object that uses it. Without this a header-only change silently left stale .o's.
+-include $(OBJS:.o=.d)
 
 $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
