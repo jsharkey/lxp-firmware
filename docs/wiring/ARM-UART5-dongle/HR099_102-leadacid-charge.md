@@ -44,7 +44,10 @@ _Tests that exercise these registers. **Keep this list current when you add or c
   [`wrsem_expected.py`](../../../tests/wrsem_expected.py)) found the factory enforces
   `400-499` (rejects the spec's 500); ours replicates it (host boundaries in
   [`test_settings_validate.c`](../../../tests/test_settings_validate.c)). HR 99 is
-  validated one-sided (accepts below 500, max 590 — see the sweep).
+  validated one-sided (accepts below 500, max 590 — see the sweep). **DSP push
+  (T25/T10):** HR 100 also lands in config-frame **block 0 @0x21** (BE16, 0.1 V) —
+  the byte the old block-0 map read as a constant `0x01a4`=420 is really this
+  setting's default; ours emits it (`GRID_PUSH`, locked in `test_dsp_config.c`).
 - **HR 144 (FloatVolt):** the factory rejects *every* probed value in the bare-boot
   state (precondition-gated, docs/31 Q11), so ours stays permissive — a recorded
   `OURS_DEVIATIONS` entry, not yet pinned.

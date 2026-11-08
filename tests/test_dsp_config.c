@@ -72,15 +72,18 @@ int main(void)
     memset(holding, 0, sizeof holding);
     holding[HR_SYS_ENABLE]       = 0x00A5;  /* 0x19 = 0xA5 & 0xFE = 0xA4            */
     holding[HR_EPS_VOLT_SET]     = 240;     /* volt sel 3 ...                      */
-    holding[HR_EPS_FREQ_SET]     = 60;      /* ... | 0x08 -> 0x1a = 0x0B           */
+    holding[HR_EPS_FREQ_SET]     = 60;      /* ... | 0x08 ...                      */
+    holding[HR_LINE_MODE]        = 1;       /* ... | 0x20 (UPS) -> 0x1a = 0x2B     */
     holding[HR_FUNCTION_EN1]     = 0x0081;  /* bit0->0x80, bit7->0x10 (bit3 = none) */
     holding[HR_SET_SYSTEM_TYPE]  = 1;       /* bit0 -> 0x08; 0x1c = 0x90|0x08       */
     holding[HR_OUTPUT_PRIO_CFG]  = 2;       /* 0x1e = 2                            */
+    holding[HR_CUT_VOLT_DISCHG]  = 420;     /* 0x21:0x22 = 0x01a4                  */
     holding[HR_PV_INPUT_MODEL]   = 4;       /* 0x28 = 4                            */
     holding[HR_FUNC_EN]          = 0x0002;  /* bit1 -> 0x10; 0x2c = 0x10           */
     dsp_build_config_frame(&src, 0, f, sizeof f);
     CHECK(f[0x19] == 0xA4, "block0 0x19 = SYS_ENABLE & 0xFE");
-    CHECK(f[0x1a] == 0x0B, "block0 0x1a = EPS volt-sel(240)=3 | 60Hz 0x08");
+    CHECK(f[0x1a] == 0x2B, "block0 0x1a = EPS volt-sel(240)=3 | 60Hz 0x08 | UPS 0x20");
+    CHECK(f[0x21] == 0x01 && f[0x22] == 0xA4, "block0 0x21:0x22 = CUT_VOLT_DISCHG 420");
     /* 0x1c = FUNCTION_EN1(b0,b7) | systype b0 0x08. The factory's 0x02 "FuncEn-
      * unconfigured" latch clears on the first HR 21 write; we are always configured
      * so we omit it -- byte-exact in the configured state (see the ABS check). */

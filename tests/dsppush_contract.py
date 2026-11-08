@@ -80,6 +80,12 @@ GRID_PUSH = {
     112: (0, 0x1c, 1),   # HR_SET_SYSTEM_TYPE -> 0x1c (bit0 -> 0x08) [+ block 3]
     20:  (0, 0x28, 1),   # HR_PV_INPUT_MODEL  -> 0x28 (direct)
     21:  (0, 0x2c, 1),   # HR_FUNC_EN         -> 0x2c (bit remap)
+    # Found by resolving the T25 1-value registers (storing pairs that the original
+    # sweep's A/B missed): HR 100 cut-voltage (the old "constant" 0x21:0x22) and
+    # HR 146 LINE_MODE's UPS bit in the 0x1a pack. HR 100 is a u16 but 0x21 stays
+    # 0x01 across 400-420, so only 0x22 moves.
+    100: (0, 0x22, 1),   # HR_CUT_VOLT_DISCHG -> 0x21:0x22 (0.1 V); 0x22 low byte moves
+    146: (0, 0x1a, 1),   # HR_LINE_MODE       -> 0x1a bit 0x20 (UPS)
 }
 # (A, B) write values per register: two valid, distinct in-range values that flip
 # the asserted byte(s) without tripping a clamp (start-V/end-V stay ordered) and
@@ -88,7 +94,7 @@ GRID_AB = {
     101: (20, 100), 102: (20, 100), 99: (510, 560), 105: (20, 80), 103: (10, 80),
     194: (400, 450), 195: (500, 560), 196: (10, 80), 197: (30, 90), 198: (20, 50),
     120: (2, 8), 90: (208, 240), 91: (50, 60), 110: (0, 1), 112: (0, 1),
-    20: (1, 2), 21: (0, 2),
+    20: (1, 2), 21: (0, 2), 100: (400, 420), 146: (0, 1),
 }
 
 # --- absolute cross-image check (T10) ----------------------------------------

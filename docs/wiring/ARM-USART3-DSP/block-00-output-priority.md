@@ -106,9 +106,10 @@ shows as the low byte of a BE16 word:
 | frame | DSP word | source → transform |
 |---|---|---|
 | `0x19` | `0xAD83` hi | **HR 120** `SYS_ENABLE` `& 0xFE` (bit0 cleared) |
-| `0x1a` | `0xAD83` lo | **HR 90** EPS-volt enum `{208→0, 277→1, 230→2, 240→3}` \| **HR 91** (`== 60 ? 0x08`) |
+| `0x1a` | `0xAD83` lo | **HR 90** EPS-volt enum `{208→0, 277→1, 230→2, 240→3}` \| **HR 91** (`== 60 ? 0x08`) \| **HR 146** `LINE_MODE` (`== 1 UPS ? 0x20`) |
 | `0x1c` | `0xAD84` lo | `0x02` base\* \| **HR 110** `FUNCTION_EN1` remap `{b0→0x80, b7→0x10, b10→0x20}` \| **HR 112** `SET_SYSTEM_TYPE` `b0→0x08` (= AC-charge enable) |
 | `0x1e` | `0xADA8` | **HR 145** `OUTPUT_PRIO_CFG` (static; HR 145 stores only its default live) |
+| `0x21` | — | **HR 100** `CUT_VOLT_DISCHG` (BE16, 0.1 V) — T25 1-value resolution; the old "constant" `0x01a4` |
 | `0x28` | `0xAD8D` | **HR 20** `PV_INPUT_MODEL` (direct) |
 | `0x2c` | `0xAD85` lo | **HR 21** `FUNC_EN` remap `{b1→0x10, b4→0x08, b6→0x04, b10→0x20, b11→0x40}` |
 

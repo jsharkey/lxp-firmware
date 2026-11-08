@@ -22,6 +22,7 @@ SETTINGS → **Application tab**: `AC Input Range` = UPS (170-280) | **APL (90-2
 
 _Tests that exercise these registers. **Keep this list current when you add or change a test** (see [AGENTS.md](../../../AGENTS.md))._
 
+- **DSP config-push (T25/T10):** LINE_MODE is packed into config-frame **block 0 @0x1a** (low byte of DSP `0xAD83`, alongside the EPS voltage-select enum and the 60 Hz bit): value `1` (UPS) sets bit `0x20` (GEN=2 is not dongle-writable in the bare boot, so its bit is unconfirmed). Found by resolving the T25 1-value registers; routing verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH`), encoding locked in [`test_dsp_config.c`](../../../tests/test_dsp_config.c). See the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md).
 - **Write validation (T24/T24b):** the whole-HR sweep
   ([`test_wrsem_sweep.py`](../../../tests/test_wrsem_sweep.py) /
   [`wrsem_expected.py`](../../../tests/wrsem_expected.py)) found the factory accepts

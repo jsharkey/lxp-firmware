@@ -47,6 +47,8 @@ typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp
  *
  *   0x19 (hi of DSP 0xAD83)  = HR 120 SYS_ENABLE & 0xFE
  *   0x1a (lo of 0xAD83)      = EPS-volt enum(HR 90) | (HR 91 == 60 ? 0x08 : 0)
+ *                              | (HR 146 LINE_MODE == 1 UPS ? 0x20 : 0)
+ *   0x21                     = HR 100 CUT_VOLT_DISCHG (BE16, 0.1 V)
  *   0x1c (lo of 0xAD84 flags)= FUNCTION_EN1(HR 110) remap | (HR 112 bit0 ? 0x08)
  *                              (bit 0x08 here = the DSP's AC-charge-enable, docs/07).
  *                              The factory also carries a 0x02 "FuncEn-unconfigured"
@@ -59,9 +61,11 @@ typedef struct { uint16_t reg; uint8_t off; uint8_t width; uint16_t scale; } dsp
  *   0x28 (0xAD8D)            = HR 20 PV_INPUT_MODEL
  *   0x2c (lo of 0xAD85)      = HR 21 FUNC_EN remap
  *
- * The rest of block 0 (identity/version template at 0x15-0x18, 0x1b, 0x1d-0x27,
- * 0x29-0x2e) is a constant not driven by any holding register — still to decode,
- * so block 0 is not yet byte-exact as a whole; these HR-driven bytes are.
+ * The rest of block 0 (0x15-0x18, 0x1b, 0x1d-0x20, 0x23-0x27, 0x29-0x2e) reads as a
+ * template, but several of those bytes are really settings whose dongle register is
+ * mode-gated (1-value in the bare boot) so they could not be swept live -- e.g.
+ * 0x1f:0x20 = 0x01b8 (440) looks like another voltage setting. Still to pin; block 0
+ * is not yet byte-exact as a whole, but the HR-driven bytes above are.
  */
 /* bit b of `v` set -> OR in map[b]; used for the FUNC_EN / FUNCTION_EN1 remaps. */
 static uint8_t dsp_bit_remap(uint16_t v, const uint8_t map[16])
@@ -211,8 +215,11 @@ static uint16_t dsp_rd(const dsp_cfg_src_t *src, uint16_t reg)
 static void dsp_build_block0(const dsp_cfg_src_t *src, uint8_t *pl)
 {
     pl[0x19 - 0x15] = (uint8_t)(dsp_rd(src, HR_SYS_ENABLE) & 0xFEu);
+    /* 0x1a packs EPS voltage-select | 60 Hz bit | LINE_MODE bit (HR 146 == 1 UPS ->
+     * 0x20; GEN=2 is not dongle-writable in the bare boot so its bit is unconfirmed). */
     pl[0x1a - 0x15] = (uint8_t)(dsp_eps_volt_sel(dsp_rd(src, HR_EPS_VOLT_SET))
-                      | (dsp_rd(src, HR_EPS_FREQ_SET) == 60 ? 0x08u : 0u));
+                      | (dsp_rd(src, HR_EPS_FREQ_SET) == 60 ? 0x08u : 0u)
+                      | (dsp_rd(src, HR_LINE_MODE) == 1 ? 0x20u : 0u));
     /* The factory also sets a 0x02 "FuncEn-not-yet-configured" latch at boot and
      * clears it the first time HR 21 (FUNC_EN) is written (any value). Our firmware
      * always has a live, configured FuncEn, so it is in the cleared (configured)
@@ -220,6 +227,7 @@ static void dsp_build_block0(const dsp_cfg_src_t *src, uint8_t *pl)
     pl[0x1c - 0x15] = (uint8_t)(dsp_bit_remap(dsp_rd(src, HR_FUNCTION_EN1), DSP_FUNCEN1_TO_0X1C)
                       | ((dsp_rd(src, HR_SET_SYSTEM_TYPE) & 1u) ? 0x08u : 0u));
     pl[0x1e - 0x15] = (uint8_t)dsp_rd(src, HR_OUTPUT_PRIO_CFG);
+    put16(pl + (0x21 - 0x15), dsp_rd(src, HR_CUT_VOLT_DISCHG)); /* 0x21 BE16, 0.1 V */
     pl[0x28 - 0x15] = (uint8_t)dsp_rd(src, HR_PV_INPUT_MODEL);
     pl[0x2c - 0x15] = dsp_bit_remap(dsp_rd(src, HR_FUNC_EN), DSP_FUNCEN_TO_0X2C);
 }
