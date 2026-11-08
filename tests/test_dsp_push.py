@@ -218,6 +218,25 @@ def test_ours_grid_push_matches_spec():
     _check_grid_matches_spec(_ours_or_skip())
 
 
+def test_ours_header_matches_factory():
+    """The 20-byte frame header (0x00..0x13) our builder emits is byte-identical to
+    the one the factory frame builder (0x080273b4) writes at a fresh/idle boot: SOF
+    0x41, type 1, 0, len 0x36, the id/status subfields (0 when unprogrammed/idle),
+    and the fixed 0x03 at 0x10. The payload tests only compared 0x15+; this closes
+    the header. NB the header's device-id (0x05-0x08) and status (0x0d-0x0e, 0x13)
+    subfields are **live** on a running unit -- the factory stamps them from state
+    the builder reads each call -- so this compares a FRESH factory boot (both sides
+    idle = 0); ours does not yet stamp those undecoded subfields.
+    docs/wiring/ARM-USART3-DSP/frame-header.md."""
+    _factory_or_skip()                               # skip early if image absent
+    ob = _ours_or_skip()
+    fb = FactoryBackend(FACTORY_IMAGE)               # FRESH: idle status subfields = 0
+    fac = bytes(fb.builder_header())                 # 0x00..0x13 from the real builder
+    ours = bytes(ob.blocks_after_writes([])[0][0:0x14])
+    assert ours == fac, ("header mismatch:\n        factory=%s\n        ours   =%s"
+                         % (fac.hex(" "), ours.hex(" ")))
+
+
 def test_ours_matches_factory_absolute():
     """Strongest check: per block, drive factory AND ours to the identical register
     state (ABS_WRITES_BY_BLOCK) on FRESH backends, then every HR-driven payload byte

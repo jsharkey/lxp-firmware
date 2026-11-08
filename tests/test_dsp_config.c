@@ -13,8 +13,6 @@ static bool rd(void *c, uint16_t reg, uint16_t *o) {
     (void)c; if (reg >= 256) return false; *o = holding[reg]; return true;
 }
 
-static const uint8_t SN[10] = {'E','G','4','1','2','3','4','5','6','7'};
-
 int main(void)
 {
     holding[HR_OUTPUT_PRIO_CFG] = 2;        /* AC First */
@@ -23,20 +21,24 @@ int main(void)
     holding[HR_EOD]             = 20;
 
     dsp_cfg_src_t src = {0};
-    src.address = 1;
-    memcpy(src.sn, SN, 10);
-    src.year=24; src.month=11; src.day=4; src.hour=13; src.minute=30; src.second=0;
     src.read_holding = rd; src.ctx = 0;
 
     uint8_t f[DSP_FRAME_MAX];
 
-    /* ---- block 0 frame structure ---- */
+    /* ---- block 0 frame structure: the fixed type-1 envelope (frame-header.md) ---- */
     size_t n = dsp_build_config_frame(&src, 0, f, sizeof f);
     CHECK(n > 0, "block0 built");
-    CHECK(f[DSP_OFF_ADDR] == 1, "addr");
-    CHECK(f[DSP_OFF_TYPE] == DSP_FRAME_TYPE_CONFIG, "type == 1");
-    CHECK(memcmp(f + DSP_OFF_HEADER, SN, 10) == 0, "SN in header");
-    CHECK(f[DSP_OFF_HEADER + 10] == 24 && f[DSP_OFF_HEADER + 13] == 13, "timestamp in header");
+    CHECK(f[0x00] == 0x41, "SOF 0x41 ('A') at 0x00");
+    CHECK(f[DSP_OFF_TYPE] == DSP_FRAME_TYPE_CONFIG, "type == 1 at 0x01");
+    CHECK(f[0x02] == 0x00 && f[0x03] == 0x36, "0x02=0, 0x03=len 0x36");
+    CHECK(f[0x10] == 0x03, "fixed header constant 0x03 at 0x10");
+    /* the id/serial + status subfields (0x05-0x0f, 0x11-0x13) are undecoded -> 0 */
+    {
+        int hdr_zero = 1;
+        for (int i = 0x04; i <= 0x13; i++)
+            if (i != 0x10 && f[i] != 0x00) hdr_zero = 0;
+        CHECK(hdr_zero, "header id/status bytes are 0 (only 0x10 non-zero)");
+    }
     CHECK(f[DSP_OFF_BLOCKID] == 0, "block id 0");
     CHECK(f[0x1e] == 2, "output priority (AC First=2) at frame 0x1e");
     /* CRC valid (little-endian trailing) */

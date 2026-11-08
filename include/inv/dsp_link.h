@@ -32,6 +32,8 @@
 #include <stdbool.h>
 
 #define DSP_FRAME_TYPE_CONFIG   1
+#define DSP_SOF_CONFIG          0x41  /* 'A' start-of-frame for ARM->DSP config    */
+#define DSP_HDR_FIXED_0x10      0x03  /* fixed header constant at offset 0x10      */
 #define DSP_CONFIG_NBLOCKS      9   /* ids 0..8 (matches the factory deserialiser) */
 #define DSP_SN_LEN              10
 

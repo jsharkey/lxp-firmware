@@ -331,18 +331,44 @@ class FactoryBackend(_Backend):
     # writes nothing. docs/wiring/ARM-USART3-DSP/field-provenance.md.
     _FILL_ADDR = 0x08026830
 
+    # Frame builder (writes the fixed header, then calls the filler per block id):
+    # FUN_080273b4, flat base 0x08000000. docs/wiring/ARM-USART3-DSP/frame-header.md.
+    _BUILD_ADDR = 0x080273b4
+
     def _new_sim(self):
         from arm_sim import ArmSim, load_symbols_csv
         if not os.path.exists(self.image):
             raise FileNotFoundError(self.image)
         syms = load_symbols_csv(self.symbols)
         self._fill = syms.get("fn_fill_cfg_block", self._FILL_ADDR)
+        self._build = syms.get("fn_build_cfg_frame", self._BUILD_ADDR)
         return ArmSim(self.image, syms)
 
     def _build_block(self, sim, blk):
         sim.wbytes(self.FRAME, bytes([0] * 0x40))
         sim.call(self._fill, (self.FRAME, 0x14, blk))
         return sim.rbytes(self.FRAME, 0x40)
+
+    def builder_header(self):
+        """The 20-byte frame header (0x00..0x13) the REAL builder writes (not the
+        filler, which only fills 0x14+). Same context-snapshot/quiesce discipline as
+        the block builds."""
+        sim, mb = self._boot()
+        ctx = sim.uc.context_save()
+        saved = {k: getattr(sim, k) for k in self._ENGINE_VARS}
+        if hasattr(sim, "_systick_due"):
+            sim._systick_due = False
+            sim._pendsv_set = False
+            sim._pending_irqs = []
+            sim._tick_mark = sim._insns + 1_000_000_000
+        try:
+            sim.wbytes(self.FRAME, bytes([0] * 0x40))
+            sim.call(self._build, (self.FRAME,))
+            return bytes(sim.rbytes(self.FRAME, 0x14))   # 0x00..0x13
+        finally:
+            sim.uc.context_restore(ctx)
+            for k, v in saved.items():
+                setattr(sim, k, (list(v) if isinstance(v, list) else v))
 
 
 class OursBackend(_Backend):

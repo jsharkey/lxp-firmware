@@ -288,9 +288,13 @@ hardcode this model-specific default blob into the push builder.
 [`block-03_06 §Constant-template bytes`](wiring/ARM-USART3-DSP/block-03_06-gridcharge-slots.md).
 - **Block 3 @0x19** (HR 112 `SET_SYSTEM_TYPE` second target) — mapped, not yet emitted.
 - **Block 1 populated** — battery limits from the working struct (depends on T11).
-- **Header parity** — payload region exact; the frame header is still ours'
-  SN+timestamp vs the factory's `0x41`/len/status (`0x080273b4`). Separate
-  [`frame-header`](wiring/ARM-USART3-DSP/frame-header.md) follow-up.
+- **Header parity** — **done** for the fixed envelope: ours now emits the factory's
+  20-byte header byte-for-byte (`0x41 01 00 36 00 … 03@0x10`, from the real builder
+  `0x080273b4`), replacing the old SN+timestamp layout; verified ours==factory by
+  `test_ours_header_matches_factory`. Remaining: the header's **live** id/status
+  subfields (`0x05-0x08`, `0x0d-0x0e`, `0x13`) are stamped from running state — ours
+  leaves them 0 (matches a fresh/idle unit); their source structs are undecoded
+  ([`frame-header`](wiring/ARM-USART3-DSP/frame-header.md)).
 - **Done when:** every block's payload is byte-identical to the factory's for the
   same settings + BMS state.
 

@@ -230,15 +230,19 @@ size_t dsp_build_config_frame(const dsp_cfg_src_t *src, uint8_t block_id,
     if (!src || block_id >= DSP_CONFIG_NBLOCKS || cap < DSP_FRAME_MAX) return 0;
 
     size_t n = 0;
-    out[DSP_OFF_ADDR] = src->address;
-    out[DSP_OFF_TYPE] = DSP_FRAME_TYPE_CONFIG;
-
-    /* 18-byte header: SN[10] then a 6-byte timestamp then 2 aux bytes */
-    uint8_t *h = out + DSP_OFF_HEADER;
-    memcpy(h, src->sn, DSP_SN_LEN);
-    h[10] = src->year; h[11] = src->month; h[12] = src->day;
-    h[13] = src->hour; h[14] = src->minute; h[15] = src->second;
-    h[16] = 0; h[17] = 0;                      /* aux (unmapped)             */
+    /* Fixed 20-byte type-1 envelope, matching the factory builder 0x080273b4
+     * (docs/wiring/ARM-USART3-DSP/frame-header.md): SOF 0x41, type 1, 0, length
+     * 0x36, 0, then an 18-byte id/status header the DSP mostly stores and does not
+     * validate (it checks only [0x01]==1). The device id/serial (0x05, BE32) and
+     * the status subfields are undecoded and read 0 on an unprogrammed unit (as the
+     * factory sim capture confirms); [0x10] is a fixed 0x03. src->sn / timestamp are
+     * NOT this format, so they are not emitted (kept on the struct pending a decode
+     * of the serial subfield). */
+    memset(out, 0, DSP_OFF_BLOCKID);              /* zero the header 0x00..0x13     */
+    out[DSP_OFF_ADDR]  = DSP_SOF_CONFIG;          /* 0x00 = 0x41 'A'                */
+    out[DSP_OFF_TYPE]  = DSP_FRAME_TYPE_CONFIG;   /* 0x01 = 1                       */
+    out[0x03]          = DSP_FRAME_LEN;           /* 0x03 = 0x36 frame length       */
+    out[0x10]          = DSP_HDR_FIXED_0x10;      /* 0x10 = fixed 0x03              */
 
     out[DSP_OFF_BLOCKID] = block_id;
 

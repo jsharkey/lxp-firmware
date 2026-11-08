@@ -44,10 +44,26 @@ off  …    CRC-16/MODBUS (0xA001, init 0xFFFF) over the frame
 
 ARM builder: `FUN_080273b4` (writes the header, rotates the block id) → `FUN_08026830`
 (`buf[0x14]=blockId`, BE values from `buf[0x15]`). Reimplementation:
-[`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c).
+[`src/dsp/dsp_config.c`](../../../src/dsp/dsp_config.c) `dsp_build_config_frame`.
+
+## What the builder actually writes (captured)
+
+Disassembling `0x080273b4` and calling it live: the fixed bytes are `[0x00]=0x41`,
+`[0x01]=0x01`, `[0x02]=0x00`, `[0x03]=0x36`, `[0x04]=0x00`, and a **fixed `[0x10]=0x03`**.
+The id/status subfields are **live** — read from a device/status struct on every
+call, so they are **0 on a fresh/idle boot** but non-zero once the unit is running
+(e.g. a fresh capture is all-zero past `0x04` except `[0x10]`, while after traffic
+`[0x0e]=0x60`, `[0x13]=0x03` appear): the BE32 id at `0x05` (← struct `+0x98`), a BE16
+status at `0x0d` (→ `0xAD82`), and `[0x13]` (→ `0xAD5F`).
+
+**Our firmware** emits the fixed envelope byte-for-byte (`0x41 01 00 36 00 … 03@0x10`)
+and leaves the live id/status subfields `0` — byte-identical to a fresh/idle factory
+header. Verified ours==factory by
+[`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_ours_header_matches_factory`
+(against the real builder `FactoryBackend.builder_header()`).
 
 ## Open
 
-- The 18-byte header subfields at `0x04..0x13` (serial-number vs pushed-timestamp
-  split) are not decoded; `[0x05]`/`[0x0D]`/`[0x13]` are the only three the DSP
-  extracts (→ `0xAD60`/`0xAD82`/`0xAD5F`).
+- The live id/status subfields (`0x05-0x08` id, `0x0d-0x0e`/`0x13` status) are not
+  decoded, so our header matches only the **idle** state (all three read 0). Stamping
+  them to match a *running* factory needs their source structs mapped — a follow-up.
