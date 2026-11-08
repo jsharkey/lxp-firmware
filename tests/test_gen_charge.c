@@ -63,6 +63,28 @@ int main(void)
           "permit soc: low SOC -> charge (even though V high)");
     CHECK(st2.v_active == false && st2.s_active == true, "permit: V latch off (500>start), SOC latch on (10<start)");
 
+    /* --- shadow gates (secondary request): wider start band + plain stop. --- */
+    /* Use SV_START/SV_END with END > START+30 so the `wide` band is live. */
+    const uint16_t SV_START = 464, SV_END = 510;   /* wide band 464 <= v < 480 */
+    /* start: normal below start; wide extends up to end-30. */
+    CHECK(inv_gen_charge_volt_shadow(false, BANK(450), SV_START, SV_END, false) == true,  "shadow v off: 450<start -> on");
+    CHECK(inv_gen_charge_volt_shadow(false, BANK(470), SV_START, SV_END, false) == false, "shadow v off: 470 band no-wide -> off");
+    CHECK(inv_gen_charge_volt_shadow(false, BANK(470), SV_START, SV_END, true) == true,   "shadow v off: 470 band + wide -> on");
+    CHECK(inv_gen_charge_volt_shadow(false, BANK(480), SV_START, SV_END, true) == false,  "shadow v off: 480 wide edge -> off");
+    /* stop: plain, no stop_ok confirmation. */
+    CHECK(inv_gen_charge_volt_shadow(true, BANK(509), SV_START, SV_END, false) == true,   "shadow v on: 509<end -> stays");
+    CHECK(inv_gen_charge_volt_shadow(true, BANK(510), SV_START, SV_END, false) == false,  "shadow v on: 510==end -> off (no confirm)");
+    /* With default thresholds (end < start+30) wide is inert. */
+    CHECK(inv_gen_charge_volt_shadow(false, BANK(470), 464, 480, true) == false, "shadow v: wide inert at default thresholds");
+
+    /* SOC shadow: start 20 / end 100 -> wide band 20 <= soc < 98. */
+    CHECK(inv_gen_charge_soc_shadow(false, 10, 20, 100, false) == true,  "shadow s off: 10<start -> on");
+    CHECK(inv_gen_charge_soc_shadow(false, 50, 20, 100, false) == false, "shadow s off: 50 band no-wide -> off");
+    CHECK(inv_gen_charge_soc_shadow(false, 50, 20, 100, true) == true,   "shadow s off: 50 band + wide -> on");
+    CHECK(inv_gen_charge_soc_shadow(false, 98, 20, 100, true) == false,  "shadow s off: 98 wide edge -> off");
+    CHECK(inv_gen_charge_soc_shadow(true, 99, 20, 100, false) == true,   "shadow s on: 99<end -> stays");
+    CHECK(inv_gen_charge_soc_shadow(true, 100, 20, 100, false) == false, "shadow s on: 100==end -> off");
+
     printf("%s: %d/%d checks passed\n", g_fail ? "FAILED" : "OK", g_run - g_fail, g_run);
     return g_fail ? 1 : 0;
 }

@@ -673,21 +673,22 @@ gates into **two** output request flags (dynamically verified): the **primary** 
 flag (sub_08035050 is its sole functional writer), so the AC-transfer enable asserts
 because the generator is charging — closed in [`docs/18`](18-power-path-relays.md).
 
-**Shadow gate characterized + timer features located (2026-11-08).** The **shadow**
-gates (`0x2000dbbe`/`0x2000dbbf` → `da3a` bit 13) run the same hysteresis with a
-widened start band (`+0x1e`/`+2`) gated by `bank+0xbc` bit 31 and a plain stop. `da3a`
-is the **gen-charge status/command word** (bits assembled by `sub_08035050` +
-`sub_08035474`) and is **mirrored to Modbus IRs** (docs/25: bit 4 → IR 126 bit 8), so
-`da3a` bit 13 is a *reported* secondary (more-eager) gen-charge request — **not** the
-quick-start timer. The actual 07-series gen **timers** (#1 Gen Charge Time, #2 Quick
-Start 20-min, #3 Warm-Up/Cool-Down) are located as HMI strings + settings-menu slots
-(idx 90/91/92, base `0x08005fec`) in [`docs/11`](11-12000xp-revisions.md); pinning
-their settings offsets / HRs needs the HMI menu dispatch cracked (relate docs/06,
-docs/28).
+**Shadow gate reimplemented + timer settings block located (2026-11-08).** The
+**shadow** gates (`0x2000dbbe`/`0x2000dbbf` → `da3a` bit 13) are now pure +
+oracle-pinned: `inv_gen_charge_volt_shadow()` / `inv_gen_charge_soc_shadow()` — wider
+start band (`v+30`/`soc+2`) gated by `bank+0xbc` bit 31, plain stop; verified property
+that the wide band is **inert** at the default 464/480 thresholds (end < start+30).
+`da3a` is the **gen-charge status/command word** (bits assembled by `sub_08035050` +
+`sub_08035474`), **mirrored to Modbus IRs** (docs/25: bit 4 → IR 126 bit 8), so
+`da3a` bit 13 is a *reported* secondary (more-eager) gen-charge request. The 07-series
+gen **timers** (#1 Gen Charge Time, #2 Quick Start 20-min, #3 Warm-Up/Cool-Down) are
+traced to a settings block at `0x2000c85c` **`+0xb6…+0xbe`** (just past the HR194-198
+gen block), live over Modbus via write handler `sub_0801f596` / read handler
+`sub_08026830` block 8, matching menu idx 88-92 — see [`docs/11`](11-12000xp-revisions.md).
 
-**Remaining.** (a) shadow gate → pure function + oracle, and which IR bit `da3a`
-bit 13 maps to; (b) the three gen timers' settings offsets (HMI-dispatch crack); then
-the behaviors below.
+**Remaining.** (a) which Modbus **IR bit** `da3a` bit 13 maps to; (b) the exact 1:1
+field↔offset/HR within `+0xb6…+0xbe` (unwind the write handler's per-HR binary search,
+or read the factory-reset defaults); then the behaviors below.
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions

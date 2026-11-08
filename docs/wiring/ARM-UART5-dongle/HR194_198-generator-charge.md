@@ -113,10 +113,17 @@ warm-up / cool-down **timers** are separate — their menu strings and settings-
 slots are pinned in [`docs/11`](../../11-12000xp-revisions.md) §"Located: the
 generator-timer strings".)
 
-> **Not yet reimplemented (T16 hand-off):** the shadow gate (`dbbe`/`dbbf` → `da3a`
-> bit 13) and the meaning of `bank+0xbc` bit 31 (the DSP "allow wider band" flag) are
-> decoded but not yet given a pure function + oracle; and which IR bit `da3a` bit 13
-> lands on is not yet pinned (it is in the `da3a`→telemetry mirror, like bit 4).
+**Shadow gate reimplemented (T16, 2026-11-08).** The shadow pair is now pure +
+oracle-pinned: `inv_gen_charge_volt_shadow()` / `inv_gen_charge_soc_shadow()`
+(verdicts `0x2000dbbe`/`0x2000dbbf`), start = `(v < start_v) || (wide && v+30 < end_v)`,
+plain stop `!(v >= end_v)`, where `wide` = `bank+0xbc` bit 31. A verified property: with
+the **default** gen thresholds (start 464 / end 480, i.e. end < start+30) the widened
+band collapses inside the normal start, so `wide` is **inert** — it only adds a start
+region when `end_v > start_v + 30`.
+
+> **Still open (T16 hand-off):** which Modbus **IR bit** `da3a` bit 13 lands on (it is
+> in the `da3a`→telemetry mirror, like bit 4 → IR 126 bit 8), and the exact trigger
+> for `bank+0xbc` bit 31 from the DSP.
 
 ## On the LCD (EG4 12000XP manual)
 
@@ -138,7 +145,12 @@ _Tests that exercise these registers. **Keep this list current when you add or c
   [`gen_charge_contract.py`](../../../tests/gen_charge_contract.py)). Our pure
   `inv_gen_charge_volt_gate()` / `inv_gen_charge_soc_gate()` / `inv_gen_charge_permit()`
   are held to the **same** vectors by the toolchain-free host test
-  [`test_gen_charge.c`](../../../tests/test_gen_charge.c) (parity by contract).
+  [`test_gen_charge.c`](../../../tests/test_gen_charge.c) (parity by contract). The
+  **shadow** pair (`0x080350dc…`/`0x080351de…`, verdicts `0x2000dbbe`/`0x2000dbbf` →
+  `da3a` bit 13) is covered the same way: `test_factory_shadow_matches_spec` +
+  `test_factory_shadow_wide_inert_at_default_thresholds` (`SHADOW_V_VECTORS` /
+  `SHADOW_S_VECTORS`) vs our `inv_gen_charge_volt_shadow()` /
+  `inv_gen_charge_soc_shadow()`.
 - **DSP config-push (T10/T25):** the generator-charge parameters are packed into the ARM→DSP config frame, **block 6**: HR 194 start-V → `0x1d` (BE16, 0.1 V, clamped < end-V), HR 195 end-V → `0x1f` (BE16, 0.1 V), HR 196 start-SOC → `0x21` (u8 %), HR 197 end-SOC → `0x22` (u8 %), HR 198 max-charge-curr → `0x23` (BE16, A→0.1 A). Differentially pinned (single-write, fresh captures) and reproduced byte-for-byte by our firmware, verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH` in [`dsppush_contract.py`](../../../tests/dsppush_contract.py)); see the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md) and [block-03_06](../ARM-USART3-DSP/block-03_06-gridcharge-slots.md).
 - **Write validation (T24/T24b):** the whole-HR sweep
   ([`test_wrsem_sweep.py`](../../../tests/test_wrsem_sweep.py) /

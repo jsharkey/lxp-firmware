@@ -30,6 +30,25 @@ bool inv_gen_charge_soc_gate(bool active, uint8_t soc,
     return !((soc >= end_soc) && stop_ok);
 }
 
+bool inv_gen_charge_volt_shadow(bool active, uint16_t vbat_bank,
+                                uint16_t start_v, uint16_t end_v, bool wide)
+{
+    int32_t v = (int32_t)(uint16_t)vbat_bank / 10;
+    if (!active)
+        /* eager start: normal threshold, OR up to 3.0 V early when the DSP allows it. */
+        return (v < (int32_t)start_v) || (wide && (v + 30 < (int32_t)end_v));
+    /* plain stop at end_v (no stop_ok confirmation, unlike the primary gate). */
+    return !(v >= (int32_t)end_v);
+}
+
+bool inv_gen_charge_soc_shadow(bool active, uint8_t soc,
+                               uint8_t start_soc, uint8_t end_soc, bool wide)
+{
+    if (!active)
+        return (soc < start_soc) || (wide && (soc + 2 < end_soc));
+    return !(soc >= end_soc);
+}
+
 bool inv_gen_charge_permit(inv_gen_charge_state_t *st, bool charge_by_soc,
                            uint16_t vbat_bank, uint16_t v_start, uint16_t v_end,
                            uint8_t soc, uint8_t s_start, uint8_t s_end,

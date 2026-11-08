@@ -97,6 +97,58 @@ def predict_soc(prev, soc, stop_ok):
     return not (soc >= SEND and stop_ok)
 
 
+# --- shadow gates (secondary request -> da3a bit13) -----------------------------
+# A second, more-eager pair the factory evaluates right after each primary gate:
+# voltage block 0x080350dc..0x08035134 (verdict 0x2000dbbe), SOC block
+# 0x080351de..0x08035220 (verdict 0x2000dbbf). Wider start band gated by `wide`
+# (safety bank +0xbc bit31) and a plain (unconfirmed) stop.
+SHV_BLOCK, SHV_STOP, SHV_VERD = 0x080350dc, 0x08035146, 0x2000dbbe
+SHS_BLOCK, SHS_STOP, SHS_VERD = 0x080351de, 0x08035232, 0x2000dbbf
+OFF_WIDE = 0xbc              # safety bank: +0xbc bit31 = DSP "allow wider band"
+
+# Shadow thresholds are chosen with end > start + 30 so the `wide` band is active
+# (the extra start region start <= v < end-30 actually exists; with the default
+# 464/480 gen thresholds the +30 band collapses inside the normal start and `wide`
+# is inert -- which is itself a verified property, see test_factory_shadow_wide_inert).
+SHV_START, SHV_END = 464, 510     # 46.4 V .. 51.0 V: wide band 464 <= v < 480
+
+# (label, prev, vbat_divided, wide, expected)
+SHADOW_V_VECTORS = [
+    ("off 450<start on",        False, 450, False, True),
+    ("off 470 band no-wide off",False, 470, False, False),
+    ("off 470 band wide on",    False, 470, True,  True),   # 470+30=500 < 510 -> eager on
+    ("off 479 wide on",         False, 479, True,  True),   # 479+30=509 < 510 -> on
+    ("off 480 wide edge off",   False, 480, True,  False),  # 480+30=510 !< 510; 480>=464 -> off
+    ("on 490 stays",            True,  490, False, True),
+    ("on 509 < end stays",      True,  509, False, True),
+    ("on 510 == end -> off",    True,  510, False, False),  # plain stop, no confirm
+    ("on 520 -> off",           True,  520, True,  False),
+]
+# (label, prev, soc, wide, expected). start=20/end=100: wide band 20 <= soc < 98.
+SHADOW_S_VECTORS = [
+    ("off 10<start on",        False, 10,  False, True),
+    ("off 50 band no-wide off",False, 50,  False, False),
+    ("off 50 band wide on",    False, 50,  True,  True),   # 50+2=52 < 100 -> eager on
+    ("off 97 wide on",         False, 97,  True,  True),
+    ("off 98 wide edge off",   False, 98,  True,  False),  # 98+2=100 !< 100; 98>=20 -> off
+    ("on 50 stays",            True,  50,  False, True),
+    ("on 99 < end stays",      True,  99,  False, True),
+    ("on 100 == end -> off",   True,  100, False, False),
+]
+
+
+def predict_shadow_v(prev, v, wide, start=SHV_START, end=SHV_END):
+    if not prev:
+        return (v < start) or (wide and v + 30 < end)
+    return not (v >= end)
+
+
+def predict_shadow_s(prev, soc, wide, start=SSTART, end=SEND):
+    if not prev:
+        return (soc < start) or (wide and soc + 2 < end)
+    return not (soc >= end)
+
+
 class Skip(Exception):
     pass
 
@@ -150,3 +202,35 @@ class FactoryBackend:
         with contextlib.redirect_stdout(io.StringIO()):
             e.call(SOC_BLOCK, args=(0, SETTINGS, SOC_BASE))  # r1 = settings, r2 = SOC base
         return e.rbytes(SOC_VERD, 1)[0] != 0
+
+    def verdict_shadow_v(self, prev, vbat_divided, wide, start=SHV_START, end=SHV_END):
+        """Drive the shadow (secondary) voltage block; return its latched verdict."""
+        from emu import Emu
+        import contextlib
+        import io
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(SETTINGS + OFF_START, struct.pack("<H", start & 0xFFFF))
+        e.uc.mem_write(SETTINGS + OFF_END, struct.pack("<H", end & 0xFFFF))
+        e.uc.mem_write(BANK + OFF_VBAT, struct.pack("<H", (vbat_divided * 10) & 0xFFFF))
+        e.uc.mem_write(BANK + OFF_WIDE, struct.pack("<I", (1 << 31) if wide else 0))
+        e.uc.mem_write(SHV_VERD, bytes([1 if prev else 0]))
+        e.stop_at.add(SHV_STOP)
+        with contextlib.redirect_stdout(io.StringIO()):
+            e.call(SHV_BLOCK, args=(0, SETTINGS))
+        return e.rbytes(SHV_VERD, 1)[0] != 0
+
+    def verdict_shadow_s(self, prev, soc, wide, start=SSTART, end=SEND):
+        """Drive the shadow (secondary) SOC block; return its latched verdict."""
+        from emu import Emu
+        import contextlib
+        import io
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(SETTINGS + OFF_SSTART, bytes([start & 0xFF]))
+        e.uc.mem_write(SETTINGS + OFF_SEND, bytes([end & 0xFF]))
+        e.uc.mem_write(SOC_BASE, bytes([soc & 0xFF]))
+        e.uc.mem_write(BANK + OFF_WIDE, struct.pack("<I", (1 << 31) if wide else 0))
+        e.uc.mem_write(SHS_VERD, bytes([1 if prev else 0]))
+        e.stop_at.add(SHS_STOP)
+        with contextlib.redirect_stdout(io.StringIO()):
+            e.call(SHS_BLOCK, args=(0, SETTINGS, SOC_BASE))
+        return e.rbytes(SHS_VERD, 1)[0] != 0

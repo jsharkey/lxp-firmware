@@ -70,6 +70,33 @@ bool inv_gen_charge_soc_gate(bool active, uint8_t soc,
                              uint8_t start_soc, uint8_t end_soc, bool stop_ok);
 
 /*
+ * The "shadow" generator-charge gates (T16): a SECOND, more-eager pair the factory
+ * evaluates right after the primary gates and folds into `0x2000da3a` bit 13 (the
+ * gen-charge status/command word that mirrors to the Modbus input registers), where
+ * the primary gates (above) drive `0x2000d9ca` bit 3. RE-pinned on the canonical 07
+ * image as the blocks `0x080350dc…0x08035134` (voltage, verdict `0x2000dbbe`) and
+ * `0x080351de…0x08035220` (SOC, verdict `0x2000dbbf`). They differ from the primary
+ * gates two ways:
+ *   - a WIDENED start band: when `wide` is set they also start at `v + 30 < end_v`
+ *     (SOC: `soc + 2 < end_soc`), i.e. up to 3.0 V / 2 % before the normal start
+ *     threshold;  `wide` is the DSP "allow wider band" flag, safety bank `+0xbc`
+ *     bit 31.
+ *   - a PLAIN stop: they drop at `v >= end_v` (SOC: `soc >= end_soc`) with no
+ *     `stop_ok` DSP confirmation.
+ *
+ *     if (!active) active = (v <  start_v) || (wide && v + 30 < end_v);   // eager start
+ *     else         active = !(v >= end_v);                               // plain stop
+ *
+ * Same thresholds as the primary gates (HR 194/195 for voltage, HR 196/197 for SOC).
+ * Pure/latched; the caller holds the latch and supplies `wide`.
+ */
+bool inv_gen_charge_volt_shadow(bool active, uint16_t vbat_bank,
+                                uint16_t start_v, uint16_t end_v, bool wide);
+
+bool inv_gen_charge_soc_shadow(bool active, uint8_t soc,
+                               uint8_t start_soc, uint8_t end_soc, bool wide);
+
+/*
  * Combined generator-charge controller (T16): selects the by-voltage or by-SOC gate
  * per GenChargeType (HR 120 bit 7, settings `+0x33` bit 7) and returns whether the
  * generator should be charging the battery now. Both gates are stepped every call so

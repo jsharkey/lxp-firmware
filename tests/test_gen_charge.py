@@ -28,7 +28,10 @@ sys.path.insert(0, HERE)
 
 from arm_sim_runner import run_tests, Skip                             # noqa: E402
 from gen_charge_contract import (VECTORS, predict, FactoryBackend,     # noqa: E402
-                                 SOC_VECTORS, predict_soc)
+                                 SOC_VECTORS, predict_soc,
+                                 SHADOW_V_VECTORS, SHADOW_S_VECTORS,
+                                 predict_shadow_v, predict_shadow_s,
+                                 SHV_START, SHV_END)
 
 FACTORY_IMAGE = (sys.argv[1] if len(sys.argv) > 1 else None) \
     or os.environ.get("LXP_FACTORY_BIN") \
@@ -83,6 +86,38 @@ def test_factory_soc_matches_spec():
             fails.append("%-26s prev=%d soc=%d stop_ok=%d -> %s, expected %s"
                          % (label, prev, soc, stop_ok, got, expected))
     assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
+def test_factory_shadow_matches_spec():
+    """The shadow gates (secondary request -> da3a bit13): voltage verdict
+    0x2000dbbe and SOC verdict 0x2000dbbf. Wider start band gated by `wide`
+    (bank+0xbc bit31) and a plain stop. Factory vs spec on every vector (T16)."""
+    fb = _factory_or_skip()
+    fails = []
+    for label, prev, v, wide, exp in SHADOW_V_VECTORS:
+        assert predict_shadow_v(prev, v, wide) == exp, "v self-check: %s" % label
+        got = fb.verdict_shadow_v(prev, v, wide)
+        if got != exp:
+            fails.append("V %-24s prev=%d v=%d wide=%d -> %s, exp %s"
+                         % (label, prev, v, wide, got, exp))
+    for label, prev, s, wide, exp in SHADOW_S_VECTORS:
+        assert predict_shadow_s(prev, s, wide) == exp, "s self-check: %s" % label
+        got = fb.verdict_shadow_s(prev, s, wide)
+        if got != exp:
+            fails.append("S %-24s prev=%d soc=%d wide=%d -> %s, exp %s"
+                         % (label, prev, s, wide, got, exp))
+    assert not fails, "factory\n        " + "\n        ".join(fails)
+
+
+def test_factory_shadow_wide_inert_at_default_thresholds():
+    """With the default gen thresholds (start 464 / end 480, end < start+30) the
+    shadow gate's widened start band collapses inside the normal start, so `wide`
+    changes nothing -- a verified property, not an assumption (T16)."""
+    fb = _factory_or_skip()
+    # v = 470 is in the deadband (>= start 464, < end 480): off either way.
+    assert fb.verdict_shadow_v(False, 470, False, start=464, end=480) is False
+    assert fb.verdict_shadow_v(False, 470, True, start=464, end=480) is False, \
+        "wide must be inert when end <= start+30"
 
 
 if __name__ == "__main__":

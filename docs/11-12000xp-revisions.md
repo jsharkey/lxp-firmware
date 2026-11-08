@@ -89,15 +89,26 @@ item) are pinned:
 | #1 | Charge Time Scheduling | `Gen Charge Time: ` @ `0x0802aa70` | `0x08006158` (idx 91) |
 | #2 | Quick Start (20-min cycle) | `Gen Quick Charge Start: ` @ `0x0802aa84` | `0x0800615c` (idx 92) |
 
-They follow the known gen items in the same table (idx 83-89: `Gen Charge Bat
+They follow the known gen items in the same table (idx 82-89: `Gen Charge Bat
 Current`, `… Start/End SOC`, `Generator Charge Type`, `… Start/End Volt`, `Max. Gen
-Input Power`, `Generator Boost Enable`). **Next step (hand-off):** the backing
-settings offset / HR number for each is not yet pinned — the label table at
-`0x08005fec` is reached by offset from a master menu descriptor (no direct literal or
-MOVW/MOVT references it), so resolving the item→setting binding needs the HMI menu
-dispatch cracked (relate to [`docs/06`](06-hmi.md) / [`docs/28`](28-factory-hmi.md)).
-These are 07-new settings, so they are *not* in the published Modbus map's gen block
-(HR 194-198) and likely live at fresh settings offsets past `+0xb6`.
+Input Power`, `Generator Boost Enable`).
+
+**Backing settings block located (2026-11-08).** The 07-new gen settings form a
+contiguous halfword block **right above** the known gen block (`+0xac` HR194 … `+0xb2`
+HR198) in the settings struct `0x2000c85c`: **`+0xb6, +0xb8, +0xba, +0xbc, +0xbe`**
+(with `+0xc0, +0xc6, +0xca` close by). They are read/written over Modbus by the
+holding-register **write** handler `sub_0801f596` (each field: load old → validate via
+`sub_080161ee` → store + set a dirty bit) and packed into the **read** handler
+`sub_08026830` (block 8), so these are live HRs just past the published gen block.
+Menu items idx 88-92 (`Max. Gen Input Power`, `Generator Boost Enable`, `Gen Cool
+Time`, `Gen Charge Time`, `Gen Quick Charge Start`) map onto this 5-field block.
+
+**Still open (hand-off):** the exact 1:1 field↔offset (and HR number) assignment
+within `+0xb6…+0xbe`. The menu label table (`0x08005fec`) is reached by offset from a
+master descriptor (no literal / MOVW-MOVT references it), and the write handler's
+per-HR dispatch is a binary search, so the final disambiguation needs either that
+dispatch unwound or the per-field default values read from the factory-reset template.
+(`sub_080161ee`'s `#0x32` arg is a shared validator constant, not a per-field max.)
 
 Changelog items with **no new LCD string** (they are telemetry-export, range, or
 control-logic changes — tracked here as follow-ups to confirm by disassembly):
