@@ -814,14 +814,21 @@ is a separate, later question.
 ### T28 — SPI-flash decode/update staging (the factory's ~12 KB path)
 **Status:** ⬜ `[ ]` · **Layer:** micro (codec + framer) + driver · **Depends:** T18 (update context), the bootloader side of [`docs/43`](43-firmware-update-bootloader.md) · **Independent of the register parity work.** See [`docs/48`](48-arm-spiflash-update-staging.md).
 
-The factory ARM App reads a **compressed blob from external SPI flash, LZSS-decodes
-it, and writes the decoded bytes back to SPI flash** — `sub_08036d68`, the single
-biggest static-RAM consumer (~12 KB: an 8 KB compressed-read buffer + a 4 KB decode
-output). It is the decompress-**staging** step that prepares a field update (the
-dongle delivers the compressed image over RS-485 Modbus, ARM = slave; delivery is
-paced/ACKed/retried by the dongle for free). Fully decoded in [`docs/48`](48-arm-spiflash-update-staging.md):
-chunk framer (4-byte `clen`/`dlen` header, 10-chunk loop, end marker, `decoded==dlen`
-check), two LZSS variants (format = header byte's top 3 bits), bit-banged SPI target.
+The factory ARM App reads a **compressed blob from the SPI NOR, LZSS-decodes it, and
+writes the decoded bytes back to SPI NOR staging** — `sub_08036d68`, the single biggest
+static-RAM consumer (~12 KB: an 8 KB compressed-read buffer + a 4 KB decode output). It
+is the decompress-**staging** step of a field update: the dongle (a transparent RS-485
+Modbus conduit, ARM = slave; delivery paced/ACKed/retried for free) delivers the
+compressed image into SPI NOR, the App decodes it to the staging region (`0x700000`),
+sets a marker, and reboots — and the **bootloader** copies the decoded App image into
+the STM32 **internal** flash (`0x08005000`+, where the ARM actually runs; the SPI NOR is
+storage, not executed). The **same Modbus link carries several update flavours as
+separate operations** — ARM App, control DSP (then streamed over USART3's `0x21/0x22/0x23`
+loader), MPPT (USART1); the peers program their own flash from the serial stream, not
+from SPI. Fully decoded in [`docs/48`](48-arm-spiflash-update-staging.md): SPI-NOR map
+(settings slots / 6.5 MB data-log ring / staging), chunk framer (4-byte `clen`/`dlen`
+header, 10-chunk loop, end marker, `decoded==dlen` check), two LZSS variants (format =
+header byte's top 3 bits), the App's small internal-flash driver (markers only).
 
 **Decide first: interop vs own path** (sets everything below):
 - **Interop** — accept EG4's official compressed update images: must implement both
