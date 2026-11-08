@@ -110,11 +110,11 @@ static const settings_field_t SETTINGS_MAP[] = {
  * at boot to the holding-register image BEFORE the persisted store is seeded, so a
  * stored value always overrides the default (and a fresh unit matches the factory).
  *
- * Scoped to the persisted settings with unambiguous standard defaults. Deliberately
- * NOT included yet (each needs separate care): HR 21 FuncEn (read-back ORs 0x200,
- * docs/31 Q8), HR 90/91 EPS volt/freq (the EPS-voltage select enum does not include
- * the raw 220 V default cleanly), and the non-persisted lead-acid / generator-charge
- * voltages (HR 100/144/148/194-198) which have no config slot yet.
+ * HR 100/144/148 and 194-198 have no config slot in SETTINGS_MAP yet, so their
+ * default is applied each boot but a dongle write does not persist across a cold
+ * boot (a separate persistence gap). HR 21 FuncEn (read-back ORs 0x200, docs/31 Q8)
+ * and HR 90/91 EPS volt/freq (the EPS-voltage select enum does not include the raw
+ * 220 V default cleanly) still need separate care and are left out.
  */
 typedef struct { uint16_t reg; uint16_t value; } settings_default_t;
 static const settings_default_t SETTINGS_DEFAULTS[] = {
@@ -123,12 +123,21 @@ static const settings_default_t SETTINGS_DEFAULTS[] = {
     {  65, 100 },   /* DischgPowerPercent (%)          */
     {  66, 100 },   /* ACChargePower (%)               */
     {  99, 574 },   /* ChargeVoltRef (0.1 V = 57.4 V)  */
+    { 100, 420 },   /* CutVoltDischg (0.1 V = 42.0 V)  */
     { 101, 250 },   /* ChargeCurr (A)                  */
     { 102, 250 },   /* DischgCurr (A)                  */
     { 105,  15 },   /* EOD (%)                         */
     { 110,   1 },   /* FunctionEn1 (bit0)              */
     { 120, 144 },   /* stSysEnable (0x90)              */
+    { 144, 540 },   /* FloatChargeVolt (0.1 V = 54.0 V) */
     { 147, 150 },   /* Battery capacity (Ah)           */
+    { 148, 480 },   /* BatNominalVolt (0.1 V = 48.0 V) */
+    /* Generator charge (feed block 6 of the DSP push; manual + factory defaults) */
+    { 194, 464 },   /* GenChgStartVolt (0.1 V = 46.4 V) */
+    { 195, 480 },   /* GenChgEndVolt (0.1 V = 48.0 V)  */
+    { 196,  20 },   /* GenChgStartSOC (%)              */
+    { 197, 100 },   /* GenChgEndSOC (%)                */
+    { 198,  30 },   /* MaxGenChgCurr (A)               */
 };
 #define SETTINGS_DEFAULTS_LEN (sizeof(SETTINGS_DEFAULTS) / sizeof(SETTINGS_DEFAULTS[0]))
 

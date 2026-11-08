@@ -450,8 +450,9 @@ def test_fresh_boot_has_factory_defaults():
     sim = _ours()
     sim.attach_spi_flash(cs_pin="PA4", spi_base=0x40013000, flash=SpiNorFlash())
     mb = ModbusDongle(sim)                 # sees spi_flash present -> no config provisioned
-    EXPECT = {23: 30, 64: 100, 65: 100, 66: 100, 99: 574, 101: 250, 102: 250,
-              105: 15, 110: 1, 120: 144, 147: 150}
+    EXPECT = {23: 30, 64: 100, 65: 100, 66: 100, 99: 574, 100: 420, 101: 250,
+              102: 250, 105: 15, 110: 1, 120: 144, 144: 540, 147: 150, 148: 480,
+              194: 464, 195: 480, 196: 20, 197: 100, 198: 30}
     bad = []
     for reg, want in sorted(EXPECT.items()):
         got = mb.read_holding(reg)
