@@ -83,12 +83,12 @@ Every documented **holding** register resolves to one of:
 
 ---
 
-## Address-space allocation — factory vs open-source (OSS)
+## Address-space allocation — factory vs Daybreak (our open-source features)
 
 The two register spaces are independent number lines, but **both follow one
 allocation plan**, so that our open-source additions can never collide with a
 factory register, present or future. Raw 0-based protocol addresses throughout.
-Policy and rationale: [`docs/45`](../../45-oss-feature-flags.md).
+Policy and rationale: [`docs/45`](../../45-daybreak-feature-flags.md).
 
 | range (IR **and** HR) | owner | status | evidence |
 |---|---|---|---|
@@ -98,23 +98,29 @@ Policy and rationale: [`docs/45`](../../45-oss-feature-flags.md).
 | **4095–4999** | factory **read-guard band** | ⛔ never allocate | factory read path rejects HR reads with `start+count` landing in `[4095, 5000)` → exception 2 (docs/44; re-measured: HR 4094 ×8 → exception 2). Ours must keep that answer (parity). IR side: reserved for symmetry. |
 | **5000–5999** | factory **battery bank** | in use 5000–5126 (IR); rest reserved | [`IR5000_5126-perpack.md`](IR5000_5126-perpack.md); 30-register stride per pack, so reserve room for more packs. HR 5000–5999 reserved for symmetry (per-pack settings, if the factory ever adds them). |
 | **6000–9999** | factory growth reserve | ⛔ never allocate | — |
-| **10000–10999** | **OSS window**: 25 blocks × 40 | allocated (⬜ not implemented) | block *k* = **10000 + 40·k**, the same *k* in IR (telemetry) and HR (settings/commands). See below. |
-| **11000–19999** | OSS growth reserve | reserved | for OSS features that outgrow 25 blocks; same 40-block rule |
+| **10000–10999** | **Daybreak window**: 25 blocks × 40 | allocated (⬜ not implemented) | block *k* = **10000 + 40·k**, the same *k* in IR (telemetry) and HR (settings/commands). See below. |
+| **11000–19999** | Daybreak growth reserve | reserved | for Daybreak features that outgrow 25 blocks; same 40-block rule |
 | **20000–65535** | unallocated | ⛔ leave alone | — |
 
-**The factory's answer in the OSS window** (proven, dynamic, `ceaa-07xx`, USART3
+**The factory's answer in the Daybreak window** (proven, dynamic, `ceaa-07xx`, USART3
 register slave, 2026-11-08): reads of IR/HR 10000+ (and 20000, 32768) return
 `0`; a write-single to HR 10000/10016 is refused with **exception 2** and
 nothing is stored. So reading IR 10000–10001 tells factory (`0,0`) from ours
-(`"LXOS"`), and flag writes to a factory unit are harmless (docs/45 §2.2; UART5
+(`"DAYB"`), and flag writes to a factory unit are harmless (docs/45 §2.2; UART5
 ~ inferred pending T02).
 
-**OSS window blocks.** Every block is one 40-register query group:
+**Daybreak window blocks.** Every block is one 40-register query group:
 
 | block | IR / HR | content | doc |
 |---|---|---|---|
-| 0 | 10000–10039 | **control plane**: discovery/capability (IR), feature-enable mask + command (HR). The only block that answers with every flag clear. | [IR](IR10000_10039-OSS-capability.md) · [HR](HR10000_10039-OSS-feature-control.md) |
-| 1–24 | 10040–10999 | **per-feature blocks**, assigned by the feature registry ([`docs/45`](../../45-oss-feature-flags.md) §3.2). A block whose feature isn't ACTIVE answers **exception 2**, exactly as an unmapped register does today. | per feature, when implemented |
+| 0 | 10000–10039 | **control plane**: discovery/capability (IR), feature-enable mask + command (HR). The only block that answers with every flag clear. | [IR](IR10000_10039-Daybreak-capability.md) · [HR](HR10000_10039-Daybreak-feature-control.md) |
+| 1–24 | 10040–10999 | **per-feature blocks**, **claimed** in the docs/45 claims table ([`docs/45`](../../45-daybreak-feature-flags.md) §3). A block whose feature isn't ACTIVE answers **exception 2**, exactly as an unmapped register does today. | per feature, when implemented |
+
+**Persistence of the Daybreak window.** These registers never enter the dense
+factory image (`holding_reg[256]`) or the factory config slots. They are routed to
+Daybreak code by address and, on SAVE, stored as sparse `(reg, value)` snapshots
+in the Daybreak settings ring at SPI-NOR `0x010000` ([`docs/45`](../../45-daybreak-feature-flags.md)
+§4). The high addresses therefore cost no flash for the gaps.
 
 Rules for this tree: a feature's block gets its own `IRnnnnn_nnnnn-…` /
 `HRnnnnn_nnnnn-…` file here when it's implemented, with a `## Test coverage`
@@ -172,8 +178,8 @@ RE-traced; `rsvd` = reserved/unused.
 | 149-152 | AFCI_MaxArcCH1-4 | — | max arc | idx |
 | 153-380 | *(beyond spec)* | — | factory-owned; non-zero live at 174, 193-194, 199-200, 203-204 (meanings ?); polled by the dongle | — |
 | **5000-5126** | **per-pack battery bank** | — | **undocumented**; CAN-`0x4xx`-fed, **dormant across the EG4 battery line (3 models checked)** | [→](IR5000_5126-perpack.md) |
-| **10000-10039** | **OSS capability / feature status** | — | **OSS-only** (block 0): `"LXOS"` magic, schema, SUPPORTED / ACTIVE / SAVED feature masks; ⬜ not implemented (T28) | [→](IR10000_10039-OSS-capability.md) |
-| 10040-10999 | OSS feature blocks 1-24 | — | **OSS-only**, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-oss-feature-flags.md)) | — |
+| **10000-10039** | **Daybreak capability / feature status** | — | **Daybreak-only** (block 0): `"DAYB"` magic, schema, SUPPORTED / ACTIVE / SAVED feature masks; ⬜ not implemented (T28) | [→](IR10000_10039-Daybreak-capability.md) |
+| 10040-10999 | Daybreak feature blocks 1-24 | — | **Daybreak-only**, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-daybreak-feature-flags.md)) | — |
 
 ## Index — holding registers (func `0x03/0x06`, `0x10` SN+time only)
 
@@ -225,8 +231,8 @@ RE-traced; `rsvd` = reserved/unused.
 | 194-198 | GenChg start/end V/SOC, MaxGenChgCurr | 0.1V / % / A | generator charge | [→](HR194_198-generator-charge.md) |
 | 199-399 | *(beyond spec)* | — | factory-reserved; see "Address-space allocation" | — |
 | 4095-4999 | *(read-guard band)* | — | factory rejects reads landing here (exception 2) | — |
-| **10000-10039** | **OSS feature control** | mask / cmd | **OSS-only** (block 0): `FEAT_EN[0..7]` feature-enable mask (default 0 = factory mirror), `FEAT_CMD` save/reload/clear; ⬜ not implemented (T28) | [→](HR10000_10039-OSS-feature-control.md) |
-| 10040-10999 | OSS feature blocks 1-24 | — | **OSS-only** settings/commands, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-oss-feature-flags.md)) | — |
+| **10000-10039** | **Daybreak feature control** | mask / cmd | **Daybreak-only** (block 0): `FEAT_EN[0..7]` feature-enable mask (default 0 = factory mirror), `FEAT_CMD` save/reload/clear; ⬜ not implemented (T28/T29) | [→](HR10000_10039-Daybreak-feature-control.md) |
+| 10040-10999 | Daybreak feature blocks 1-24 | — | **Daybreak-only** settings/commands, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-daybreak-feature-flags.md)) | — |
 
 ## Annex tables (in the per-register files)
 

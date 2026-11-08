@@ -2,6 +2,14 @@
 
 > **Authoritative wiring:** the SPI1↔config-flash link is distilled in [`docs/wiring/ARM-SPI1-flash.md`](wiring/ARM-SPI1-flash.md). This doc remains the OSS forward-compat region plan.
 
+> **Daybreak.** This region is the store for **Daybreak**, the codename for our
+> beyond-factory features. Its layout is set in [`docs/45`](45-daybreak-feature-flags.md) §4:
+> `0x010000–0x01FFFF` is the Daybreak **settings ring** (sparse `(reg, value)`
+> snapshot generations), and `0x020000–0x03FFFF` holds **feature-owned rings**
+> claimed per feature. The page magic is **`"DAYB"`**, replacing the `"LXP1"`
+> drafted below, which was never implemented. The rest of this doc (why the
+> factory never reads the region, the `0x5A` marker, the caveats) stands.
+
 We want the open reimplementation to persist **new** settings of its own on the
 same SPI NOR config flash, while keeping the factory's settings
 ([`docs/21`](21-arm-config-flash.md) / [`docs/23`](23-arm-config-writer.md)) intact
@@ -84,7 +92,7 @@ record **self-identifying and factory-rejectable**:
 
 ```
 offset  size  field
-0x00      4   magic  "LXP1" (0x4C 0x58 0x50 0x31)   — signature + format id
+0x00      4   magic  "DAYB" (0x44 0x41 0x59 0x42)   — signature + format id (was "LXP1" in this draft)
 0x04    246   OSS settings payload
 0xFA      2   CRC-16/MODBUS of [0x00:0xFA], little-endian   (identical to factory)
 0xFC      2   reserved (0xFF)
@@ -108,7 +116,7 @@ the same ~32 × endurance records per 8 KB of ring (see docs/21's lifetime note)
    payload CRC matches. Our marker is `0x5A`, so the record is skipped as "not
    written / invalid" — precisely the corrupted/unrecognized → skip behavior we
    want. The data-log validator wants `0xA5,0xA5` at `[0,1]`; our magic begins with
-   `'L'` (`0x4C`), so it is rejected there too. A freshly-erased region is `0xFF` at
+   `'D'` (`0x44`), so it is rejected there too. A freshly-erased region is `0xFF` at
    `[0xFF]`, also skipped.
 
 The magic at `[0x00]` does the mirror job: it stops **our** firmware from mistaking

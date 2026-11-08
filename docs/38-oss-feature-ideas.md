@@ -1,5 +1,10 @@
 # 38 — Feature brainstorm: what the open firmware could do beyond the factory
 
+> **Naming.** The beyond-factory feature set is codenamed **Daybreak**. How a
+> Daybreak feature is gated, registered, persisted and tested is
+> [`docs/45`](45-daybreak-feature-flags.md). (This doc said "OSS" before the
+> codename existed.)
+
 **Status: brainstorm / design notes. Nothing here is implemented, and nothing
 here is a finding.** This doc lists features the open ARM "com" firmware could
 add **on top of** the factory behaviour, now that the corpus maps most of the
@@ -30,10 +35,11 @@ plus [`docs/11`](11-12000xp-revisions.md) for what the 07-series added.
    tests are ours alone. Mark them that way (cf. `test_arm_sim_self_only.py`).
    **Every feature is also off by default behind its own feature flag**: the
    HR 10000–10007 enable mask. With the flags clear, the firmware is the factory
-   mirror and passes every parity test unchanged. The mechanism, the feature
-   classes and the test rules are in [`docs/45`](45-oss-feature-flags.md).
-2. **Round-trip safe.** New settings persist only in the OSS flash region
-   (`0x010000–0x03FFFF`, `LXP1` / `0x5A` records, [`docs/24`](24-oss-settings-region.md)).
+   mirror and passes every parity test unchanged. The mechanism, the claims
+   table, persistence and the test rules are in [`docs/45`](45-daybreak-feature-flags.md).
+2. **Round-trip safe.** New settings persist only in the Daybreak flash region
+   (`0x010000–0x03FFFF`, `"DAYB"` / `0x5A` pages, [`docs/24`](24-oss-settings-region.md);
+   the sparse-snapshot settings ring is [`docs/45`](45-daybreak-feature-flags.md) §4).
    That way a flash-back to factory ignores them, and re-flashing ours restores
    them.
 3. **The ARM is not the protection layer, so it must not try to be one.** Real-time
@@ -58,40 +64,30 @@ plus [`docs/11`](11-12000xp-revisions.md) for what the 07-series added.
 
 ---
 
-## 2. Where the new data/controls live — an OSS register window
+## 2. Where the new data/controls live — a Daybreak register window
 
-> **Superseded by [`docs/45`](45-oss-feature-flags.md) (feature flags) and the
+> **Superseded by [`docs/45`](45-daybreak-feature-flags.md) (feature flags) and the
 > authoritative allocation in [`wiring/ARM-UART5-dongle/registers.md`](wiring/ARM-UART5-dongle/registers.md)
 > ("Address-space allocation").** This section first proposed **IR/HR 1000–1399**.
 > That was moved to **IR/HR 10000–10999**, because the factory's own space is
 > still growing: it serves beyond-spec IR up to 204 live, the dongle polls to
 > IR 380, and the factory read path reserves 4095–4999 and the battery bank from
-> 5000. 1000 left too little room. Every OSS feature is also **opt-in behind a
+> 5000. 1000 left too little room. Every Daybreak feature is also **opt-in behind a
 > feature flag** (HR 10000–10007), so that with the defaults our firmware stays the
 > factory mirror. Question 1 of §9 is answered: the factory reads `0` across the
 > window and refuses writes with exception 2 (docs/45 §2.2).
 
 The window is cut into 40-register blocks aligned to the dongle-spec query groups
 (10000 = 250 × 40), so every block fits one legal query. **Block *k* sits at
-10000 + 40·k in both spaces.** Block 0 is the control plane (discovery +
-feature-enable mask). The remaining blocks are assigned per feature by the
-docs/45 registry. The content groups this brainstorm suggested map onto that
-registry as follows (numbers per docs/45 §3.2, all still ⬜ proposals):
+10000 + 40·k in both spaces.** Block 0 is the control plane: the `"DAYB"` magic,
+the capability masks and the feature-enable mask. The other blocks have **no
+up-front plan**. A feature claims its ID and block(s) in the docs/45 claims table
+when work on it starts. The content groups this brainstorm suggested (identity &
+health, bug-report recorder, live I/O state, derived electrical, windowed stats,
+link health, battery detail, cross-check view, event journal) each become one
+claimed feature with one or more blocks.
 
-| content (§ref) | docs/45 feature ID → block(s) |
-|---|---|
-| **identity & capability**: OSS magic, schema version, feature bitmap (§3.1) | control plane, block 0 (always on) |
-| git hash, build date, uptime, reset reason (§3.1, §6) | ID 1 → block 1 |
-| **bug-report recorder** status + register-window read cursor (§6.1) | ID 2 → block 2 |
-| **live I/O state**: relay bitmap, fan duties, buzzer/LED/backlight, lease status (§3.2) | ID 3 → block 3 |
-| **derived & high-resolution electrical** (§3.4) | ID 4 → block 4 |
-| **windowed stats** (§3.5) | ID 5 → block 5 |
-| **link health** (§3.6) | ID 6 → block 6 |
-| **battery detail**: per-pack + cell min/max/Δ + temps + alarm bits (§3.3) | ID 7 → blocks 7–9 |
-| **cross-check view** (§3.7) | ID 8 → block 10 |
-| **event journal** / fault history (§3.8) | ID 9 → block 11 |
-
-HR side: each feature's persisted settings (OSS region) and **volatile
+HR side: each feature's persisted settings (Daybreak region) and **volatile
 lease-based commands** (§4) sit in the HR half of its own block. One
 self-describing **schema table**, which a client can read register by register as
 `{id, name-hash/index, unit, scale, signedness}`, would let an HA/ESPHome
@@ -103,7 +99,7 @@ later control-plane or block-1 addition.
 ## 3. Surfacing more internal data (input-register ideas)
 
 ### 3.1 Identity / capability block — *easy, no RE needed*
-Firmware identity (OSS magic, version, git hash), variant (`ceaa`/`FAAB`/`ccaa`,
+Firmware identity (Daybreak magic, version, git hash), variant (`ceaa`/`FAAB`/`ccaa`,
 already in `variant.h` ✔), feature bitmap, uptime, reset reason (IWDG vs power-on
 vs software, from the RCC reset flags), and the CPU versions we already track
 (HR 9/10, [`docs/32`](32-firmware-version-registers.md)). Clients can then gate
@@ -197,10 +193,10 @@ that get named.
 ### 3.8 Timestamped fault/event history — *medium*
 The LCD's Notice → Record tab keeps fault/alarm history with time and date
 (manual). Expose it over Modbus as a cursor plus entries `{epoch, code, set/clear}`,
-and add an OSS event journal (relay transfers, lease grants and expiries,
-settings changes and who made them) in the OSS flash region. HA gets a precise
+and add a Daybreak event journal (relay transfers, lease grants and expiries,
+settings changes and who made them) in the Daybreak flash region. HA gets a precise
 "what happened at 03:12" without having polled at 03:12. Size it within the
-192 KB OSS region (§6.3).
+192 KB Daybreak region (§6.3).
 
 ### 3.9 Not possible without new hardware
 The com MCU has **no analog inputs configured** ✔ ([`docs/16`](16-arm-io-map.md)).
@@ -216,7 +212,7 @@ DSP relays them on `0x49`. The ARM has no MPPT wire ✔ ([`docs/13`](13-mppt-con
 Every command in this section follows §1.4 (lease + revert) and §1.5 (volatile).
 The proposed generic shape is a **command block** of
 `{mode, value, lease_seconds, sequence}` per controllable thing. The firmware
-echoes `remaining_lease` and `active_source` (HMI / dongle / OSS port) in the IR
+echoes `remaining_lease` and `active_source` (HMI / dongle / Daybreak port) in the IR
 mirror (§3.2).
 
 ### 4.1 Direct Smart Port control — *high value; gated on one open fact*
@@ -226,7 +222,7 @@ damages the unit. Smart Load turns on when PV power is above a start threshold
 and SOC/voltage is above its start value, and off below the end value. AC-couple
 engages below SOC/voltage thresholds after about a 5-minute delay.
 
-Proposed OSS modes for the **Smart Load** role:
+Proposed Daybreak modes for the **Smart Load** role:
 
 | mode | behaviour |
 |---|---|
@@ -261,7 +257,7 @@ right now" decision, such as negative export prices on the grid-tie side.
 Direct start/stop with a lease, an **exercise schedule** (run 15 min weekly
 under load), and HA-driven start on a forecast deficit. The 07-series added
 warm-up/cool-down and quick-start ✔ strings ([`docs/11`](11-12000xp-revisions.md)),
-and the OSS command should go through that same sequencing, never around it.
+and the Daybreak command should go through that same sequencing, never around it.
 The dry-contact pin is PD11 (leading ~) or PC5 ([`docs/16`](16-arm-io-map.md)
 "Dry Control"). A **generic spare dry contact** mode ("HA-owned relay") would
 also enable SOC-staged load shedding, an external "grid down" signal and similar
@@ -272,14 +268,14 @@ HA tariff/solar-forecast automations want to say "charge at ≤ 40 A from grid
 until 06:00" or "cap discharge to 3 kW now". The ARM pushes the configured
 battery limit set in **block 1** ✔ (field roles medium/low,
 [`ARM-USART3-DSP/block-01`](wiring/ARM-USART3-DSP/block-01.md)), and the DSP takes min(configured,
-live BMS). That makes the push a natural **clamp-only** knob: an OSS override can
+live BMS). That makes the push a natural **clamp-only** knob: a Daybreak override can
 lower limits but never raise them above the persisted setting or the BMS value.
 The same pattern covers AC-charge power/SOC targets (HR 64-89 family) and Max Grid
 In Power (07-series ✔ string) for **peak shaving**. All of it should be volatile
 overrides (§1.5).
 
 ### 4.4 A real scheduler — *medium; partly built*
-- **Turn on the dormant half-hour table** (HR 126-131, Q5) as an opt-in OSS mode.
+- **Turn on the dormant half-hour table** (HR 126-131, Q5) as an opt-in Daybreak mode.
   `optchg_slot_mode()` already exists and is tested ([`docs/31` Q5](31-factory-quirks.md)).
   HA writes tomorrow's 48-slot charge/discharge plan from day-ahead prices once a
   day, and that one write is a whole tariff integration. It needs a precedence
@@ -304,7 +300,7 @@ overrides (§1.5).
 The fans are ARM TIM1 PWM ✔ (AF), and the factory exposes only slope/max per fan
 (manual). The ARM could offer a **temperature curve** (T1/T2, radiator temps ✔ IR
 65/66) with a **quiet-hours** ceiling, and pre-cooling ahead of a scheduled
-high-power charge. Hard rule: the OSS curve may only ever **add** airflow above
+high-power charge. Hard rule: the Daybreak curve may only ever **add** airflow above
 the factory curve once any temperature nears the warning thresholds (manual:
 ~87 °C / ~90 °C warn). W009 "fan stuck" implies tach feedback somewhere (?, maybe
 among the unread inputs PE8/10/12/15). If it is found, publish RPM.
@@ -315,7 +311,7 @@ among the unread inputs PE8/10/12/15). If it is found, publish RPM.
 - **LCD**: an "HA page" whose few text lines HA writes over Modbus (price,
   forecast, message). Backlight schedule (PD14/PD15 candidates ~). Our own
   renderer already draws on the real panel ✔ ([`docs/28`](28-factory-hmi.md)).
-- **Status LED** patterns for OSS states (lease active, OSS firmware running) —
+- **Status LED** patterns for Daybreak states (lease active, Daybreak firmware running) —
   but the real expressive surface is the **front-panel RGB ring** (§4.8).
 - A front-panel **"remote control allowed"** toggle (§5.4).
 
@@ -357,7 +353,7 @@ Building blocks (details and a reimpl sketch in `docs/40`):
 - Nice touches: a drop that reaches the fill line gives a brief brighten/ripple;
   on discharge, reverse the motion (battery arc drains, a downward "draw" glow); on
   a fault, override to the red comet (don't hide alarms behind the pretty mode).
-  This is a cosmetic OSS "mode" selectable via the HMI "LED Mode", never masking the
+  This is a cosmetic Daybreak "mode" selectable via the HMI "LED Mode", never masking the
   fault/warning states (which must still win — §1 ground rules). Feasible today; the
   only open hardware point is confirming the blue channel / wire byte-order on a
   real unit (`docs/40`).
@@ -377,7 +373,7 @@ Options, in order of least hardware change:
 2. **Keep the dongle and add a second slave port** for HA (§5.2).
 3. **Transparent passthrough**: the dongle is a dumb frame relay ✔ (`docs/26`), so
    whatever path reaches it locally (?, not established in the corpus) also
-   reaches the OSS window for free.
+   reaches the Daybreak window for free.
 
 ### 5.2 A second Modbus slave on a spare UART — *gated on peer identity*
 UART4 (PC10/PC11, RS-485, 2400 baud, DE ~PA15) has an **unknown peer** ✔/?
@@ -400,14 +396,14 @@ Needs care: no false positives on an EG4 frame that happens to CRC-match as a
 standard one (add a mode setting: EG4-only / standard-only / auto).
 
 ### 5.4 Write authorization
-RS-485 has no authentication, so the OSS window should be **read-only by
+RS-485 has no authentication, so the Daybreak window should be **read-only by
 default**. Remote writes to the HR command block should need a front-panel
-"Remote control: allow" setting (persisted, OSS region), optionally with a
+"Remote control: allow" setting (persisted, Daybreak region), optionally with a
 write-unlock register (a PIN or rolling token) and an auto-relock timeout. Log
 every remote write in the event journal (§3.8) with the link it arrived on.
 
 ### 5.5 Clock
-HA can set time over HR 12-14 today ✔. An OSS **epoch + UTC-offset/DST rule**
+HA can set time over HR 12-14 today ✔. A Daybreak **epoch + UTC-offset/DST rule**
 register pair would let HA keep the RTC correct across DST without
 rewriting windows. The factory's time-zone handling lives in the cloud (manual).
 
@@ -463,7 +459,7 @@ to flash. Everything it records is already passing through our own code.
    yields the first one in detail plus a count of the rest.
 
 Writing 25 % *after* the trigger leaves ~75 % of history *before* it. Both the
-ratio and the time cap are runtime settings (OSS HR block, volatile), so a
+ratio and the time cap are runtime settings (Daybreak HR block, volatile), so a
 bring-up session can move them, for example to 50/50 to watch a recovery.
 
 #### What gets recorded (record types)
@@ -480,7 +476,7 @@ capture header anchors them to the RTC.
 | `RAW_U3_RX` | DSP `0x49` telemetry frame | on receipt, dedup + per-block decimation | ~60 B |
 | `RAW_U3_TX` | our outgoing DSP config block | only when the block's bytes **change** (the DSP acts only on changes anyway, [`ARM-USART3-DSP`](wiring/ARM-USART3-DSP/README.md)) | ~60 B |
 | `RAW_CAN` | `{id, dlc, data[8]}`, including the extended frames no register publishes ([`docs/34`](34-multi-battery-can.md)) | on receipt, dedup per id | 14 B |
-| `MB_WRITE` | every holding-register write: link (dongle/HMI/OSS), register, old → new value | as it happens | 14 B |
+| `MB_WRITE` | every holding-register write: link (dongle/HMI/Daybreak), register, old → new value | as it happens | 14 B |
 | `NOTE` | firmware self-report: assertion or invariant failed, parser rejected a frame (why), main-loop overrun, settings-validation reject | as it happens | ≤ 32 B |
 | `TRIGGER` | cause code + detail, primary or secondary | at trigger | 16 B |
 
@@ -609,8 +605,8 @@ to invite confusion). The first body byte is a sub-command:
   timeline plot).
 - **Register-window fallback.** For masters that cannot send a custom function
   code (a stock HA Modbus integration, or a cloud path that filters function
-  codes, ?), mirror STATUS in the recorder's OSS IR block (docs/45 feature ID 2 → block 2, IR 10080–10119, §2). READ then becomes
-  a cursor: write the offset to an OSS HR and read 40 IR of data. It is slower,
+  codes, ?), mirror STATUS in the recorder's own Daybreak IR block (claimed in docs/45 §3, §2). READ then becomes
+  a cursor: write the offset to a Daybreak HR and read 40 IR of data. It is slower,
   but any master can do it.
 
 **Who does the periodic pull (?).** The stock EG4 dongle is a transparent pipe
@@ -626,7 +622,7 @@ status LED/ring pattern §4.8), so a user knows to pull it.
 
 - **?** How does the factory answer function `0x65`: an exception, silence, or
   the update gateway? Check it under the harness. A distinct answer doubles as
-  "is OSS firmware running" detection for the extractor. This feature is
+  "is Daybreak firmware running" detection for the extractor. This feature is
   ours-only, with no factory oracle.
 - Host unit tests (`make test`) for the pure core: ring wrap with variable-length
   records, post-trigger budget arithmetic (bytes and time cap), freeze/ACK/event-id
@@ -645,7 +641,7 @@ with timestamps around an event. A free-running "last N frames" view is still
 useful for RE when nothing has gone wrong.*
 
 Keep a small ring of the last N raw frames per internal link (USART2, USART3,
-CAN1) readable over the OSS window, gated by the same write-unlock. This is
+CAN1) readable over the Daybreak window, gated by the same write-unlock. This is
 priceless for the remaining RE (the `0x49` payload, unpublished bank fields,
 per-pack CAN layouts), and it lets users with a stock dongle contribute captures
 without a logic analyser.
@@ -653,7 +649,7 @@ without a logic analyser.
 ### 6.3 High-resolution local logging
 1-minute records of the core telemetry in flash, readable over Modbus (for
 example func `0x14` read-file-record or a paged window), survive an HA outage.
-**Space is the constraint:** the OSS region is 192 KB ([`docs/24`](24-oss-settings-region.md)),
+**Space is the constraint:** the Daybreak region is 192 KB ([`docs/24`](24-oss-settings-region.md)),
 about 2.5 days at 64 B/min. The factory's ~6.5 MB data-log ring
 (`0x040000–0x68FFFF`) is far larger, but its layout is not decoded, and reusing it
 would break factory round-trip of that history. That is an explicit decision to
@@ -674,7 +670,7 @@ operation and should stay out of reach of normal remote control.
 ### 6.6 Firmware update of the com core itself
 The 07-series bootloader + App split ✔ ([`docs/11`](11-12000xp-revisions.md)) and
 the existing `0x21/0x22/0x23` update gateway ✔ ([`docs/13`](13-mppt-controller.md))
-suggest an OSS-firmware update path over the same Modbus link. Whether it is safe
+suggest a Daybreak-firmware update path over the same Modbus link. Whether it is safe
 and clean-room-compatible depends on the (not ours) bootloader's protocol. Keep
 the DSP/MPPT gateway behaviour unchanged.
 
@@ -682,18 +678,18 @@ the DSP/MPPT gateway behaviour unchanged.
 
 ## 7. Factory quirks we could fix (each is a recorded decision in `docs/31`)
 
-| quirk | OSS opportunity | caution |
+| quirk | Daybreak opportunity | caution |
 |---|---|---|
 | **Q1** IR 101 carries high-res SOC, not max cell V | source IR 101 from `0x373` (§3.3) | changes a factory register's value; do it only if `0x373` layout is proven |
 | **Q2** IR 97 = `"PN"` marker (20048 Ah) | publish real capacity from `0x379`/`0x35F` | same |
-| **Q3** `0x35A` alarms never surface | publish in OSS window (non-breaking) | none — new registers only |
-| **Q4** possible 10× current unit mismatch | publish a proven-unit signed current in the OSS window (§3.4); leave IR 98 alone | needs a live-bus reading first |
+| **Q3** `0x35A` alarms never surface | publish in Daybreak window (non-breaking) | none — new registers only |
+| **Q4** possible 10× current unit mismatch | publish a proven-unit signed current in the Daybreak window (§3.4); leave IR 98 alone | needs a live-bus reading first |
 | **Q5** HR 126-131 table dormant | opt-in evaluator (§4.4) | define precedence vs AC-charge/AC-First windows |
 
-Fixes that only **add** OSS registers (Q3, Q4) carry no compatibility risk. Fixes
+Fixes that only **add** Daybreak registers (Q3, Q4) carry no compatibility risk. Fixes
 that **change** a factory register (Q1, Q2) break the "factory client can't tell"
-rule (§1.1), so each one sits behind **its own class-C feature flag**, default
-off ([`docs/45`](45-oss-feature-flags.md) §3.2: ID 32 = Q1, ID 33 = Q2), with the
+rule (§1.1), so each one sits behind **its own Daybreak feature flag**, default
+off (one claimed [`docs/45`](45-daybreak-feature-flags.md) feature ID per quirk), with the
 verdict recorded in `docs/31`.
 
 ---
@@ -705,13 +701,13 @@ verdict recorded in `docs/31`.
 | **Bring-up — do first** | **bug-report flight recorder (6.1)**: RAM ring + post-trigger freeze + `0x65` extraction, with `tools/bugreport.py` on a USB-RS485 adapter as the first extractor | no new RE, no control actions, and it is the tool that makes debugging every other feature on real hardware possible |
 | **Quick wins** (no new RE) | identity block (3.1), relay/actuator state (3.2), derived values (3.4), windowed stats (3.5), link health (3.6), Q3 alarms, raw debug window of unpublished USART2 fields (3.7), standard-Modbus framing (5.3), write authorization (5.4), **RGB LED-ring modes incl. SOC gauge + solar-rain (4.8)** | facts are ✔ and the data is already in RAM |
 | **Next** (small RE or bench step) | Smart Port control (4.1, one harness run settles the switching path), generator/dry contact (4.2), clamp-only setpoint overrides (4.3), dormant-table scheduler (4.4), fan curve (4.6), LCD/buzzer niceties (4.7) | high HA value; each gated on one named experiment |
-| **Research-gated** | per-pack/cell battery detail (3.3, CAN byte layouts), cross-check/engineering fields (3.7), second slave port (5.2, UART4/USART1 peer + PA15), local logging scale (6.3), OSS self-update (6.6) | depends on open items in `docs/34`, `docs/33`, `wiring/` |
+| **Research-gated** | per-pack/cell battery detail (3.3, CAN byte layouts), cross-check/engineering fields (3.7), second slave port (5.2, UART4/USART1 peer + PA15), local logging scale (6.3), Daybreak self-update (6.6) | depends on open items in `docs/34`, `docs/33`, `wiring/` |
 
 ## 9. Open questions this brainstorm adds
 
 These go to the hand-off list. Each is a concrete experiment.
 
-1. ✅ How does the factory answer IR/HR reads in the OSS window? **Answered** for the (moved) 10000+ window: reads `0`, writes exception 2 ([`docs/45`](45-oss-feature-flags.md) §2.2; UART5 pending T02).
+1. ✅ How does the factory answer IR/HR reads in the Daybreak window? **Answered** for the (moved) 10000+ window: reads `0`, writes exception 2 ([`docs/45`](45-daybreak-feature-flags.md) §2.2; UART5 pending T02).
 2. Is the Smart Port switched by an ARM GPIO or by the DSP? (harness sweep, §4.1)
 3. Which getter backs the 07-series `Psmart` / `Peps_port` / `Pgrid_side` HMI fields? (§3.4)
 4. Is UART4 or USART1 free on the board, and is PA15 really a shared DE line? (schematic/bench, §5.2)

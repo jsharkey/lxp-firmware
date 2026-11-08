@@ -784,29 +784,81 @@ layout vs the 07 bootloader (vectors at `0x08005000`, docs/11; our 12000XP
 link script is still monolithic at `0x08000000`, so decide which), panel init,
 RS-485 DE, CAN bitrate. Also cover how to recover a unit that bricks.
 
-### T28 — OSS feature-flag control plane (the gate every beyond-parity feature goes through)
+### T28 — Daybreak control plane: feature flags, block 0, recovery chords
 **Status:** ⬜ `[ ]` · Layer: host + sim (ours-only, plus one factory-only
-contract). Design: [`docs/45`](45-oss-feature-flags.md). Registers:
-[`HR10000_10039`](wiring/ARM-UART5-dongle/HR10000_10039-OSS-feature-control.md),
-[`IR10000_10039`](wiring/ARM-UART5-dongle/IR10000_10039-OSS-capability.md).
-This is **not** parity work, and it must not cost any: the deliverable is that
+contract). Design: [`docs/45`](45-daybreak-feature-flags.md). Registers:
+[`HR10000_10039`](wiring/ARM-UART5-dongle/HR10000_10039-Daybreak-feature-control.md),
+[`IR10000_10039`](wiring/ARM-UART5-dongle/IR10000_10039-Daybreak-capability.md).
+This is **not** parity work, and it must not cost any. The deliverable is that
 `make test`, `make test-sim`, `make regsweep` and `make wrsem` stay exactly as
-green as before with the mask at zero.
-- [ ] `include/inv/oss_features.h` registry (IDs, class, blocks, requires,
-  conflicts) + `src/oss/oss_features.c` (mask validation, ACTIVE recompute per
-  tick, SAVE/RELOAD/CLEAR to the docs/24 OSS region).
-- [ ] block 0 served by the Modbus port; blocks 1–24 exception 2; end-of-write
-  commit hook in `src/modbus/modbus.c` so `FEAT_EN` writes are atomic.
-- [ ] `make OSS=0` build + `make test-parity` (run the suites on `OSS=0` and
-  `OSS=1`, require identical verdicts).
-- [ ] host tests `test_oss_features.c`; sim `test_oss_control.py`;
-  `tests/oss_helpers.py::oss_enable()` precondition helper.
-- [ ] factory-only test pinning docs/45 §2.2 (IR/HR 10000+ read `0`, HR 10000
-  write → exception 2), the safe-on-factory / discovery contract.
-- [ ] decide the front-panel safe-mode chord and HR 11 `AlltoDefault` ⇒ CLEAR
-  (docs/45 §7 items 3–4).
-Unblocks every docs/38 feature. Each one then claims its docs/45 §3.2 ID here as
-its own task.
+green with the mask at zero, on both `ENABLE_DAYBREAK=0` and `=1`.
+- [ ] `include/inv/daybreak_features.h` registry (ID, blocks, sectors, requires,
+  conflicts) kept in lockstep with the docs/45 §3.2 claims table by a `make test`
+  checker; `src/daybreak/daybreak_features.c` (mask validation, ACTIVE recompute
+  per tick, `daybreak_feat_active()`).
+- [ ] Modbus port: route `10000 ≤ a < 11000` to Daybreak; block 0 served, blocks
+  1–24 exception 2; an end-of-write commit hook in `src/modbus/modbus.c` so
+  `FEAT_EN` writes are atomic.
+- [ ] `make ENABLE_DAYBREAK=1` build + `make test-parity` (run the suites on both
+  builds and require identical verdicts) + `make test-daybreak`.
+- [ ] host `test_daybreak_features.c`; sim `test_daybreak_control.py`;
+  `tests/daybreak_helpers.py::daybreak_enable()` precondition helper.
+- [ ] factory-only test pinning docs/45 §2.2 (IR/HR 10000+ read `0`; HR 10000
+  write → exception 2): the safe-on-factory and discovery contract.
+- [ ] **Recovery chords** (docs/45 §7). Prerequisites: settle the key-role ↔ pin
+  mapping (`keypad.h` disagrees with `docs/wiring/README.md` / docs/28), with an
+  oracle test on the factory HMI, and check for any factory power-on chord.
+  - **UP+DOWN at power-on → Daybreak safe mode.** Mask forced to 0 for this boot,
+    Daybreak writes refused, optional CLEAR via ENTER.
+  - **ENTER+ESC ≥ 10 s + UP,DOWN,UP,ENTER confirm → factory reset of all
+    settings.** `settings_factory_reset()` (T30) plus a Daybreak CLEAR and ring
+    erase. Keeps the SN, energy counters and fault records.
+  - "Exactly two keys held, the other two released"; all-four-pressed = no chord.
+    Make "keys released" the harness default, and add a parity test that boots
+    with all keys low and asserts that nothing fires.
+- [ ] decide whether HR 11 `AlltoDefault` ⇒ Daybreak CLEAR (docs/45 §9 item 5);
+  record it in docs/31.
+Unblocks every docs/38 feature. Each feature then claims its own ID in the
+docs/45 §3.2 table, and its own task here.
+
+### T29 — Daybreak settings store (sparse snapshot ring on the docs/24 region)
+**Status:** ⬜ `[ ]` · Layer: host (pure store logic) + sim (flash round-trip,
+ours-only). Design: [`docs/45`](45-daybreak-feature-flags.md) §4. Needs T28's
+register routing. The factory's own persistence path (`SETTINGS_MAP` →
+factory slots) is **not touched**.
+- [ ] `src/daybreak/daybreak_store.c` over the existing SPI-NOR driver: settings
+  ring at `0x010000–0x01FFFF`, docs/24 page geometry, magic `"DAYB"`, marker
+  `0x5A`.
+- [ ] snapshot = generation of 1..N pages of sorted `(reg, value)` pairs,
+  non-default `persist` registers only (mask words included). Newest
+  **complete** generation wins; erase-ahead never erases the live generation.
+- [ ] load: range-check each entry via its registry descriptor (invalid → default
+  + `store_degraded`); keep unknown keys in a bounded carry list and rewrite them
+  on SAVE; only CLEAR drops them.
+- [ ] `FEAT_CMD` SAVE / RELOAD / CLEAR wired to it; CLEAR and the factory-reset
+  chord also erase every feature-owned ring claimed in `0x020000–0x03FFFF`.
+- [ ] JEDEC `0x9F` capacity check before using the region (docs/24 caveat).
+- [ ] host `test_daybreak_store.c`:
+  - packing, multi-page, torn-SAVE recovery (truncate mid-generation);
+  - ring wrap, carry, corrupt CRC;
+  - an empty-snapshot boot equals the mirror.
+- [ ] sim: SAVE → reboot → same; no SAVE → reboot → defaults; and the factory
+  image boots unchanged with a populated Daybreak region (docs/24's "factory
+  ignores it", now as a test).
+
+### T30 — HR 11 bit 1 `AlltoDefault`: factory-reset parity
+**Status:** ⬜ `[ ]` · Layer: oracle sim first, then ours. Today ours **accepts
+and ignores** bit 1 ([`HR011`](wiring/ARM-UART5-dongle/HR011-ResetSetting.md),
+`src/main.c` `g_cmd_ops`). This is a parity gap in its own right, and the
+docs/45 §7 factory-reset chord reuses the result.
+- [ ] Oracle: on the factory image, set non-default values across the
+  `SETTINGS_MAP` surface (plus SN, energy counters, fault record), write HR 11
+  bit 1, reboot, and record which fields return to default and which survive
+  (does the SN survive?). Commit that as the contract.
+- [ ] Ours: `settings_factory_reset()` (re-apply `SETTINGS_DEFAULTS`, rewrite
+  the factory slots in factory format) wired to `g_cmd_ops`; same contract
+  green for ours.
+- [ ] Record any surprise in docs/31.
 
 ---
 
