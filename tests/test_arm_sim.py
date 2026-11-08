@@ -454,6 +454,40 @@ def test_sn_write_read_back():
     assert got == SN, "SN did not read back: got %r" % (got,)
 
 
+def test_sn_persists_across_cold_boot():
+    """The 0x10 SN write (HR 2-6) survives a power cycle through the SPI config
+    flash -- same loop as the settings persist test but via write-multiple. Black
+    box, both images: ours stores the SN at slot-0 payload 0x01 (ComAddr is the
+    single byte at 0x00), the factory at the same place (T24c/T24d)."""
+    SN, CONFIG_END = b"SN20261108", 0xC000
+    path = _resolve_image()
+    if not path or not os.path.exists(path):
+        raise Skip("no image")
+    if is_intel_hex(path):
+        raise ValueError("%s is an Intel .hex; pass a flat .bin" % path)
+    boot = _boot_budget(path)
+
+    sim1 = ArmSim(path)
+    for k in ("PA8", "PA11", "PC8", "PC9"):
+        sim1.set_input(k, 1)
+    dev = sim1.attach_config_flash()
+    mb1 = _mb(sim1, systick=2000, boot_insn=boot)
+    base = bytes(dev.mem[:CONFIG_END])
+    assert mb1.write_sn(SN) == 5, "0x10 SN write not acknowledged"
+    used = 0
+    while used < 15_000_000 and bytes(dev.mem[:CONFIG_END]) == base:
+        sim1.run(1_000_000); used += 1_000_000
+    assert bytes(dev.mem[:CONFIG_END]) != base, "SN write never reached the config flash"
+
+    sim2 = ArmSim(path)
+    for k in ("PA8", "PA11", "PC8", "PC9"):
+        sim2.set_input(k, 1)
+    sim2.attach_spi_flash(flash=dev)
+    mb2 = _mb(sim2, systick=2000, boot_insn=boot)
+    got = mb2.read_sn()
+    assert got == SN, "after a cold boot the SN read back as %r, not %r" % (got, SN)
+
+
 def test_modbus_time_set_reads_back():
     """Set the wall clock from the dongle and confirm the device's internal RTC
     took it. The EG4 time registers are HR 12-14 (docs/04): HR 12 =

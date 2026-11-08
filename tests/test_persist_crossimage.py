@@ -45,6 +45,11 @@ _FACTORY = [None]
 CONFIG_END = 0xC000           # the six 8 KB config slots, 0x0000-0xBFFF
 SETTLE = 20_000_000           # budget for the (debounced) flush at fast SysTick
 SYSTICK = 2000
+DEFAULT_ADDR = 1              # the bus address both images answer on out of the box
+HR_COM_ADDR  = 15            # ComAddr: writing it adopts the value as the new bus
+                             # address right after the ACK (live ComAddr, T12), and
+                             # a cold boot adopts the persisted value -- so any Modbus
+                             # that follows a ComAddr write/boot must use the NEW addr.
 
 WANT  = {reg: test for (reg, _s, _o, _w, _sc, test) in SETTINGS_MAP}
 SLOT  = {reg: slot for (reg, slot, _o, _w, _sc, _t) in SETTINGS_MAP}
@@ -128,8 +133,14 @@ def _write_one(image, dev, reg, val):
 
 
 def _write_all(image, dev, pairs, payloads=None):
-    """Boot once, write every (reg,val), journal. Returns (dev, bad, flushed)."""
+    """Boot once, write every (reg,val), journal. Returns (dev, bad, flushed).
+
+    ComAddr (HR 15) is written LAST: it adopts its value as the new bus address
+    right after its own ACK (live ComAddr, T12), so writing it mid-sweep would move
+    the slave out from under every following write (they would all go unanswered on
+    the old address). Written last it is still journaled, and nothing follows it."""
     sim, dev, mb = _mb(image, dev, payloads=payloads)
+    pairs = sorted(pairs, key=lambda rv: rv[0] == HR_COM_ADDR)   # ComAddr -> end
     bad = []
     for reg, val in pairs:
         echo = mb.write_single(reg, val)
@@ -166,19 +177,23 @@ def _field_bytes(payload, off, width):
     return payload[off] if width == 1 else (payload[off] | (payload[off + 1] << 8))
 
 
-def _read_regs(image, dev, regs):
+def _read_regs(image, dev, regs, addr=DEFAULT_ADDR):
     """Read `regs` grouped into 40-register Modbus reads. One group per FRESH
     boot: the factory re-journals its loaded config early in boot, and that
     internal write blocks the dongle after the first transaction, so only the
     first read per boot is served. A cold boot per group keeps each read the
     first. (Our firmware is polled and would serve all in one boot; booting per
-    group is just harmless extra boots for it.)"""
+    group is just harmless extra boots for it.)
+
+    `addr` is the bus address to talk to: pass the adopted address when the flash
+    carries a persisted ComAddr the image adopts at boot (HR 15, T12)."""
     out = {}
     for g in range(0, 160, 40):
         want = [r for r in regs if g <= r < g + 40]
         if not want:
             continue
         _sim, _dev, mb = _mb(image, dev)
+        mb.addr = addr
         block = mb.read_holding(g, 40)
         if block is None:
             continue
@@ -247,7 +262,10 @@ def test_factory_persists_ours_reads_by_class():
         dev, echo, flushed = _write_one(factory, None, reg, val)
         assert echo == val and flushed, \
             "factory did not persist HR %d (echo=%r flushed=%s)" % (reg, echo, flushed)
-        got = _read_regs(ours, dev, [reg]).get(reg)
+        # ComAddr: ours adopts the persisted bus address at boot (T12), so it then
+        # answers on `val`, not the default 1 -- read it there.
+        read_addr = val if reg == HR_COM_ADDR else DEFAULT_ADDR
+        got = _read_regs(ours, dev, [reg], addr=read_addr).get(reg)
         results.append((reg, val, got))
     bad = [(r, w, g) for (r, w, g) in results if not _value_ok(r, w, g)]
     assert not bad, "ours read wrong values from factory-written flash (reg,want,got): %r" % bad

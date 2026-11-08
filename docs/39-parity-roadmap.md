@@ -369,24 +369,55 @@ plus `write_sn`/`read_sn` for the 10-byte SN). New tests close the
 [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) gap:
 - `test_sn_write_read_back` (common) — set the SN via `0x10`, read it back over
   `0x03`; green on **both** images.
-- `test_persists_sn_across_cold_boot` (factory-only) — the factory journals the SN
-  to config flash and restores it after a cold boot; green. Oracle for the loop.
-- **Follow-up (T24d): ours does not yet persist the SN.** HR 2-6 are not in the
-  pinned `SETTINGS_MAP`; the factory stores the SN in a slot-0 record at payload
-  offset ~`0x1` (`docs/23`), which overlaps ComAddr (off `0x0`, width 2) and needs
-  careful layout pinning before adding it cross-image-compatibly — recorded in
-  [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md). (The USART3 fallback slave
-  goes silent shortly after a settings write, so the exact on-flash offset must be
-  pinned by flash-diff, not a factory read-back.)
+- `test_persists_sn_across_cold_boot` — the SN is journaled to config flash and
+  restored after a cold boot. Was **factory-only** here (ours did not persist yet);
+  **T24d** made ours persist it and promoted this to a **common** test (both images).
+- **Follow-up → done in T24d: ours now persists the SN.** HR 2-6 were not in the
+  pinned `SETTINGS_MAP`; T24d flash-diffed the factory to pin the SN at slot-0 payload
+  `0x01` (directly after the 1-byte ComAddr at `0x0`) and added it both sides.
 
 #### T24d — ours persists the SN (HR 2-6) cross-image
-**Status:** 🟡 `[~] claude/019chjb 2026-11-08` · **Layer:** sim + micro · **Depends:** T24c (the factory oracle)
+**Status:** 🟢 `[x] claude/019chjb 2026-11-08` ([`settings_map.h`](../include/inv/settings_map.h), [`settings_persist_contract.py`](../tests/settings_persist_contract.py), [`test_arm_sim.py`](../tests/test_arm_sim.py), [`test_persist_crossimage.py`](../tests/test_persist_crossimage.py)) · **Layer:** sim + micro · **Depends:** T24c (the factory oracle)
 
 Pin the factory's on-flash SN layout by flash-diff (write two distinct SNs, isolate
 the bytes that track each), add HR 2-6 to the config-flash persist path at that exact
 slot/offset so ours journals + seeds the SN, and make
 `test_persists_sn_across_cold_boot` pass for **ours** too (promote it to common or
 add a self-only twin). Watch the ComAddr (HR 15) overlap at slot-0 payload `0x0`.
+
+**Done.** Flash-diff pinned the SN at **slot-0 payload `0x01..0x0a`**, directly after
+the single **ComAddr** byte at `0x00` — so ComAddr is stored **1 byte** wide (its
+SN-overlap, and the thing the card flagged). Added HR 2-6 (and the width-1 ComAddr) to
+`SETTINGS_MAP` on both the C and Python sides; ours now journals + seeds the SN and
+cold-boots it back. Promoted `test_persists_sn_across_cold_boot` to the **common**
+black-box file (both images pass) and retired the factory-only copy. Cross-image stays
+green: the ComAddr width-1 change is byte-identical to the factory, verified by
+`test_persist_crossimage.py`.
+
+- **Fixed in passing:** `test_persist_crossimage.py` was red since live ComAddr adoption
+  landed (T12) — its full-table sweep writes HR 15 (ComAddr), which adopts its value as
+  the new bus address right after the ACK, stranding every following fixed-address
+  transaction. Now ComAddr is written **last** in the sweep, and ComAddr-bearing flash
+  is read back on the **adopted** address. (The test skips in CI without the proprietary
+  image, which is why the red went unseen.)
+- **Follow-up (T24e): ours accepts a `0x06` write to the SN; the factory rejects it.**
+  The factory takes the SN only via `0x10` (write-multiple) and answers a `0x06` to HR
+  2-6 with **exception 3** (observed HR 2 / HR 6); ours accepts it and — now that HR 2-6
+  persist — journals the 2-byte fragment. The write-single path needs to reject the SN
+  block (HR 2-6) while `0x10` still writes it (and the time block HR 12-14 keeps taking
+  both). Needs the modbus core to tell single from multi at the register callback.
+
+#### T24e — reject `0x06` (write-single) to the SN block (HR 2-6)
+**Status:** 🔴 `[ ]` · **Layer:** micro + sim · **Depends:** T24d
+
+The factory accepts the SN only via `0x10` and rejects a `0x06` to HR 2-6 with exception
+3 (ILLEGAL_VALUE) — pinned on HR 2 and HR 6; first step is to sweep all five (HR 2-6)
+and confirm the exact code per register. Then thread single-vs-multi awareness through
+the modbus core (e.g. an optional `write_holding_multi` on `mb_regmap_t`, NULL-safe so
+`test_modbus.c` is untouched) so ours' write-single path rejects the SN block while
+`0x10` still writes it. Guard: the time block (HR 12-14) must keep taking **both** `0x06`
+and `0x10` (`test_modbus_time_set_reads_back` writes it with `0x06`). TDD: a common
+`test_sn_rejects_write_single` (factory passes, ours red until fixed).
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10

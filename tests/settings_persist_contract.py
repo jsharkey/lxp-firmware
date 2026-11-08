@@ -24,7 +24,7 @@ wrong offset/width/scale makes one direction read the wrong bytes).
 # reg  slot  off    width scale test
 SETTINGS_MAP = [
     # --- slot 0: main inverter / working settings (all width 2) ---
-    (15,  0, 0x00, 2, 1,   31),    # ComAddr
+    (15,  0, 0x00, 1, 1,   31),    # ComAddr (1 byte; SN[0..9] occupies 0x01..0x0a, T24d)
     (21,  0, 0x13, 2, 1,  310),    # FuncEn (bitmask)
     (110, 0, 0x15, 2, 1,   22),    # FunctionEn1 (bitmask)
     (20,  0, 0x18, 2, 1,    4),    # PVInputModel (0-7)

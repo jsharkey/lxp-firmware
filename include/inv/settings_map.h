@@ -12,7 +12,9 @@
  * WIDTH is the on-flash stored width in bytes. docs/23 first recorded the whole
  * map as "2B", but the factory oracle shows slot-5's power-command block
  * (+0x00..+0x07) is a packed run of 1-byte fields; those rows are width 1 here
- * (docs/23 "Width correction"). SCALE is the factor the wire value is multiplied
+ * (docs/23 "Width correction"). ComAddr (HR 15) is also width 1: it is the single
+ * byte at slot-0 payload 0x00, immediately before the 10-byte SN at 0x01 (T24d).
+ * SCALE is the factor the wire value is multiplied
  * by before storing: the factory stores ChargeCurr/DischgCurr/MaxBackFlow x10,
  * everything else x1.
  */
@@ -32,8 +34,15 @@ typedef struct {
 /* Keep in lockstep with tests/settings_persist_contract.py (the cross-image
  * test enforces it). 56 registers pinned dynamically in docs/23. */
 static const settings_field_t SETTINGS_MAP[] = {
-    /* slot 0 — main inverter / working settings (width 2) */
-    {  15, 0, 0x00, 2, 1  },   /* ComAddr                    */
+    /* slot 0 — main inverter / working settings (width 2, except ComAddr + SN) */
+    {  15, 0, 0x00, 1, 1  },   /* ComAddr (1 byte; SN follows at 0x01) */
+    /* SN[0..9] -- 10 ASCII bytes at payload 0x01..0x0a (T24d; written via 0x10 to
+     * HR 2-6, persisted here so a cold boot restores the serial number). */
+    {   2, 0, 0x01, 2, 1  },   /* SN[0:1]                    */
+    {   3, 0, 0x03, 2, 1  },   /* SN[2:3]                    */
+    {   4, 0, 0x05, 2, 1  },   /* SN[4:5]                    */
+    {   5, 0, 0x07, 2, 1  },   /* SN[6:7]                    */
+    {   6, 0, 0x09, 2, 1  },   /* SN[8:9]                    */
     {  21, 0, 0x13, 2, 1  },   /* FuncEn (bitmask)           */
     { 110, 0, 0x15, 2, 1  },   /* FunctionEn1 (bitmask)      */
     {  20, 0, 0x18, 2, 1  },   /* PVInputModel               */

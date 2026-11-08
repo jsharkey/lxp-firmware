@@ -555,40 +555,12 @@ def test_rtc_is_live_clock():
     check_live_clock(sim, ModbusDsp)         # factory answers on USART3 in the harness
 
 
-# --- SN (HR 2-6) persists across a cold boot (T24c) -------------------------
-# The factory journals a 0x10 SN write to the config flash (docs/23: slot-0 record)
-# and restores it at boot. The full loop: 0x10 write -> settings struct -> flash
-# record -> cold boot (fresh CPU/RAM, SAME flash) -> loader -> read back. Our
-# firmware does the in-session 0x10 round-trip (test_sn_write_read_back) but does
-# NOT yet persist the SN (HR 2-6 are not in the pinned SETTINGS_MAP; the on-flash
-# SN offset vs ComAddr still needs pinning) -- a documented follow-up, so this is
-# factory-only.
-def test_persists_sn_across_cold_boot():
-    """Factory: a 0x10 SN write to HR 2-6 survives a power cycle through the SPI
-    config flash -- write, let it flush, cold-boot a fresh machine against only the
-    persisted flash, and read the SN back."""
-    from arm_sim_modbus import ModbusDsp
-    SN, CONFIG_END = b"AB12345678", 0xC000
-    KEYS = ("PA8", "PA11", "PC8", "PC9")     # idle-high, else phantom key presses
-    sim1 = _factory()
-    for k in KEYS:
-        sim1.set_input(k, 1)
-    dev = sim1.attach_config_flash()
-    mb1 = ModbusDsp(sim1, systick=2000, boot_insn=4_000_000)
-    base = bytes(dev.mem[:CONFIG_END])
-    assert mb1.write_sn(SN) == 5, "0x10 SN write not acknowledged"
-    used = 0
-    while used < 15_000_000 and bytes(dev.mem[:CONFIG_END]) == base:
-        sim1.run(1_000_000); used += 1_000_000
-    assert bytes(dev.mem[:CONFIG_END]) != base, "SN write never reached the config flash"
-
-    sim2 = _factory()
-    for k in KEYS:
-        sim2.set_input(k, 1)
-    sim2.attach_spi_flash(flash=dev)         # only the flash carries over
-    mb2 = ModbusDsp(sim2, systick=2000, boot_insn=4_000_000)
-    got = mb2.read_sn()
-    assert got == SN, "after a cold boot the SN read back as %r" % (got,)
+# --- SN (HR 2-6) persistence: now a COMMON test (T24d) ----------------------
+# This was factory-only while our firmware did not persist the SN. T24d added HR 2-6
+# to the pinned SETTINGS_MAP (slot-0 payload 0x01, right after the single ComAddr
+# byte at 0x00), so OURS now journals + restores the SN too -- and the cold-boot
+# round-trip moved to test_arm_sim.py::test_sn_persists_across_cold_boot, which holds
+# both images to it. Nothing factory-specific remains, so no twin lives here.
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------
