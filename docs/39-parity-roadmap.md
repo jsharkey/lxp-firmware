@@ -420,29 +420,26 @@ and `0x10` (`test_modbus_time_set_reads_back` writes it with `0x06`). TDD: a com
 `test_sn_rejects_write_single` (factory passes, ours red until fixed).
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
-**Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
+**Status:** 🟢 `[x] claude 2026-11-08 · claude-opus/019chjbE` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
 
 For most settings HRs, only *storage* is tested (T03). Whether a dongle write
-actually **reaches the DSP** is not. **Now mapped live:**
-[`tools/dsp_push_matrix.py`](../tools/dsp_push_matrix.py) sweeps every writable HR
-(two distinct values, **separate fresh boots** so the modbus-residue false positive
-that the `push_delta` double-write produces cannot occur) and records which
-block·offset each moves, or `none (ARM-local only)`. Output committed:
+**reaches the DSP** is now mapped live: [`tools/dsp_push_matrix.py`](../tools/dsp_push_matrix.py)
+sweeps every writable HR on **both images** (two distinct values, **separate fresh
+boots** so the `push_delta` double-write residue cannot false-positive) and records
+which block·offset each moves. Output committed:
 [`hr-push-matrix.md`](wiring/ARM-USART3-DSP/hr-push-matrix.md).
 
-**Found (factory):** 29 of 59 push to a block. New vs. the old static table —
-block 6 carries the **generator-charge** set (HR 194–198) and lead-acid
-charge/discharge (HR 99/101/102); block 0 carries **packed enable bytes** (HR 20,
-21, 90/91 shared, 110/112 shared, 120); HR 112 is multi-target (block 0 + block 3).
-This supersedes `hr-controlled-fields`' old "live capture impossible" note (that was
-a **broken-oracle** symptom — the 05-era filler address — not a real limitation).
-
-**Done:** the factory matrix + the T10-relevant fields (blocks 3 & 6 scalars +
-generator-charge) decoded and locked ours==factory in `test_dsp_push.py`
-(`GRID_PUSH`). **Remaining:** decode the packed block-0 enable bytes
-(`0x19/0x1a/0x1c`) and emit them in ours; a full ours-side matrix sweep; and the
-`1-value` registers (145/146/100/113/16/23/61 — only one value stores in the
-default boot) need a storing value pair or static confirmation.
+**Done.** **31 of 59** writable HRs push to a block, and **ours agrees with the
+factory on every one except HR 112** (whose block-3 parallel-role target ours omits
+by design — non-parallel build, opaque lookup). All reproducible fields are emitted
+and locked ours==factory in `test_dsp_push.py` (`DSP_PUSH` windows + `GRID_PUSH`
+scalars + `test_ours_matches_factory_absolute` byte values + the header test). Along
+the way this supersedes `hr-controlled-fields`' old "live capture impossible" note (a
+broken-oracle symptom), decoded the **packed block-0 enable bytes** (`0x19/0x1a/0x1c`,
+`0x28/0x2c`, `0x1e`), and — by resolving the **`1-value`** registers with storing
+value pairs — found two block-0 fields the first pass had mislabelled constant:
+**HR 100 cut-voltage → `0x21`** and **HR 146 LINE_MODE → `0x1a`**. Residual `1-value`
+(only one value stores in the bare boot): HR 16/113/145 (145 static → `0x1e`).
 - Registers whose effect is evaluated ARM-side (windows aside, which *do* push)
   show `none` here — their behaviour test lives in T15/T16.
 - The full sweep (~4 min, needs the proprietary image) is a tool, not a CI test;
