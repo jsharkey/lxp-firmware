@@ -737,7 +737,7 @@ Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
 
 ### T27 — Input registers that still have no test
-**Status:** ⬜ `[ ]` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
+**Status:** 🚧 `[~] claude 2026-11-08` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
 
 As of the audit, these input registers have no test at all:
 - **IR 6 InternalFault**: T06 publishes it (classifier output), but no
