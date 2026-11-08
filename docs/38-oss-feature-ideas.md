@@ -80,7 +80,7 @@ Suggested block layout (IR side; HR mirrors where a control exists):
 | 4–6 | 1160–1279 | **battery detail**: per-pack + cell min/max/Δ + temps + alarm bits from the unpublished CAN frames (§3.3) |
 | 7 | 1280–1319 | **link health**: per-link frame/CRC/timeout counters, last-seen ages (§3.6) |
 | 8 | 1320–1359 | **cross-check view**: safety-CPU vs DSP measurements side by side + deltas (§3.7) |
-| 9 | 1360–1399 | **event journal cursor** / fault history with timestamps (§3.8) |
+| 9 | 1360–1399 | **bug-report recorder** status + read cursor fallback (§6.1); event journal cursor / fault history with timestamps (§3.8) |
 
 HR side: 1000–1039 for OSS settings (persisted in the OSS region) and 1040–1119 for
 **volatile lease-based commands** (§4). One self-describing **schema table**, which
@@ -190,7 +190,7 @@ The LCD's Notice → Record tab keeps fault/alarm history with time and date
 and add an OSS event journal (relay transfers, lease grants and expiries,
 settings changes and who made them) in the OSS flash region. HA gets a precise
 "what happened at 03:12" without having polled at 03:12. Size it within the
-192 KB OSS region (§6.2).
+192 KB OSS region (§6.3).
 
 ### 3.9 Not possible without new hardware
 The com MCU has **no analog inputs configured** ✔ ([`docs/16`](16-arm-io-map.md)).
@@ -405,14 +405,242 @@ rewriting windows. The factory's time-zone handling lives in the cloud (manual).
 
 ## 6. Diagnostics & maintenance features
 
-### 6.1 Raw link taps
+### 6.1 Bug-report flight recorder — **HIGH PRIORITY (bring-up)**
+
+**Why first.** When we first flash our firmware onto a real unit, the failures
+we most need to see are the ones a dongle poll cannot catch: a relay that
+chatters for 300 ms, a state that flickers through `FAULT` and back, a DSP frame
+that arrives malformed once a minute, a fault bit that sets and clears between
+two 1 s polls. A dongle poll also shows only the ~150 published registers, not
+the internal state behind them. The recorder fixes both problems. It keeps a
+**RAM-only ring** of high-resolution telemetry, state edges and raw link frames.
+When something goes wrong it **keeps recording for a while, then freezes** the
+ring. The dongle (or any master we control) then pulls the frozen capture out
+over custom Modbus function codes, in the same spirit as the `0x21/0x22/0x23`
+update gateway. It needs no new RE, takes no control action, and writes nothing
+to flash. Everything it records is already passing through our own code.
+
+#### Capture model
+
+```
+            armed (recording, oldest overwritten)          post-trigger         frozen
+  ... ──────────────────────────────────────────┬──────────────────────────┬────────────── ...
+                                              trigger              25 % of ring          until the
+                                       (first event latches)    (or time cap) more     extractor
+                                                                                       ACKs it
+  ring after freeze:  [ ~75 % history before the trigger ][ ~25 % after it ]
+```
+
+1. **Armed.** Every record is appended to a single byte ring, overwriting the
+   oldest record. Records are variable-length TLVs, so the ring holds whatever
+   mix the active profile produces.
+2. **Trigger.** The first qualifying event (below) latches: it writes a `TRIGGER`
+   record, remembers its ring offset and starts the post-trigger budget.
+3. **Post-trigger.** Recording continues until **25 % of the ring's capacity in
+   bytes** has been written since the trigger. A **time cap** (default 30 s)
+   also ends this phase, so a trigger on a quiet bus still freezes promptly.
+   Further events in this phase are logged as `TRIGGER(secondary)` records but
+   do **not** restart the window. They are often the most telling part ("the
+   BMS link died 400 ms after the relay opened").
+4. **Freeze.** Writes stop, and a one-shot **state snapshot** (below) is taken
+   into a separate fixed area. The capture now waits for extraction. While
+   frozen, new events are not recorded, but they are **counted and summarised**
+   in a small list kept outside the ring (last 8 `{t, cause}` plus a missed-event
+   counter). The extractor therefore knows what happened after the freeze, even
+   though it doesn't have the detail.
+5. **Re-arm** happens only when the extractor ACKs that capture's event id (see
+   protocol). One event is held at a time, as intended: a burst of faults
+   yields the first one in detail plus a count of the rest.
+
+Writing 25 % *after* the trigger leaves ~75 % of history *before* it. Both the
+ratio and the time cap are runtime settings (OSS HR block, volatile), so a
+bring-up session can move them, for example to 50/50 to watch a recovery.
+
+#### What gets recorded (record types)
+
+All records start with `{u8 type, u8 len, u32 t_ms}`. `t_ms` is the SysTick
+millisecond counter, so record times are exact relative to each other. The
+capture header anchors them to the RTC.
+
+| type | content | when written | typical size |
+|---|---|---|---|
+| `SAMPLE` | curated fast snapshot: IR 0 state, fault/warn words, Vbat, Ibat, SOC, PV V/P ×2, grid V/F, EPS V/F/P, bus V, temps, relay-pin bitmap, fan duties, link-health counters | fixed rate, default **10 Hz** (profile-selectable 1–50 Hz) | ~64 B |
+| `EDGE` | one field changed: `{field id, old, new}` for IR 0, each fault/warn bit, each relay pin, link up/down, lease grant/expiry | **as it happens**, at full resolution, independent of the sample rate | 12 B |
+| `RAW_U2` | safety-CPU frame on USART2 (the full bank frame, including the fields no register publishes, [`docs/33`](33-usart2-telemetry-bank.md)) | on receipt, **deduplicated**: skipped if byte-identical to the last one stored | ~90 B |
+| `RAW_U3_RX` | DSP `0x49` telemetry frame | on receipt, dedup + per-block decimation | ~60 B |
+| `RAW_U3_TX` | our outgoing DSP config block | only when the block's bytes **change** (the DSP acts only on changes anyway, [`ARM-USART3-DSP`](wiring/ARM-USART3-DSP/README.md)) | ~60 B |
+| `RAW_CAN` | `{id, dlc, data[8]}`, including the extended frames no register publishes ([`docs/34`](34-multi-battery-can.md)) | on receipt, dedup per id | 14 B |
+| `MB_WRITE` | every holding-register write: link (dongle/HMI/OSS), register, old → new value | as it happens | 14 B |
+| `NOTE` | firmware self-report: assertion or invariant failed, parser rejected a frame (why), main-loop overrun, settings-validation reject | as it happens | ≤ 32 B |
+| `TRIGGER` | cause code + detail, primary or secondary | at trigger | 16 B |
+
+Deduplication is what makes this affordable. Most of the internal links repeat
+the same frame many times a second, and the interesting content is the
+*change*. The bounds are the wire rates: USART2 and USART3 are 19200 baud, so
+each delivers at most ~1.9 KB/s raw even with no dedup at all.
+
+**Profiles** pick what is recorded and at what rate, so the ring's time span
+fits the bug. The profile is selected over Modbus or the HMI:
+
+| profile | records | rough span in a 24 KB ring |
+|---|---|---|
+| `overview` (default) | `SAMPLE` @10 Hz + all `EDGE` / `MB_WRITE` / `NOTE` | ~35 s |
+| `slow` | `SAMPLE` @1 Hz + edges | ~6 min |
+| `dsp-deep` | edges + `RAW_U3_RX/TX` (dedup) + `SAMPLE` @2 Hz | link-dependent, ~10–30 s |
+| `safety-deep` | edges + `RAW_U2` (dedup) + `SAMPLE` @2 Hz | ~10–30 s |
+| `bms-deep` | edges + `RAW_CAN` (all ids) + `SAMPLE` @2 Hz | ~1–2 min |
+
+(Spans are estimates from the record sizes above, not measurements. Measure
+them on the bench and record the real numbers here.)
+
+#### Triggers (each maskable)
+
+- **Fault/warning rising edge**: any bit of IR 60–63 going 0→1. A per-bit mask
+  lets a known-noisy warning be ignored.
+- **State anomalies**: IR 0 entering fault, or a state transition not on an
+  allowed-transition list, or more than N state changes in M seconds (chatter).
+- **Relay anomalies**: a relay pin toggling more than N times in M seconds, or a
+  relay pin disagreeing with what our relay logic expects for the current state.
+- **Link anomalies**: link-loss timeout, a CRC-error burst, a frame the parser
+  rejects, or a BMS CAN silence.
+- **Firmware self-checks**: `NOTE`-class assertion failures, main-loop overrun
+  past a budget, stack high-water crossing a guard.
+- **Watchdog / fault reset**: see "surviving a reset" below.
+- **Manual**: a Modbus command, or a front-panel key chord. When a user says
+  "it's doing the weird thing *now*", one press freezes the last 30 s.
+
+#### The freeze-time state snapshot
+
+The snapshot is taken once, at freeze, into a fixed ~2 KB area outside the
+ring. It holds the full IR and HR images (~0.8 KB), the raw safety bank (256 B),
+the last raw frame of every link (even if dedup skipped it), the decoded
+settings, per-link counters, the RCC reset flags, stack and loop-time high-water
+marks, and the frozen-event summary. This captures internal state that is never
+published as registers, at the moment that matters.
+
+#### Surviving a reset (still RAM-only)
+
+Put the ring, the snapshot and the control header in a **`.noinit` RAM
+section** that the startup code does not zero, guarded by a magic value and a
+CRC over the control header. SRAM keeps its contents across a watchdog or
+software reset, but not across a power cycle. Our startup code chooses at boot:
+
+- If the header is valid and a capture is **frozen**, keep it untouched and
+  re-arm nothing until it is ACKed.
+- If the header is valid and the capture was **armed or post-trigger**, and the
+  reset flags say IWDG or software reset, **freeze it now** with
+  `TRIGGER(cause=RESET, flags)`. The HardFault handler should also store the
+  stacked PC/LR/xPSR and the fault-status registers into the control header
+  before it resets. That turns "it rebooted" into the last seconds before the
+  crash plus the faulting PC.
+- Otherwise (power-on reset, or bad magic/CRC) initialise empty.
+
+This costs no flash wear and no flash code. The one rule is that nothing else
+may place variables in `.noinit`.
+
+#### RAM budget
+
+The MCU is assumed to have **64 KB SRAM** (`ldscripts/stm32f103ve.ld`, ✔ for the
+-VE memory map. The exact part, possibly a GD32F303-class clone, is still open,
+README). A rough static count of our current firmware from the source gives
+~6–8 KB of buffers and state:
+
+- config-slot images: 6 × 256 B
+- IR/HR images: 160 + 256 regs
+- per-pack bank
+- three UART rings: 512 B each
+- safety bank and frame buffers
+- energy and HMI state
+
+Add 2 KB stack and 1 KB heap from the linker script. *(Estimated from the source,
+not measured: the ARM toolchain isn't installed here. Confirm with
+`arm-none-eabi-size build/firmware.elf`.)* That leaves room for:
+
+| region | default | note |
+|---|---|---|
+| ring | **24 KB** | compile-time `BUGREPORT_RING_KB`; 32 KB is plausible if the measured footprint allows |
+| snapshot | 2 KB | fixed |
+| control header + frozen-event summary | < 256 B | |
+| **total** | **~26 KB** | keep **≥ 8 KB** headroom for growth, with a link-time assert |
+
+CPU cost is a memcpy per record from main-loop context. The recorder must never
+block, and it must never be called from an ISR: ISRs already hand bytes to the
+main loop through ring buffers, and we record at parse time. One producer and a
+frozen buffer that is read-only during extraction means no locks are needed.
+
+#### Extraction — custom function codes on the dongle link (UART5)
+
+Use the same EG4 envelope as the dongle traffic (`addr, func, SN[10], body,
+CRC-16`), with **one new function code** from the Modbus "user-defined" range.
+**`0x65`** is proposed: it is clear of `03/04/06/10`, of `0x21–0x23` and
+`0x31–0x33` (update gateway, ✔ [`docs/13`](13-mppt-controller.md)), and of the
+`0x41`/`0x49` SOF bytes used on the internal wire (different link, but best not
+to invite confusion). The first body byte is a sub-command:
+
+| sub | request | response |
+|---|---|---|
+| `0x00 STATUS` | — | state (armed / post-trigger / frozen), **event id** (u32, increments per capture), trigger cause + `t_ms` + RTC, capture length, CRC-32 of the linearised capture, frozen-event summary, profile, ring geometry |
+| `0x01 READ` | event id, offset, length | that slice of the **linearised** capture (header, then snapshot, then records oldest-first). Refused if the event id doesn't match the frozen one, so a reader can never stitch together two captures |
+| `0x02 ACK` | event id | re-arms. Ignored unless the id matches the frozen capture, so a stale or duplicate ACK cannot discard a newer capture |
+| `0x03 TRIGGER` | cause note | manual trigger |
+| `0x04 CONFIG` | profile, trigger mask, post-trigger %, time cap | volatile settings; gated by the write authorization of §5.4 |
+
+- **Chunk size.** The default READ length is 80 B, the same payload as a
+  40-register read, so it fits our existing `MB_FRAME_MAX` buffers and whatever
+  the dongle's relay buffer is (? unknown). A larger chunk can be negotiated if
+  both ends allow it. At 9600 baud 8N1 (~960 B/s), a 26 KB capture is ~30 s of
+  back-to-back chunks. At the spec's 1 s minimum poll period, with one chunk per
+  poll, it takes ~5–6 min. Either is fine for an event that is already frozen.
+- **Self-describing capture.** The header carries a magic (`LXBR`), the format
+  version, firmware git hash and variant, uptime and RTC at trigger, ring
+  geometry, the trigger record's offset, and a record-type schema version. One
+  header (`include/inv/bugreport.h`) is the single source for both the firmware
+  and a host decoder (`tools/bugreport.py`, which would emit JSON/CSV plus a
+  timeline plot).
+- **Register-window fallback.** For masters that cannot send a custom function
+  code (a stock HA Modbus integration, or a cloud path that filters function
+  codes, ?), mirror STATUS in OSS IR block 9 (1360–1399, §2). READ then becomes
+  a cursor: write the offset to an OSS HR and read 40 IR of data. It is slower,
+  but any master can do it.
+
+**Who does the periodic pull (?).** The stock EG4 dongle is a transparent pipe
+for its cloud ([`docs/26`](26-dongle-firmware.md)), and nothing on it will poll
+`0x65` on its own. Periodic extraction needs a master we control: custom
+firmware on the ESP32-C3 dongle (poll STATUS every N s, drain on `frozen`, push
+to HA/MQTT or a file), an HA-side RS-485 master (§5.1), or a laptop running
+`tools/bugreport.py` on a USB-RS485 adapter during bench bring-up. The last one
+is the minimum viable path. Also signal "capture waiting" locally (LCD icon,
+status LED/ring pattern §4.8), so a user knows to pull it.
+
+#### Factory coexistence and tests
+
+- **?** How does the factory answer function `0x65`: an exception, silence, or
+  the update gateway? Check it under the harness. A distinct answer doubles as
+  "is OSS firmware running" detection for the extractor. This feature is
+  ours-only, with no factory oracle.
+- Host unit tests (`make test`) for the pure core: ring wrap with variable-length
+  records, post-trigger budget arithmetic (bytes and time cap), freeze/ACK/event-id
+  rules, dedup, linearisation, and `.noinit` header validation.
+- Harness test (`make test-sim`, self-only): inject a fault bit through the
+  safety-telemetry contract, keep running, then drive `0x65` STATUS, READ and
+  ACK over the emulated UART5. Assert that the trigger record and pre/post
+  windows are present and that ACK re-arms. Record it in each touched register's
+  `## Test coverage`.
+- Reads change nothing. The only state change is ACK or CONFIG, and the recorder
+  never actuates anything, so it is safe to leave enabled in production builds.
+
+### 6.2 Raw link taps
+*Largely subsumed by the bug-report recorder (§6.1), which captures raw frames
+with timestamps around an event. A free-running "last N frames" view is still
+useful for RE when nothing has gone wrong.*
+
 Keep a small ring of the last N raw frames per internal link (USART2, USART3,
 CAN1) readable over the OSS window, gated by the same write-unlock. This is
 priceless for the remaining RE (the `0x49` payload, unpublished bank fields,
 per-pack CAN layouts), and it lets users with a stock dongle contribute captures
 without a logic analyser.
 
-### 6.2 High-resolution local logging
+### 6.3 High-resolution local logging
 1-minute records of the core telemetry in flash, readable over Modbus (for
 example func `0x14` read-file-record or a paged window), survive an HA outage.
 **Space is the constraint:** the OSS region is 192 KB ([`docs/24`](24-oss-settings-region.md)),
@@ -421,19 +649,19 @@ about 2.5 days at 64 B/min. The factory's ~6.5 MB data-log ring
 would break factory round-trip of that history. That is an explicit decision to
 take, not a default.
 
-### 6.3 Self-test helpers (service mode only)
+### 6.4 Self-test helpers (service mode only)
 A guided relay click-test through the existing manual/AutoTest override path ✔,
 while in **standby only** and behind the unlock. It helps pin the relay
 silkscreen roles (the open item in [`docs/18`](18-power-path-relays.md)) on real
 hardware and doubles as a user diagnostic.
 
-### 6.4 Calibration gains — read-only
+### 6.5 Calibration gains — read-only
 Blocks 2/7/8 push measurement **calibration gains** (Q10, unity `0x400`, ~
 [`ARM-USART3-DSP/block-02`](wiring/ARM-USART3-DSP/block-02.md)). Exposing them **read-only** is
 useful (spotting a mis-calibrated unit). Writing them is a factory-service
 operation and should stay out of reach of normal remote control.
 
-### 6.5 Firmware update of the com core itself
+### 6.6 Firmware update of the com core itself
 The 07-series bootloader + App split ✔ ([`docs/11`](11-12000xp-revisions.md)) and
 the existing `0x21/0x22/0x23` update gateway ✔ ([`docs/13`](13-mppt-controller.md))
 suggest an OSS-firmware update path over the same Modbus link. Whether it is safe
@@ -463,9 +691,10 @@ bugs" (default to be decided) and in `docs/31` with the verdict.
 
 | tier | features | why |
 |---|---|---|
+| **Bring-up — do first** | **bug-report flight recorder (6.1)**: RAM ring + post-trigger freeze + `0x65` extraction, with `tools/bugreport.py` on a USB-RS485 adapter as the first extractor | no new RE, no control actions, and it is the tool that makes debugging every other feature on real hardware possible |
 | **Quick wins** (no new RE) | identity block (3.1), relay/actuator state (3.2), derived values (3.4), windowed stats (3.5), link health (3.6), Q3 alarms, raw debug window of unpublished USART2 fields (3.7), standard-Modbus framing (5.3), write authorization (5.4), **RGB LED-ring modes incl. SOC gauge + solar-rain (4.8)** | facts are ✔ and the data is already in RAM |
 | **Next** (small RE or bench step) | Smart Port control (4.1, one harness run settles the switching path), generator/dry contact (4.2), clamp-only setpoint overrides (4.3), dormant-table scheduler (4.4), fan curve (4.6), LCD/buzzer niceties (4.7) | high HA value; each gated on one named experiment |
-| **Research-gated** | per-pack/cell battery detail (3.3, CAN byte layouts), cross-check/engineering fields (3.7), second slave port (5.2, UART4/USART1 peer + PA15), local logging scale (6.2), OSS self-update (6.5) | depends on open items in `docs/34`, `docs/33`, `wiring/` |
+| **Research-gated** | per-pack/cell battery detail (3.3, CAN byte layouts), cross-check/engineering fields (3.7), second slave port (5.2, UART4/USART1 peer + PA15), local logging scale (6.3), OSS self-update (6.6) | depends on open items in `docs/34`, `docs/33`, `wiring/` |
 
 ## 9. Open questions this brainstorm adds
 
@@ -477,3 +706,5 @@ These go to the hand-off list. Each is a concrete experiment.
 4. Is UART4 or USART1 free on the board, and is PA15 really a shared DE line? (schematic/bench, §5.2)
 5. Where does fan tach feedback (W009) enter, if anywhere? (§4.6)
 6. Byte layouts of `0x311–0x321` / `0x370–0x381`. (`docs/34` follow-up, §3.3)
+7. How does the factory answer function `0x65` on UART5, and how large a frame does the stock dongle relay? (harness / bench, §6.1)
+8. Measured RAM footprint of our build (`arm-none-eabi-size`), which sets the real recorder ring size. (§6.1)
