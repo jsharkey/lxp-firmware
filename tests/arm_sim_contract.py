@@ -148,3 +148,40 @@ def check_live_clock(sim, master):
         "after advancing 75 s the clock read %r, expected 14:32:00 (2024-03-15)" % (after,)
     assert after != before, \
         "clock did not advance on read -- the time registers are a static echo, not live"
+
+
+# --- firmware-update / enter-bootloader contract (docs/43) ------------------
+# The external dongle drives firmware updates of the inverter's chips over the
+# EG4 Modbus link, but it is only a transparent conduit (docs/26): the ARM half
+# is cooperative. For the DSP and peers the ARM is the *master* that drives them
+# into their loader (the 0x21/0x22/0x23 "EDSN" protocol, docs/05). For its OWN
+# update the ARM must reboot itself into its bootloader: the dongle's "restart
+# inverter" command -- ResetSetting (holding reg 11) bit 7, InvReboot, in the EG4
+# spec -- makes the firmware request an ARM system reset, and on a bootloader+App
+# part (07-series 12000XP / 18kPV / 6000XP) that reset hands control to the
+# bootloader at 0x08000000, below the App's own vector table. That is "enter
+# flashing mode."
+#
+# Like the relays, neither image's reboot can be reached as a pure black box: the
+# factory runs the ResetSetting consumer from an RTOS task the cold harness does
+# not schedule, and its dongle register writes are gated too (docs/19/26). So
+# each image is driven through its own path and held to this one contract:
+#   * our firmware  -- the InvReboot Modbus write it implements (black box)
+#   * the factory   -- its NVIC_SystemReset site, executed by address
+# The shared assertion: the firmware writes VECTKEY(0x05FA)|SYSRESETREQ to
+# SCB->AIRCR -- it asks the core to reset into the bootloader.
+BOOTLOADER_BASE = 0x08000000      # the reset vector the core fetches after reset
+FACTORY_APP_VECTOR_BASE = 0x08005000   # 07-series App vectors sit above the loader
+
+
+def assert_requests_bootloader(rec, where=""):
+    """Hold an ArmSim.watch_system_reset() record (after the image-specific drive
+    ran) to the shared enter-bootloader contract."""
+    assert rec.requested, (
+        "%s: firmware did not request a system reset "
+        "(no VECTKEY|SYSRESETREQ written to SCB->AIRCR)" % where)
+    assert (rec.value >> 16) == 0x05FA and (rec.value & 0x4), (
+        "%s: AIRCR write 0x%08x is not a VECTKEY|SYSRESETREQ reset request"
+        % (where, rec.value or 0))
+
+

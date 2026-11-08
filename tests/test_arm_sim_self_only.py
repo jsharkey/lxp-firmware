@@ -30,8 +30,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 from arm_sim import ArmSim, is_intel_hex, load_symbols_nm
 from arm_sim_contract import (RELAY_OVERRIDE_TRUTH, RUN_STATES, NONRUN_STATES,
                               SAFETY_TELEMETRY, SAFETY_TELEMETRY_A, SAFETY_TELEMETRY_B,
-                              RTC_WALK, check_live_clock)
+                              RTC_WALK, check_live_clock,
+                              assert_requests_bootloader)
 from arm_sim_runner import Skip, run_tests
+
+# EG4 Modbus (include/inv/modbus_map.h): ResetSetting reg + InvReboot bit.
+HR_RESET_SETTING = 11
+INV_RESETSETTING_INV_REBOOT = 1 << 7
 
 # Our firmware under test: (flat .bin, .elf for symbols). Set from argv.
 _BIN = [None]
@@ -466,6 +471,31 @@ def test_stored_config_overrides_default():
     # 99 (slot 0) and 64 (slot 5) are in SETTINGS_MAP -> stored 0 overrides the default
     assert mb.read_holding(99) == [0], "stored (0) should override the 574 default"
     assert mb.read_holding(64) == [0], "stored (0) should override the 100 default"
+
+
+def test_invreboot_enters_bootloader():
+    """The ARM half of the dongle-driven firmware update (docs/43): the dongle's
+    "restart inverter" command -- ResetSetting (holding reg 11) bit 7, InvReboot
+    -- must make our firmware request an ARM system reset, which on a
+    bootloader+App part hands control to the bootloader at 0x08000000.
+
+    This is the black-box drive of the shared enter-bootloader contract: we feed
+    the real Modbus write over the UART and let our own loop act on it (the
+    factory half, which can't be driven cold, executes its NVIC_SystemReset site
+    by address in test_arm_sim_factory_only.py). The sim stops at the AIRCR reset
+    request so the post-reset spin never runs."""
+    from arm_sim_modbus import ModbusDongle
+    sim = _ours()
+    rec = sim.watch_system_reset()          # observe/halt on the reset request
+    mb = ModbusDongle(sim)                   # boots our firmware into its loop
+    # ResetSetting.InvReboot over Modbus 0x06 -- the dongle's restart command.
+    mb.write_single(HR_RESET_SETTING, INV_RESETSETTING_INV_REBOOT)
+    assert_requests_bootloader(rec, "ours")
+    # Our monolithic 12000XP build keeps its vector table at 0x08000000, so the
+    # boot PC the core fetches after the reset is present and in flash.
+    bootpc = sim.reset_vector()
+    assert 0x08000000 <= bootpc < 0x08080000, \
+        "reset vector (boot PC) not in flash: 0x%08x" % bootpc
 
 
 # --- zero-dependency runner (same invocation style as test_arm_sim.py) ------

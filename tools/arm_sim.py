@@ -279,6 +279,26 @@ def _cov_flush():
         pass
 
 
+# --- system-reset / enter-bootloader observation (firmware-update path) -----
+SCB_AIRCR = 0xE000ED0C         # application interrupt/reset control
+AIRCR_VECTKEY = 0x05FA         # top 16 bits required on any AIRCR write
+AIRCR_SYSRESETREQ = 1 << 2     # request a core system reset (-> bootloader on a boot+App part)
+
+
+class _ResetWatch:
+    """Record filled by ArmSim.watch_system_reset(): did the firmware ask the
+    core to reset (enter the bootloader), and from where."""
+    __slots__ = ("requested", "value", "pc")
+
+    def __init__(self):
+        self.requested = False
+        self.value = None
+        self.pc = None
+
+    def __bool__(self):
+        return self.requested
+
+
 class ArmSim:
     def __init__(self, image, symbols=None):
         # image: a path to a flat .bin, or the flat image bytes directly
@@ -374,6 +394,44 @@ class ArmSim:
         a = address & ~1
         if FLASH_BASE <= a < FLASH_BASE + len(self.data):
             _COV_PCS.add(a)
+
+    # ---- system-reset / bootloader-entry observation --------------------
+    def watch_system_reset(self, halt=True):
+        """Observe the firmware requesting an ARM system reset -- the way a part
+        with a separate bootloader + App enters its bootloader to be reflashed.
+
+        `NVIC_SystemReset()` writes VECTKEY(0x05FA) | SYSRESETREQ(bit2) to
+        SCB->AIRCR (0xE000ED0C); the core then restarts and fetches SP/PC from
+        the vector table at 0x08000000. On the EG4 07-series (bootloader @
+        0x08000000, App relocated to 0x08005000) that reset hands control to the
+        **bootloader**, which is exactly "enter flashing mode."
+
+        Returns a record whose .requested flips True when the key is written
+        (with .value and the .pc it was written from). With halt=True (default)
+        emulation stops at that write, so the firmware's post-reset `for(;;)`
+        spin never runs -- the test inspects the reset target instead."""
+        rec = _ResetWatch()
+
+        def on_aircr(uc, access, addr, size, value, ud):
+            if (value >> 16) == AIRCR_VECTKEY and (value & AIRCR_SYSRESETREQ):
+                rec.requested = True
+                rec.value = value
+                try: rec.pc = uc.reg_read(UC_ARM_REG_PC)
+                except Exception: rec.pc = None
+                if halt:
+                    self._halt = True
+                    try: uc.emu_stop()
+                    except Exception: pass
+            return True
+
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, on_aircr, begin=SCB_AIRCR, end=SCB_AIRCR + 4)
+        return rec
+
+    def reset_vector(self, base=FLASH_BASE):
+        """The PC the core fetches after a system reset: *(base+4), Thumb bit
+        cleared. On a bootloader+App part, base=0x08000000 is the bootloader's
+        reset handler (below the App's own vector table)."""
+        return self.r32(base + 4) & ~1
 
     # ---- peripheral behaviour -------------------------------------------
     def _on_write(self, uc, access, addr, size, value, ud):
