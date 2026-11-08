@@ -1,0 +1,51 @@
+# Factory-function classification for the coverage dashboard (docs/37).
+#
+# Consumed by tools/coverage_report.py to decide which recovered factory
+# functions (reference/symbols.csv) count toward docs/factory-coverage.md.
+#
+# Columns:
+#   match   0xADDR        one function by start address
+#           0xLO-0xHI     every function whose start is in [LO, HI]
+#           name:EXACT    recovered name is exactly EXACT (as spelled in
+#                         reference/symbols.csv, NOT symbols_named.csv)
+#           name:PREFIX*  recovered name starts with PREFIX
+#   status  ignore        out of scope — removed from the denominator
+#           in_scope      we reimplement this; counts
+#           unreachable   cannot run under the sim (stubbed peripheral); removed
+#           (a function matched by no rule defaults to UNCLASSIFIED, which still
+#            counts in the denominator — so NOT triaging never helps the score)
+#   module  free-text bucket for the "By module" table (optional)
+#   reason  why — evidence, same bar as the docs (cite an addr/doc)
+#
+# Hold entries to the repo's claims discipline: an `ignore` is a reviewed
+# decision with evidence, not a convenient way to shrink the denominator. The
+# ignore set below is deliberately SMALL — only the CPU exception vectors and
+# the handful of HMI menu handlers docs/03 named explicitly. Everything else is
+# left UNCLASSIFIED on purpose: it counts against the score until a human triages
+# it (e.g. the planned callgraph-reachability sweep that will bulk-classify the
+# HMI subtree — docs/37 "Next steps"). Names here must match symbols.csv exactly;
+# e.g. 0x08005938 is fn_Lead_Acid_Floating_Voltage in this map, not the menu
+# renderer docs/03 called sub_08005938, so it is NOT ignored.
+match,status,module,reason
+# --- CPU exception / fault vectors: implemented conventionally, not a factory
+#     "feature" to re-exercise for parity (docs/03 named vectors) ------------
+name:Reset_Handler,ignore,runtime,CMSIS reset entry (docs/03)
+name:NMI_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:HardFault_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:MemManage_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:BusFault_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:UsageFault_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:DebugMon_Handler,ignore,runtime,CPU exception vector (docs/03)
+name:SVCall_Handler,ignore,runtime,RTOS supervisor-call vector (docs/03)
+# --- HMI menu handlers docs/03 named from their on-screen text. We implement
+#     the HMI our own way (docs/06, docs/27, docs/28), so factory HMI handlers
+#     are out of scope. NOTE: fn_Meter is in symbols_named.csv but NOT in
+#     symbols.csv, so it is omitted here; richer HMI ignores await the
+#     callgraph-reachability sweep (docs/37). ---------------------------------
+name:fn_Hybrid_Setting,ignore,hmi,HMI menu handler named from its text (docs/03)
+name:fn_Parallel_Setting,ignore,hmi,HMI menu handler named from its text (docs/03)
+name:fn_Smart_Load,ignore,hmi,HMI menu handler named from its text (docs/03)
+name:fn_AC_Couple,ignore,hmi,HMI menu handler named from its text (docs/03)
+name:fn_NO_Fault,ignore,hmi,HMI status-string handler (docs/03)
+name:fn_NO_Alarm,ignore,hmi,HMI status-string handler (docs/03)
+name:fn_download,ignore,hmi,HMI firmware-update menu handler (docs/03)

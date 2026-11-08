@@ -1,0 +1,101 @@
+addr,name,insns,evidence
+0x08005150,sub_08005150,23,reached only from HMI (call-graph closure)
+0x08005550,sub_08005550,21,reached only from HMI (call-graph closure)
+0x0800557c,sub_0800557c,22,reached only from HMI (call-graph closure)
+0x08005938,fn_Lead_Acid_Floating_Voltage,228,menu handler fn_Lead_Acid_Floating_Voltage (docs/03)
+0x08005bec,fn_AC_Charge_Battery_Voltage,198,menu handler fn_AC_Charge_Battery_Voltage (docs/03)
+0x08005ee4,sub_08005ee4,30,reached only from HMI (call-graph closure)
+0x08005f84,sub_08005f84,28,refs string data
+0x08005ff8,sub_08005ff8,73,refs string data
+0x080060e8,sub_080060e8,9,refs string data
+0x0800615a,sub_0800615a,29,refs string data
+0x080061c8,sub_080061c8,36,reached only from HMI (call-graph closure)
+0x08006240,sub_08006240,28,reached only from HMI (call-graph closure)
+0x08007616,sub_08007616,2,reached only from HMI (call-graph closure)
+0x0800a244,fn_YES,71,menu handler fn_YES (docs/03)
+0x0800b192,sub_0800b192,2,reached only from HMI (call-graph closure)
+0x0800b1a8,sub_0800b1a8,106,refs string data
+0x0800b5de,fn_Warning,109,menu handler fn_Warning (docs/03)
+0x0800b704,sub_0800b704,65,reached only from HMI (call-graph closure)
+0x0800b7c4,sub_0800b7c4,56,reached only from HMI (call-graph closure)
+0x0800b884,fn_download,75,menu handler fn_download (docs/03)
+0x0800bc5c,sub_0800bc5c,44,reached only from HMI (call-graph closure)
+0x0800bcc4,sub_0800bcc4,83,reached only from HMI (call-graph closure)
+0x0800bedc,sub_0800bedc,85,refs string data
+0x0800c6a2,sub_0800c6a2,2,reached only from HMI (call-graph closure)
+0x0800c9a0,fn_Hybrid_Setting,85,menu handler fn_Hybrid_Setting (docs/03)
+0x0800caa6,fn_Parallel_Setting,46,menu handler fn_Parallel_Setting (docs/03)
+0x0800cf88,fn_Smart_Load,113,menu handler fn_Smart_Load (docs/03)
+0x0800d0c8,fn_AC_Couple,94,menu handler fn_AC_Couple (docs/03)
+0x0800d5f0,sub_0800d5f0,392,refs string data
+0x0800e00a,sub_0800e00a,51,refs string data
+0x0800e0c0,sub_0800e0c0,59,refs string data
+0x0800e3b0,sub_0800e3b0,22,reached only from HMI (call-graph closure)
+0x0800e3f0,fn_NO_Fault,82,menu handler fn_NO_Fault (docs/03)
+0x0800e4dc,sub_0800e4dc,21,reached only from HMI (call-graph closure)
+0x0800e51c,fn_NO_Alarm,86,menu handler fn_NO_Alarm (docs/03)
+0x0800ea30,sub_0800ea30,10,reached only from HMI (call-graph closure)
+0x0800ea54,fn_Next_there_will_be_four_display,289,menu handler fn_Next_there_will_be_four_display (docs/03)
+0x0800f1b8,sub_0800f1b8,153,reached only from HMI (call-graph closure)
+0x0800f350,sub_0800f350,40,refs string data
+0x0800f3bc,sub_0800f3bc,85,refs string data
+0x0800f5b0,sub_0800f5b0,38,reached only from HMI (call-graph closure)
+0x0800f6f8,sub_0800f6f8,52,reached only from HMI (call-graph closure)
+0x0800f86e,sub_0800f86e,29,reached only from HMI (call-graph closure)
+0x0800f8c2,sub_0800f8c2,18,reached only from HMI (call-graph closure)
+0x0800f8ec,sub_0800f8ec,5,reached only from HMI (call-graph closure)
+0x0800f8f8,sub_0800f8f8,3,reached only from HMI (call-graph closure)
+0x0800f900,sub_0800f900,12,reached only from HMI (call-graph closure)
+0x0800f91c,sub_0800f91c,144,reached only from HMI (call-graph closure)
+0x0800ff98,sub_0800ff98,53,reached only from HMI (call-graph closure)
+0x080101c6,sub_080101c6,4,reached only from HMI (call-graph closure)
+0x080101d2,sub_080101d2,3,reached only from HMI (call-graph closure)
+0x080104a8,sub_080104a8,27,reached only from HMI (call-graph closure)
+0x080104ec,sub_080104ec,30,reached only from HMI (call-graph closure)
+0x0801108e,sub_0801108e,4,reached only from HMI (call-graph closure)
+0x08011096,sub_08011096,3,reached only from HMI (call-graph closure)
+0x0801125e,sub_0801125e,54,reached only from HMI (call-graph closure)
+0x0801155c,sub_0801155c,132,reached only from HMI (call-graph closure)
+0x08011698,sub_08011698,265,reached only from HMI (call-graph closure)
+0x08011980,sub_08011980,219,reached only from HMI (call-graph closure)
+0x08011b8c,sub_08011b8c,3,reached only from HMI (call-graph closure)
+0x08012650,sub_08012650,31,reached only from HMI (call-graph closure)
+0x080126ac,sub_080126ac,18,reached only from HMI (call-graph closure)
+0x080126d0,sub_080126d0,44,reached only from HMI (call-graph closure)
+0x0801283e,sub_0801283e,4,reached only from HMI (call-graph closure)
+0x08012848,sub_08012848,96,reached only from HMI (call-graph closure)
+0x08012966,sub_08012966,136,reached only from HMI (call-graph closure)
+0x08012b10,sub_08012b10,154,reached only from HMI (call-graph closure)
+0x08012cac,sub_08012cac,1,reached only from HMI (call-graph closure)
+0x08012cae,sub_08012cae,10,reached only from HMI (call-graph closure)
+0x08012ccc,sub_08012ccc,209,reached only from HMI (call-graph closure)
+0x08012f66,sub_08012f66,46,reached only from HMI (call-graph closure)
+0x08013002,sub_08013002,7,reached only from HMI (call-graph closure)
+0x08013014,sub_08013014,72,reached only from HMI (call-graph closure)
+0x0801313c,sub_0801313c,35,reached only from HMI (call-graph closure)
+0x0801319a,sub_0801319a,24,reached only from HMI (call-graph closure)
+0x08014cf8,sub_08014cf8,19,reached only from HMI (call-graph closure)
+0x08014d1e,sub_08014d1e,62,reached only from HMI (call-graph closure)
+0x08014db8,sub_08014db8,6,reached only from HMI (call-graph closure)
+0x08014e04,sub_08014e04,4,reached only from HMI (call-graph closure)
+0x08014fb2,sub_08014fb2,29,reached only from HMI (call-graph closure)
+0x0801ca9c,sub_0801ca9c,18,reached only from HMI (call-graph closure)
+0x0801cac4,sub_0801cac4,24,reached only from HMI (call-graph closure)
+0x0801cb76,sub_0801cb76,46,reached only from HMI (call-graph closure)
+0x0801d370,sub_0801d370,349,refs string data
+0x08023500,sub_08023500,187,refs string data
+0x08025da8,sub_08025da8,15,reached only from HMI (call-graph closure)
+0x0802629c,sub_0802629c,19,reached only from HMI (call-graph closure)
+0x080282e4,sub_080282e4,114,reached only from HMI (call-graph closure)
+0x08028418,sub_08028418,205,reached only from HMI (call-graph closure)
+0x08028612,sub_08028612,18,reached only from HMI (call-graph closure)
+0x0802864e,sub_0802864e,21,reached only from HMI (call-graph closure)
+0x08028678,sub_08028678,30,reached only from HMI (call-graph closure)
+0x080286fc,sub_080286fc,38,refs string data
+0x0802aca0,sub_0802aca0,300,refs string data
+0x0802efc8,sub_0802efc8,6,refs string data
+0x08033d0c,sub_08033d0c,4109,reached only from HMI (call-graph closure)
+0x080341b2,sub_080341b2,70,refs string data
+0x0803671a,sub_0803671a,68,reached only from HMI (call-graph closure)
+0x0803671e,sub_0803671e,66,reached only from HMI (call-graph closure)
+0x0803787c,sub_0803787c,14,refs string data

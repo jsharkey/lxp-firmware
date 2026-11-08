@@ -140,6 +140,7 @@ make test            # host-side unit tests (no hardware)
 make test-sim        # GPIO / HMI behaviour tests on the Unicorn harness
 make hmi-sim         # graphic-HMI simulator for our build (FIRMWARE=App.hex for a vendor image)
 make factory-hmi     # the simulator on the factory image specifically (docs/28)
+make factory-coverage # how much of the factory binary our parity tests exercise (docs/42)
 ```
 
 `make hmi-sim` / `make factory-hmi` boot the firmware in the emulator and serve its

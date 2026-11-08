@@ -208,6 +208,34 @@ SIM_GCHG        = python3 tests/test_gen_charge.py $(if $(HAVE_FACTORY),$(FACTOR
 # inverter->battery CAN keep-alive TX capture (T11b): 0x305 DLC8 all-zero, both images.
 SIM_CANTX       = python3 tests/test_can_tx.py $(if $(HAVE_FACTORY),$(FACTORY_BIN),) --ours-bin $(BUILD)/$(TARGET).bin --ours-elf $(BUILD)/$(TARGET).elf
 
+# --- Factory-image coverage dashboard (docs/42-factory-coverage.md) ---------
+# Run the factory-side sim tests with $LXP_COVERAGE set, so arm_sim records every
+# factory basic block it executes; coverage_report.py maps those onto the
+# recovered function map to produce docs/factory-coverage.md (how much of the
+# factory binary our parity tests actually exercise). Pure observation (never
+# changes pass/fail), scoped to the factory image by $LXP_COVERAGE_IMAGE.
+COV_JSONL    := $(BUILD)/factory_cov.jsonl
+COV_MD       := docs/factory-coverage.md
+COV_SYMBOLS  := reference/symbols.csv
+COV_CLASSIFY := tests/factory_coverage_classify.csv
+COV_HMILIST  := reference/hmi_functions.csv
+COV_HMI = python3 tools/hmi_classify.py --image $(FACTORY_BIN) \
+  --symbols $(COV_SYMBOLS) --callgraph reference/callgraph.txt --out $(COV_HMILIST)
+COV_REGEN = python3 tools/coverage_report.py --cov $(COV_JSONL) \
+  --symbols $(COV_SYMBOLS) --classify $(COV_CLASSIFY) --hmi-list $(COV_HMILIST) \
+  --out $(COV_MD) --image-name $$(basename $(FACTORY_BIN)) \
+  --image-hash $$(sha256sum $(FACTORY_BIN) 2>/dev/null | cut -d' ' -f1)
+
+# Standalone dashboard build: factory-side sims with coverage recording on, then
+# regenerate docs/factory-coverage.md. Needs the factory image.
+factory-coverage: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(FACTORY_BIN)
+	@rm -f $(COV_JSONL)
+	@rc=0; export LXP_COVERAGE=$(COV_JSONL) LXP_COVERAGE_IMAGE=$(FACTORY_BIN); \
+	$(SIM_FAC_COMMON) || rc=1; $(SIM_FAC_ONLY) || rc=1; $(SIM_CROSS) || rc=1; \
+	unset LXP_COVERAGE LXP_COVERAGE_IMAGE; \
+	$(COV_HMI); $(COV_REGEN); \
+	exit $$rc
+
 # Every block runs even if an earlier one fails; the target fails only at the end
 # if any did -- so a red test (e.g. the expected-red dongle/CAN scaffolding)
 # never hides the blocks after it. Each file @-prints its own banner header,
@@ -270,4 +298,4 @@ test-window: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).elf $(if $(HAVE_FACTORY),
 #	openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 #	  -c "program $< $(FLASH_ADDR) verify reset exit"
 
-.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check regsweep wrsem factory hmi-sim factory-hmi
+.PHONY: all size clean test test-sim test-sim-ours test-sim-factory test-window coverage-report coverage-check factory-coverage regsweep wrsem factory hmi-sim factory-hmi
