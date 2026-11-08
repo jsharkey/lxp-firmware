@@ -42,27 +42,27 @@ on all three, and the synthesis `RB-G1` is last. Status: ⬜ open · 🚧 claime
 
 ### Static — segment and size the 55 KB from the image
 
-- ⬜ **RB-S1 — base-pointer + max-offset map.** Harvest every `ldr rX,=0x2000xxxx`
+- 🚧 **RB-S1 — base-pointer + max-offset map.** Harvest every `ldr rX,=0x2000xxxx`
   literal and `movw/movt` pair that targets `0x20000000`–`0x2000dbd8`; for each
   distinct base, find the **largest byte offset** accessed through it (extend
   `tools/ramxref.py` / `tools/disres.py`). Output: sorted `(base, inferred_size,
   #refs, owning funcs)` — the backbone segmentation. *Inferred size is an upper
   bound on the object (sparse access under-reads it); pair with RB-S2.*
-- ⬜ **RB-S2 — constant `memset`/`memcpy` lengths.** Find every call to the zero
+- 🚧 **RB-S2 — constant `memset`/`memcpy` lengths.** Find every call to the zero
   / copy primitives with a RAM-base destination and a **constant length**
   (including the startup `.bss` clear, which bounds total `.bss`). A constant
   length *is* a buffer size. Output: `(dest_base, length, caller)`. *Strongest
   exact-size signal; do this alongside RB-S1.*
-- ⬜ **RB-S3 — I/O ring sizes (wrap constants).** For each link driver/ISR —
+- 🚧 **RB-S3 — I/O ring sizes (wrap constants).** For each link driver/ISR —
   UART5 dongle, USART3 DSP, USART2, CAN1, the DSP link — find the RX/TX buffer
   base and the **modulo / compare constant** that wraps its index. Output: per-
   link ring capacity. (Cross-reference the `docs/wiring/` link files; record
   findings there too.)
-- ⬜ **RB-S4 — array loop-bounds.** Find loops of the form `cmp idx,#N; … [base+
+- 🚧 **RB-S4 — array loop-bounds.** Find loops of the form `cmp idx,#N; … [base+
   idx*k]` → element count `N` and stride `k`. Targets: the Modbus register
   image length, history/log depth, parallel-unit count, per-channel energy
   arrays. Output: array dimensions.
-- ⬜ **RB-S5 — anchor the known structures.** Fold in what prior docs already
+- 🚧 **RB-S5 — anchor the known structures.** Fold in what prior docs already
   pinned — config record images `0x2000c85c` ([`docs/23`](23-arm-config-writer.md)),
   DSP telemetry struct `0x2000ce5c` ([`docs/18`](18-power-path-relays.md)),
   the live settings struct `~0x2000d850`, the Modbus register image — label
