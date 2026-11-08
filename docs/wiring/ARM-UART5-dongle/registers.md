@@ -117,7 +117,7 @@ RE-traced; `rsvd` = reserved/unused.
 | 78-80 | — | | rsvd | — |
 | 81-106 | BMS block | various | battery data over CAN1 | [→](IR081_106-BMS.md) |
 | 107 | BatVoltSample_INV | 0.1 V | inverter-side battery sample | [→](IR107-BatVoltSample_INV.md) |
-| 108 | T1 | 0.1 °C | 12K BT temperature | idx |
+| 108-112 | T1 (aux temps) | 0.1 °C | 12K BT temperature — dormant | [→](IR108_112-aux-temps-dormant.md) |
 | 109-112 | T2-T5 | 0.1 °C | reserved | idx |
 | 113 | ParallelInfo | — | master/slave, phase, parallel count | [→](IR113-ParallelInfo.md) |
 | 114-119 | — | | rsvd | — |
@@ -152,24 +152,24 @@ RE-traced; `rsvd` = reserved/unused.
 | 63 | PowerSoftStartSlope | ‰/min | loading rate | idx |
 | 64-89 | AC-charge / charge-priority / forced-discharge schedule | % / hour\|min | 3 features × (power, SOC, 3 windows) | [→](HR064_089-charge-discharge-schedule.md) |
 | 90-91 | EPSVoltageSet / EPSFreqSet | 1V / 1Hz | off-grid output V/F | [→](HR090_091-EPS-output.md) |
-| 92-97 | PF/Q(V) lock-in/out, delay | — | reactive-curve params | idx |
+| 92-97 | PF/Q(V) lock-in/out, delay | — | reactive-curve params | [→](HR092_097-reactive-power-curve.md) |
 | 98 | AutoTestStart | 0-1 | start grid self-test (see IR 71-75) | [→](IR071_075-AutoTest.md) |
 | 99-102 | ChargeVoltRef/CutVolt/ChargeCurr/DischgCurr | 0.1V / A | lead-acid charge/discharge | [→](HR099_102-leadacid-charge.md) |
 | 103 | MaxBackFlow | % | feed-in grid power limit | [→](HR103-MaxBackFlow.md) |
-| 104 | DischgChgSWCMD | 0-2 | discharge↔charge command | idx |
+| 104 | DischgChgSWCMD | 0-2 | discharge↔charge command | [→](HR104-DischgChgSWCMD.md) |
 | 105 | EOD | % (10-90) | end-of-discharge SOC | [→](HR105-EOD.md) |
-| 106-109 | Tempr limits (lead-acid) | 0.1 °C | charge/discharge temp limits | idx |
+| 106-109 | Tempr limits (lead-acid) | 0.1 °C | charge/discharge temp limits | [→](HR106_109-leadacid-temp-limits.md) |
 | 110 | FunctionEn1 | bits | PVGridOff/FastZeroExport/MicroGrid/BatShared/CT ratios | [→](HR110-FunctionEn1.md) |
 | 111 | — | | rsvd | — |
 | 112 | SetSystemType | 0-3 | parallel system type | [→](HR112-SetSystemType.md) |
 | 113 | SetComposedPhase | 1-3 | phase in parallel system | [→](HR113-SetComposedPhase.md) |
-| 114 | ClearFunction | 1 | clear parallel fault code | idx |
-| 115-116, 118-119 | OVFDerate/PtoUser/VbatDerate/CTOffset | — | misc settings | idx |
+| 114 | ClearFunction | 1 | clear parallel fault code | [→](HR114_119-clear-and-derate.md) |
+| 115-116, 118-119 | OVFDerate/PtoUser/VbatDerate/CTOffset | — | misc settings | [→](HR114_119-clear-and-derate.md) |
 | 120 | stSysEnable | bits | ACChargeType/DischgCtrlType/OnGridEODType/GenChargeType | [→](HR120-SysEnable.md) |
-| 121, 124-125 | Q2_QV / OVFDerateEnd / SOCLowLimitForEPS | — | misc | idx |
+| 121, 124-125 | Q2_QV / OVFDerateEnd / SOCLowLimitForEPS | — | misc | [→](HR121_125-reactive-derate-eps.md) |
 | 126-131 | OptimalChg_DisChg | bits | 48-slot × 2-bit charge/discharge time table | [→](HR126_131-OptimalChg_DisChg.md) |
-| 132-137 | BatCell limits, derate, SpecLoadCompensate | — | misc | idx |
-| 138-143 | *PowerPercentCMD (0.1%) | 0.1 % | high-res variants of 60/64-66/74/82 | idx |
+| 132-137 | BatCell limits, derate, SpecLoadCompensate | — | misc | [→](HR132_143-batcell-derate-powercmd.md) |
+| 138-143 | *PowerPercentCMD (0.1%) | 0.1 % | high-res variants of 60/64-66/74/82 | [→](HR132_143-batcell-derate-powercmd.md) |
 | 144 | FloatChargeVolt | 0.1 V | lead-acid float voltage | [→](HR099_102-leadacid-charge.md) |
 | 145 | OutputPrioConfig | 0-3 | 0 bat-first / 1 PV-first / 2 AC-first | [→](HR145-OutputPrioConfig.md) |
 | 146 | LineMode | 0-2 | APL / UPS / GEN | [→](HR146-LineMode.md) |

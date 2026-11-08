@@ -301,6 +301,19 @@ def test_gen_volt_mirrors_grid_s():
         "IR 121 (GenVolt) = %r, expected the grid_s mirror [%d]" % (mb.read_input(121), GRID_S)
 
 
+def test_aux_temp_regs_dormant():
+    """IR 108-112 (T1 "12K BT" + reserved tail of the BMS block) are dormant on
+    ceaa-07xx: no source is wired, so they read 0 on both images (T26). This pins
+    the "no phantom data" fact -- the externally observable property of a dormant
+    register -- so a future wiring change that starts populating them is noticed.
+    See IR108_112-aux-temps-dormant.md."""
+    sim = _sim()
+    mb = _mb(sim)
+    for ir in range(108, 113):
+        rd = mb.read_input(ir)
+        assert rd == [0], "IR %d expected dormant [0], got %r" % (ir, rd)
+
+
 def test_bms_charge_volt_ref_clamps_to_setting():
     """Working charge-V derivation (docs/39 T11a): the inverter serves IR 83 =
     min(0x351 charge-V limit, HR 99 ChargeVoltRef), not the pack's limit raw.
