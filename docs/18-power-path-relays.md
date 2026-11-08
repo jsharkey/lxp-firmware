@@ -244,3 +244,17 @@ function's RAM fields), `tools/gpio_map.py`, `tools/periph_map.py`.
 > (PA12 follows grid qualification — verified); wiring it *live* needs the safety
 > bank's `+0xbc`/`+0xca` fields populated (not yet in our USART2 tag map — a T05/T09
 > tag-decode follow-on) and the `+0xca` "force transfer" refinement added.
+>
+> **RESOLVED (T16, 2026-11-08): `d9ca` bit 3 = generator-charge-active.** The writer
+> the enable hunt was missing is the generator-charge evaluator **`sub_08035050`**:
+> its combine tail (`0x0803526e`, `orr #8` / `and ~8`) sets `d9ca` bit 3 =
+> `(gen-charge-by-voltage verdict 0x2000dbc0) | (gen-charge-by-SOC verdict 0x2000dbc1)
+> | (settings+0xd bit15) | (d9ca bit2)` -- dynamically verified by driving the tail.
+> A fresh `ramxref` of the 2-byte word gives four constant-base writers:
+> `sub_080147ac` (bulk init-zero), `sub_0801887c` (bit 1), `sub_08034b9c` (bit 2), and
+> `sub_08035050` (**bit 3**) -- so `sub_08035050` is the sole functional bit-3 writer.
+> The AC-transfer ARM-local enable therefore asserts **because the generator is
+> charging**. See
+> [`HR194_198-generator-charge.md`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md)
+> section "Two output request flags" (T16). (`d810` bit 4 remains the one unresolved
+> enable leg.)

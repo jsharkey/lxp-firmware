@@ -422,7 +422,7 @@ menu stays reachable but is not the focus.
   comment in `main.c` is a real constraint.
 
 ### T14 — Relays under the live mode: transfer sequencing, gen / AC-couple, dry contact
-**Status:** 🚧 `[~] claude 2026-11-07` — **AC-transfer (PA12/PB3) cracked + reimplemented + factory-verified + WIRED LIVE** (incl. the DSP force bit); run-enable (PC6) now follows live IR_STATE in the loop; gen/AC-couple (PC5) + dry-contact (PD11) are debounce-timing micro-tests (not vector tables), enable *provenance* + the `+0xbc` tag-decode remain · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
+**Status:** 🚧 `[~] claude 2026-11-07` — **AC-transfer (PA12/PB3) cracked + reimplemented + factory-verified + WIRED LIVE** (incl. the DSP force bit); run-enable (PC6) now follows live IR_STATE in the loop; gen/AC-couple (PC5) + dry-contact (PD11) are debounce-timing micro-tests (not vector tables); `d9ca` bit-3 enable *provenance* **resolved via T16** (= generator-charge-active, see docs/18), `d810` bit 4 + the `+0xbc` tag-decode remain · **Layer:** sim · **Depends:** T02 (relay task runs), T06 (real state)
 
 **Done (AC-transfer pair, 2026-11-07).** Cracked the T14a prerequisite the prior
 attempt was stuck on: the AC-transfer enable is **`0x2000d9ca` bit 3 OR `0x2000d810`
@@ -624,10 +624,19 @@ bit 7; factory-verified (`test_factory_soc_matches_spec`) and host-tested on the
 shared `SOC_VECTORS`. (In SOC mode the evaluator force-clears the voltage verdict; in
 voltage mode the SOC verdict is left untouched.)
 
-**Remaining.** Two **shadow** verdict bytes `0x2000dbbe` (voltage) / `0x2000dbbf`
-(SOC) evaluated right after each primary gate with a widened start band (`+0x1e`/`+2`)
-gated by `bank+0xbc` bit 31 — most likely the 07-series **quick-start** early-trigger;
-decoded in outline only. Plus the 07-series additions below.
+**Combine tail cracked + cross-task closure (2026-11-08).** `sub_08035050` folds its
+gates into **two** output request flags (dynamically verified): the **primary** gates
+(dbc0/dbc1) → `0x2000d9ca` **bit 3**, and the **shadow** gates (dbbe/dbbf) →
+`0x2000da3a` **bit 13**, each OR'd with `settings+0xd` bit15 and `d9ca` bit2. This
+**resolves T14's open `d9ca` bit-3 provenance**: it is the *generator-charge-active*
+flag (sub_08035050 is its sole functional writer), so the AC-transfer enable asserts
+because the generator is charging — closed in [`docs/18`](18-power-path-relays.md).
+
+**Remaining.** The **shadow** gates (`0x2000dbbe`/`0x2000dbbf` → `da3a` bit 13) run
+the same hysteresis with a widened start band (`+0x1e`/`+2`) gated by `bank+0xbc`
+bit 31 and a plain (unconfirmed) stop — decoded in outline, not yet a pure
+function + oracle; confirm what consumes `da3a` bit 13 before naming it (quick-start?
+warm-up?). Plus the 07-series additions below.
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions

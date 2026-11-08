@@ -79,11 +79,33 @@ Our firmware reimplements both decisions as pure, host-testable functions in
 the latch and supplies the bank voltage / SOC, the thresholds and the `stop_ok`
 confirmation.
 
-> **Not yet cracked (T16 hand-off):** two *shadow* verdict bytes `0x2000dbbe`
-> (voltage) and `0x2000dbbf` (SOC) are evaluated right after each primary gate
-> (`0x080350dc…`, `0x080351de…`) with a widened start band (`+0x1e`/`+2`) gated by
-> `bank+0xbc` **bit 31** — most likely the 07-series **quick-start** early-trigger.
-> Decoded in outline, not yet reimplemented or oracle-pinned.
+### Two output request flags (the combine tail)
+
+`sub_08035050` evaluates **two** gate families and folds each into a distinct output
+flag (dynamically verified by driving the combine tail `0x08035232…0x080352ca`):
+
+| output flag | set when | gate family |
+|---|---|---|
+| `0x2000d9ca` **bit 3** | `dbc0 \| dbc1 \| (settings+0xd bit15) \| (d9ca bit2)` | **primary** gates above (confirmed stop) |
+| `0x2000da3a` **bit 13** | `dbbe \| dbbf \| (settings+0xd bit15) \| (d9ca bit2)` | **shadow** gates (below) |
+
+The **shadow** gates (`0x2000dbbe` voltage `0x080350dc…`, `0x2000dbbf` SOC
+`0x080351de…`) run the same hysteresis but with a **widened start band** — start also
+when `v + 0x1e < end_v` (SOC: `soc + 2 < end_soc`) **if** `bank+0xbc` **bit 31** is set
+— and a **plain stop** (`v >= end_v`, no `stop_ok` confirm). So `da3a` bit 13 is a
+second, more eager request than the `d9ca` bit 3 primary.
+
+> **Cross-task finding (T14, resolved here):** `0x2000d9ca` **bit 3** is the
+> **generator-charge-active** flag, and `sub_08035050` is its *only* functional writer
+> (the other three d9ca writers touch bits 1/2 or bulk-reset). This closes the
+> open "ARM-local enable d9ca bit 3 provenance" in
+> [`docs/18`](../../18-power-path-relays.md) — the AC-transfer enable asserts because
+> the generator is charging.
+
+> **Not yet reimplemented (T16 hand-off):** the shadow gates / `da3a` bit 13 and the
+> meaning of `bank+0xbc` bit 31 (a DSP "allow wider band" flag) are decoded in outline
+> but not yet given a pure function + oracle. Likely tied to a 07-series gen feature
+> (quick-start / warm-up); confirm the consumer of `da3a` bit 13 before naming it.
 
 ## On the LCD (EG4 12000XP manual)
 
