@@ -740,7 +740,7 @@ Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
 
 ### T26 — Document + test the spec-only (`idx`) registers
-**Status:** ⬜ `[ ]` · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
+**Status:** 🚧 `[~] claude 2026-11-08` (generator-telemetry IR group 121-126) — other groups still open, one agent per group · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
 
 These spec registers have **no file** in `ARM-UART5-dongle/` and no test:
 **HR** 63, 92-97, 104, 106-109, 114-119, 121-125, 132-144, 149-151, 158-193;
