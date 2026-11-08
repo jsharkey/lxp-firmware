@@ -55,6 +55,41 @@ int main(void)
     CHECK(g_energy.day[0] == 0, "day change: Epv1_day resets to 0");
     CHECK(g_energy.all[0] == 5, "day change: Epv1_all cumulative persists");
 
+    /* all ten channels (IR 28-37 daily, IR 40-59 cumulative): each channel maps to
+     * its own day register (28+ch) and its own 32-bit L/H cumulative pair
+     * (40+2*ch / 41+2*ch), with no cross-wiring, and the cumulative high word
+     * carries past 0xFFFF. Distinct value per channel so a swapped index is caught. */
+    reset();
+    for (int ch = 0; ch < ENERGY_NCH; ch++) {
+        g_energy.day[ch] = (uint16_t)(100 + ch);               /* distinct daily */
+        g_energy.all[ch] = 0x10000u * (uint32_t)(ch + 1) + (uint32_t)ch;  /* >0xFFFF: carry */
+    }
+    memset(ir, 0, sizeof ir);
+    energy_publish(ir);
+    for (int ch = 0; ch < ENERGY_NCH; ch++) {
+        uint32_t all = (uint32_t)ir[IR_EPV1_ALL_L + 2 * ch]
+                     | ((uint32_t)ir[IR_EPV1_ALL_L + 2 * ch + 1] << 16);
+        CHECK(ir[IR_EPV1_DAY + ch] == (uint16_t)(100 + ch),
+              "IR 28+ch = day[ch] for every channel");
+        CHECK(all == 0x10000u * (uint32_t)(ch + 1) + (uint32_t)ch,
+              "IR 40+2ch L/H = all[ch] (32-bit, high word carried) for every channel");
+    }
+
+    /* channel independence: drive only two channels through real accumulation and
+     * confirm the rest stay 0 (the per-tick loop does not leak between channels). */
+    reset();
+    energy_set_power(3, 7200002u);        /* 1 count/tick on channel 3 */
+    energy_set_power(7, 3600002u);        /* 1 count / 2 ticks on channel 7 */
+    for (int i = 0; i < 6; i++) energy_tick(0x40);
+    CHECK(g_energy.day[3] == 6 && g_energy.all[3] == 6, "channel 3 accumulates independently");
+    CHECK(g_energy.day[7] == 3 && g_energy.all[7] == 3, "channel 7 accumulates at its own rate");
+    {
+        int others_zero = 1;
+        for (int ch = 0; ch < ENERGY_NCH; ch++)
+            if (ch != 3 && ch != 7 && (g_energy.day[ch] || g_energy.all[ch])) others_zero = 0;
+        CHECK(others_zero, "undriven channels stay 0 (no cross-channel leakage)");
+    }
+
     /* energy_reset_all (HR 11 EnergyRecordClr) clears everything */
     energy_set_power(0, 7200002u);
     for (int i = 0; i < 3; i++) energy_tick(0x40);

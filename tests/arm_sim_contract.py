@@ -67,6 +67,7 @@ SAFETY_TELEMETRY = {
     "pf":        (0xaa,  19,  1),    # power factor       raw 0-2000 (verbatim, IR019-PF.md)
     "eps_l1n":   (0x30, 127,  1),    # EPS output V L1-N  0.1 V (verbatim, IR127_138, T27)
     "eps_l2n":   (0x32, 128,  1),    # EPS output V L2-N  0.1 V (verbatim, IR127_138, T27)
+    "int_fault": (0xc8,   6,  1),    # internal DTC       raw (bank word, IR006, T27)
 }
 
 
@@ -84,13 +85,13 @@ SAFETY_TELEMETRY_A = {
     "pv1": 3201, "pv2": 3180, "grid_r": 2401, "grid_s": 2402, "grid_t": 2403,
     "freq": 5999, "iinv": 150, "veps_r": 2400, "feps": 6000, "vbus1": 3900,
     "vbus2": 3901, "vbus_p": 1950, "gen_freq": 5998, "t_rad1": 350, "t_rad2": 360,
-    "batv_inv": 530, "pf": 950, "eps_l1n": 1201, "eps_l2n": 1202,
+    "batv_inv": 530, "pf": 950, "eps_l1n": 1201, "eps_l2n": 1202, "int_fault": 0x0011,
 }
 SAFETY_TELEMETRY_B = {
     "pv1": 3195, "pv2": 3188, "grid_r": 2405, "grid_s": 2399, "grid_t": 2410,
     "freq": 6001, "iinv": 152, "veps_r": 2402, "feps": 5997, "vbus1": 3912,
     "vbus2": 3889, "vbus_p": 1948, "gen_freq": 6002, "t_rad1": 360, "t_rad2": 350,
-    "batv_inv": 525, "pf": 1050, "eps_l1n": 1195, "eps_l2n": 1208,
+    "batv_inv": 525, "pf": 1050, "eps_l1n": 1195, "eps_l2n": 1208, "int_fault": 0x0022,
 }
 
 

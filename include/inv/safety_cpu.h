@@ -52,7 +52,8 @@ enum {
     SAFETY_OFF_BATV_INV = 0x0a,   /* IR 107 inverter-side battery voltage (0.1 V) */
     SAFETY_OFF_PF       = 0xaa,   /* IR 19 power factor (0.001, encoded 0-2000)   */
     SAFETY_OFF_EPS_L1N  = 0x30,   /* IR 127 EPS output voltage L1-N (0.1 V)       */
-    SAFETY_OFF_EPS_L2N  = 0x32    /* IR 128 EPS output voltage L2-N (0.1 V)       */
+    SAFETY_OFF_EPS_L2N  = 0x32,   /* IR 128 EPS output voltage L2-N (0.1 V)       */
+    SAFETY_OFF_INT_FAULT= 0xc8    /* IR 6 internal DTC (safety-bank word)          */
 };
 
 /* Publish the decoded telemetry into the Modbus input-register image

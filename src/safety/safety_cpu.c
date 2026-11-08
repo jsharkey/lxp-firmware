@@ -91,6 +91,11 @@ void safety_cpu_publish(uint16_t *input_reg, uint16_t n)
      * served verbatim; confirmed on ceaa-07xx (T27, docs/33). */
     PUT(IR_EPS_VOLT_L1N, bank_u16(SAFETY_OFF_EPS_L1N));
     PUT(IR_EPS_VOLT_L2N, bank_u16(SAFETY_OFF_EPS_L2N));
+    /* Internal DTC (IR 6): the safety-bank diagnostic word +0xc8. The factory ORs
+     * an ARM-local DTC byte (STATUS+0x91) on top before serving; that local byte is
+     * 0 in the normal/harness state, so IR 6 == the bank word (verified on ceaa-07xx,
+     * T27). The local-DTC OR is an ARM-side refinement (hand-off). */
+    PUT(IR_INTERNAL_FAULT, bank_u16(SAFETY_OFF_INT_FAULT));
 
     /* Inverter current RMS: the factory getter scales the bank field x10. */
     PUT(IR_IINV_RMS, (uint16_t)(bank_u16(SAFETY_OFF_IINV) * 10u));

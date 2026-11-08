@@ -113,8 +113,11 @@ def table_coverage():
             ["telemetry_contract", "test_telemetry"])
     m = imp("energy_contract")
     if m:
-        # the counters the energy tests actually drive/read (Epv1 day + all)
-        add("energy counters (T07/energy)", "IR", [28, 40, 41],
+        # Epv1 (ch 0) is driven end-to-end factory-vs-ours (accumulate + rollover);
+        # the all-channel publish mapping (day 28-37, all L/H 40-59, 32-bit carry,
+        # cross-channel independence) is covered by the host test_energy.c.
+        add("energy counters (T07/energy)", "IR",
+            list(range(28, 38)) + list(range(40, 60)),
             ["test_energy", "energy_contract"])
     m = imp("dsppush_contract")
     if m:
