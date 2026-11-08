@@ -28,6 +28,10 @@ plus [`docs/11`](11-12000xp-revisions.md) for what the 07-series added.
    written for the factory must not be able to tell the difference unless it
    reads the new window. No harness oracle exists for these features, so their
    tests are ours alone. Mark them that way (cf. `test_arm_sim_self_only.py`).
+   **Every feature is also off by default behind its own feature flag**: the
+   HR 10000–10007 enable mask. With the flags clear, the firmware is the factory
+   mirror and passes every parity test unchanged. The mechanism, the feature
+   classes and the test rules are in [`docs/45`](45-oss-feature-flags.md).
 2. **Round-trip safe.** New settings persist only in the OSS flash region
    (`0x010000–0x03FFFF`, `LXP1` / `0x5A` records, [`docs/24`](24-oss-settings-region.md)).
    That way a flash-back to factory ignores them, and re-flashing ours restores
@@ -56,37 +60,43 @@ plus [`docs/11`](11-12000xp-revisions.md) for what the 07-series added.
 
 ## 2. Where the new data/controls live — an OSS register window
 
-**Proposal (to be verified on hardware before freezing):** reserve **IR 1000–1399
-and HR 1000–1399** as the OSS extension window. The window is cut into 40-register
-blocks aligned to the dongle-spec query groups (1000 = 25 × 40), so every block
-fits one legal query ([`ARM-UART5-dongle/README.md`](wiring/ARM-UART5-dongle/README.md)
-"Min polling period / 40-register groups").
+> **Superseded by [`docs/45`](45-oss-feature-flags.md) (feature flags) and the
+> authoritative allocation in [`wiring/ARM-UART5-dongle/registers.md`](wiring/ARM-UART5-dongle/registers.md)
+> ("Address-space allocation").** This section first proposed **IR/HR 1000–1399**.
+> That was moved to **IR/HR 10000–10999**, because the factory's own space is
+> still growing: it serves beyond-spec IR up to 204 live, the dongle polls to
+> IR 380, and the factory read path reserves 4095–4999 and the battery bank from
+> 5000. 1000 left too little room. Every OSS feature is also **opt-in behind a
+> feature flag** (HR 10000–10007), so that with the defaults our firmware stays the
+> factory mirror. Question 1 of §9 is answered: the factory reads `0` across the
+> window and refuses writes with exception 2 (docs/45 §2.2).
 
-- It clears every known factory range: IR 0–152, IR 5000–5126 (per-pack,
-  [`docs/34`](34-multi-battery-can.md)), and HR up to ~198.
-- **?** Unverified: how the factory answers a read of IR/HR 1000+ (exception,
-  zeros, or aliasing). Check under the harness (`tests/arm_sim_modbus.py`)
-  before committing, because that answer is how a client tells "factory" from
-  "ours".
+The window is cut into 40-register blocks aligned to the dongle-spec query groups
+(10000 = 250 × 40), so every block fits one legal query. **Block *k* sits at
+10000 + 40·k in both spaces.** Block 0 is the control plane (discovery +
+feature-enable mask). The remaining blocks are assigned per feature by the
+docs/45 registry. The content groups this brainstorm suggested map onto that
+registry as follows (numbers per docs/45 §3.2, all still ⬜ proposals):
 
-Suggested block layout (IR side; HR mirrors where a control exists):
+| content (§ref) | docs/45 feature ID → block(s) |
+|---|---|
+| **identity & capability**: OSS magic, schema version, feature bitmap (§3.1) | control plane, block 0 (always on) |
+| git hash, build date, uptime, reset reason (§3.1, §6) | ID 1 → block 1 |
+| **bug-report recorder** status + register-window read cursor (§6.1) | ID 2 → block 2 |
+| **live I/O state**: relay bitmap, fan duties, buzzer/LED/backlight, lease status (§3.2) | ID 3 → block 3 |
+| **derived & high-resolution electrical** (§3.4) | ID 4 → block 4 |
+| **windowed stats** (§3.5) | ID 5 → block 5 |
+| **link health** (§3.6) | ID 6 → block 6 |
+| **battery detail**: per-pack + cell min/max/Δ + temps + alarm bits (§3.3) | ID 7 → blocks 7–9 |
+| **cross-check view** (§3.7) | ID 8 → block 10 |
+| **event journal** / fault history (§3.8) | ID 9 → block 11 |
 
-| block | IR range | content (§ref) |
-|---|---|---|
-| 0 | 1000–1039 | **identity & capability**: OSS magic, schema version, git hash, build date, feature bitmap, uptime, reset reason (§3.1, §6) |
-| 1 | 1040–1079 | **live I/O state**: relay output bitmap, fan duties, buzzer/LED/backlight, lease status per override (§3.2) |
-| 2 | 1080–1119 | **derived & high-resolution electrical**: signed battery current/power, Wh-resolution energy, Ipv, net load, smart-port power (§3.4) |
-| 3 | 1120–1159 | **windowed stats** since last read / last N s: min/max/mean of load, Vbat, PV (§3.5) |
-| 4–6 | 1160–1279 | **battery detail**: per-pack + cell min/max/Δ + temps + alarm bits from the unpublished CAN frames (§3.3) |
-| 7 | 1280–1319 | **link health**: per-link frame/CRC/timeout counters, last-seen ages (§3.6) |
-| 8 | 1320–1359 | **cross-check view**: safety-CPU vs DSP measurements side by side + deltas (§3.7) |
-| 9 | 1360–1399 | **bug-report recorder** status + read cursor fallback (§6.1); event journal cursor / fault history with timestamps (§3.8) |
-
-HR side: 1000–1039 for OSS settings (persisted in the OSS region) and 1040–1119 for
-**volatile lease-based commands** (§4). One self-describing **schema table**, which
-a client can read register by register as `{id, name-hash/index, unit, scale,
-signedness}`, would let an HA/ESPHome integration generate entities without
-hand-maintained YAML (§5.3).
+HR side: each feature's persisted settings (OSS region) and **volatile
+lease-based commands** (§4) sit in the HR half of its own block. One
+self-describing **schema table**, which a client can read register by register as
+`{id, name-hash/index, unit, scale, signedness}`, would let an HA/ESPHome
+integration generate entities without hand-maintained YAML (§5.3). It fits as a
+later control-plane or block-1 addition.
 
 ---
 
@@ -599,7 +609,7 @@ to invite confusion). The first body byte is a sub-command:
   timeline plot).
 - **Register-window fallback.** For masters that cannot send a custom function
   code (a stock HA Modbus integration, or a cloud path that filters function
-  codes, ?), mirror STATUS in OSS IR block 9 (1360–1399, §2). READ then becomes
+  codes, ?), mirror STATUS in the recorder's OSS IR block (docs/45 feature ID 2 → block 2, IR 10080–10119, §2). READ then becomes
   a cursor: write the offset to an OSS HR and read 40 IR of data. It is slower,
   but any master can do it.
 
@@ -682,8 +692,9 @@ the DSP/MPPT gateway behaviour unchanged.
 
 Fixes that only **add** OSS registers (Q3, Q4) carry no compatibility risk. Fixes
 that **change** a factory register (Q1, Q2) break the "factory client can't tell"
-rule (§1.1), so they belong behind an OSS setting "correct known factory register
-bugs" (default to be decided) and in `docs/31` with the verdict.
+rule (§1.1), so each one sits behind **its own class-C feature flag**, default
+off ([`docs/45`](45-oss-feature-flags.md) §3.2: ID 32 = Q1, ID 33 = Q2), with the
+verdict recorded in `docs/31`.
 
 ---
 
@@ -700,7 +711,7 @@ bugs" (default to be decided) and in `docs/31` with the verdict.
 
 These go to the hand-off list. Each is a concrete experiment.
 
-1. How does the factory answer IR/HR reads in 1000–1399? (harness, §2)
+1. ✅ How does the factory answer IR/HR reads in the OSS window? **Answered** for the (moved) 10000+ window: reads `0`, writes exception 2 ([`docs/45`](45-oss-feature-flags.md) §2.2; UART5 pending T02).
 2. Is the Smart Port switched by an ARM GPIO or by the DSP? (harness sweep, §4.1)
 3. Which getter backs the 07-series `Psmart` / `Peps_port` / `Pgrid_side` HMI fields? (§3.4)
 4. Is UART4 or USART1 free on the board, and is PA15 really a shared DE line? (schematic/bench, §5.2)

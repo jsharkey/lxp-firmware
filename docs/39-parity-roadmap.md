@@ -784,6 +784,30 @@ layout vs the 07 bootloader (vectors at `0x08005000`, docs/11; our 12000XP
 link script is still monolithic at `0x08000000`, so decide which), panel init,
 RS-485 DE, CAN bitrate. Also cover how to recover a unit that bricks.
 
+### T28 — OSS feature-flag control plane (the gate every beyond-parity feature goes through)
+**Status:** ⬜ `[ ]` · Layer: host + sim (ours-only, plus one factory-only
+contract). Design: [`docs/45`](45-oss-feature-flags.md). Registers:
+[`HR10000_10039`](wiring/ARM-UART5-dongle/HR10000_10039-OSS-feature-control.md),
+[`IR10000_10039`](wiring/ARM-UART5-dongle/IR10000_10039-OSS-capability.md).
+This is **not** parity work, and it must not cost any: the deliverable is that
+`make test`, `make test-sim`, `make regsweep` and `make wrsem` stay exactly as
+green as before with the mask at zero.
+- [ ] `include/inv/oss_features.h` registry (IDs, class, blocks, requires,
+  conflicts) + `src/oss/oss_features.c` (mask validation, ACTIVE recompute per
+  tick, SAVE/RELOAD/CLEAR to the docs/24 OSS region).
+- [ ] block 0 served by the Modbus port; blocks 1–24 exception 2; end-of-write
+  commit hook in `src/modbus/modbus.c` so `FEAT_EN` writes are atomic.
+- [ ] `make OSS=0` build + `make test-parity` (run the suites on `OSS=0` and
+  `OSS=1`, require identical verdicts).
+- [ ] host tests `test_oss_features.c`; sim `test_oss_control.py`;
+  `tests/oss_helpers.py::oss_enable()` precondition helper.
+- [ ] factory-only test pinning docs/45 §2.2 (IR/HR 10000+ read `0`, HR 10000
+  write → exception 2), the safe-on-factory / discovery contract.
+- [ ] decide the front-panel safe-mode chord and HR 11 `AlltoDefault` ⇒ CLEAR
+  (docs/45 §7 items 3–4).
+Unblocks every docs/38 feature. Each one then claims its docs/45 §3.2 ID here as
+its own task.
+
 ---
 
 ## Cross-cutting, always-on

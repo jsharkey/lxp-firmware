@@ -83,6 +83,47 @@ Every documented **holding** register resolves to one of:
 
 ---
 
+## Address-space allocation — factory vs open-source (OSS)
+
+The two register spaces are independent number lines, but **both follow one
+allocation plan**, so that our open-source additions can never collide with a
+factory register, present or future. Raw 0-based protocol addresses throughout.
+Policy and rationale: [`docs/45`](../../45-oss-feature-flags.md).
+
+| range (IR **and** HR) | owner | status | evidence |
+|---|---|---|---|
+| **0–199** | factory, published spec | in use | spec PDF: IR to 152, HR to 198 |
+| **200–399** | factory, beyond-spec | **in use** (IR); reserved (HR) | live 12000XP capture: factory serves non-zero **IR 174, 193–194, 199–200, 203–204**, and the dongle uploads **IR 0–380** every cycle (`tools/lxp_pcap.py --reg 127/254`, [`docs/34`](../../34-multi-battery-can.md)); factory `0x06` probed to HR 260 ([`docs/44`](../../44-dongle-modbus-crash-surface.md)) |
+| **400–4094** | factory growth reserve | ⛔ never allocate | headroom for the factory's still-growing map (spec 152 → live 204 → polled 380) |
+| **4095–4999** | factory **read-guard band** | ⛔ never allocate | factory read path rejects HR reads with `start+count` landing in `[4095, 5000)` → exception 2 (docs/44; re-measured: HR 4094 ×8 → exception 2). Ours must keep that answer (parity). IR side: reserved for symmetry. |
+| **5000–5999** | factory **battery bank** | in use 5000–5126 (IR); rest reserved | [`IR5000_5126-perpack.md`](IR5000_5126-perpack.md); 30-register stride per pack, so reserve room for more packs. HR 5000–5999 reserved for symmetry (per-pack settings, if the factory ever adds them). |
+| **6000–9999** | factory growth reserve | ⛔ never allocate | — |
+| **10000–10999** | **OSS window**: 25 blocks × 40 | allocated (⬜ not implemented) | block *k* = **10000 + 40·k**, the same *k* in IR (telemetry) and HR (settings/commands). See below. |
+| **11000–19999** | OSS growth reserve | reserved | for OSS features that outgrow 25 blocks; same 40-block rule |
+| **20000–65535** | unallocated | ⛔ leave alone | — |
+
+**The factory's answer in the OSS window** (proven, dynamic, `ceaa-07xx`, USART3
+register slave, 2026-11-08): reads of IR/HR 10000+ (and 20000, 32768) return
+`0`; a write-single to HR 10000/10016 is refused with **exception 2** and
+nothing is stored. So reading IR 10000–10001 tells factory (`0,0`) from ours
+(`"LXOS"`), and flag writes to a factory unit are harmless (docs/45 §2.2; UART5
+~ inferred pending T02).
+
+**OSS window blocks.** Every block is one 40-register query group:
+
+| block | IR / HR | content | doc |
+|---|---|---|---|
+| 0 | 10000–10039 | **control plane**: discovery/capability (IR), feature-enable mask + command (HR). The only block that answers with every flag clear. | [IR](IR10000_10039-OSS-capability.md) · [HR](HR10000_10039-OSS-feature-control.md) |
+| 1–24 | 10040–10999 | **per-feature blocks**, assigned by the feature registry ([`docs/45`](../../45-oss-feature-flags.md) §3.2). A block whose feature isn't ACTIVE answers **exception 2**, exactly as an unmapped register does today. | per feature, when implemented |
+
+Rules for this tree: a feature's block gets its own `IRnnnnn_nnnnn-…` /
+`HRnnnnn_nnnnn-…` file here when it's implemented, with a `## Test coverage`
+section like every other register. Never allocate inside a ⛔ range. If a factory
+image starts using any address ≥ 400 that isn't in the table above, record it
+here first.
+
+---
+
 ## Index — input registers (func `0x04`, read-only)
 
 `→ file` links the dedicated doc; `idx` = spec-only (see modbus_map.h), not yet
@@ -129,7 +170,10 @@ RE-traced; `rsvd` = reserved/unused.
 | 144 | AFCIFlag | bits | arc alarm / self-test | idx |
 | 145-148 | AFCI_ArcCH1-4 | — | real-time arc | idx |
 | 149-152 | AFCI_MaxArcCH1-4 | — | max arc | idx |
+| 153-380 | *(beyond spec)* | — | factory-owned; non-zero live at 174, 193-194, 199-200, 203-204 (meanings ?); polled by the dongle | — |
 | **5000-5126** | **per-pack battery bank** | — | **undocumented**; CAN-`0x4xx`-fed, **dormant across the EG4 battery line (3 models checked)** | [→](IR5000_5126-perpack.md) |
+| **10000-10039** | **OSS capability / feature status** | — | **OSS-only** (block 0): `"LXOS"` magic, schema, SUPPORTED / ACTIVE / SAVED feature masks; ⬜ not implemented (T28) | [→](IR10000_10039-OSS-capability.md) |
+| 10040-10999 | OSS feature blocks 1-24 | — | **OSS-only**, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-oss-feature-flags.md)) | — |
 
 ## Index — holding registers (func `0x03/0x06`, `0x10` SN+time only)
 
@@ -179,6 +223,10 @@ RE-traced; `rsvd` = reserved/unused.
 | 158-169 | ACChg by V/SOC, bat-low protection, OngridEOD | — | battery/AC-charge thresholds | idx |
 | 170-193 | SOCCurve, grid/gen power caps, FunctionEn2, VoltWatt/QV/QP | — | advanced curves | idx |
 | 194-198 | GenChg start/end V/SOC, MaxGenChgCurr | 0.1V / % / A | generator charge | [→](HR194_198-generator-charge.md) |
+| 199-399 | *(beyond spec)* | — | factory-reserved; see "Address-space allocation" | — |
+| 4095-4999 | *(read-guard band)* | — | factory rejects reads landing here (exception 2) | — |
+| **10000-10039** | **OSS feature control** | mask / cmd | **OSS-only** (block 0): `FEAT_EN[0..7]` feature-enable mask (default 0 = factory mirror), `FEAT_CMD` save/reload/clear; ⬜ not implemented (T28) | [→](HR10000_10039-OSS-feature-control.md) |
+| 10040-10999 | OSS feature blocks 1-24 | — | **OSS-only** settings/commands, exception 2 unless the owning feature is ACTIVE ([`docs/45`](../../45-oss-feature-flags.md)) | — |
 
 ## Annex tables (in the per-register files)
 

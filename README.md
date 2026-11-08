@@ -114,7 +114,11 @@ work in two phases:
 2. **Then go beyond the factory.** Once parity holds, add the things an open
    firmware can do better — richer Home-Assistant telemetry, standard-Modbus
    framing, lease-based remote controls, and more. Those ideas are collected in
-   [`docs/38-oss-feature-ideas.md`](docs/38-oss-feature-ideas.md).
+   [`docs/38-oss-feature-ideas.md`](docs/38-oss-feature-ideas.md). Every such
+   feature is **opt-in behind a feature flag** (Modbus HR 10000–10007, default
+   off), so the firmware is the factory mirror out of the box and passes every
+   parity test unchanged. See
+   [`docs/45-oss-feature-flags.md`](docs/45-oss-feature-flags.md).
 
 Anything the factory does that looks wrong or surprising is written down — with a
 verdict on whether we replicate or fix it — in the factory-quirks log
