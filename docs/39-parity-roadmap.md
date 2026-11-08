@@ -379,6 +379,15 @@ plus `write_sn`/`read_sn` for the 10-byte SN). New tests close the
   goes silent shortly after a settings write, so the exact on-flash offset must be
   pinned by flash-diff, not a factory read-back.)
 
+#### T24d — ours persists the SN (HR 2-6) cross-image
+**Status:** 🟡 `[~] claude/019chjb 2026-11-08` · **Layer:** sim + micro · **Depends:** T24c (the factory oracle)
+
+Pin the factory's on-flash SN layout by flash-diff (write two distinct SNs, isolate
+the bytes that track each), add HR 2-6 to the config-flash persist path at that exact
+slot/offset so ours journals + seeds the SN, and make
+`test_persists_sn_across_cold_boot` pass for **ours** too (promote it to common or
+add a self-only twin). Watch the ComAddr (HR 15) overlap at slot-0 payload `0x0`.
+
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
 
