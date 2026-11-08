@@ -44,4 +44,51 @@
 bool inv_gen_charge_volt_gate(bool active, uint16_t vbat_bank,
                               uint16_t start_v, uint16_t end_v, bool stop_ok);
 
+/*
+ * One hysteresis step of the generator-charge-by-SOC gate (GenChargeType = 1).
+ * The SOC sibling of the voltage gate: the SAME charge-direction hysteresis, on the
+ * battery state-of-charge byte instead of voltage. RE-pinned (T16) on the canonical
+ * 07 image as the self-contained block `0x08035198…0x080351de`, verdict byte
+ * `0x2000dbc1` (the sibling of the voltage verdict `0x2000dbc0`):
+ *
+ *     if (!active) active = (soc <  start_soc);                  // start charging when LOW
+ *     else         active = !(soc >= end_soc && stop_ok);        // stop only when HIGH AND confirmed
+ *
+ * The factory reads the battery SOC byte (relayed struct `0x2000d7b0+0`) and compares
+ * it UNSIGNED (blo/bhs) against two 1-byte thresholds: `start_soc` is HR 196
+ * GenChgStartSOC (settings `+0xb0`), `end_soc` is HR 197 GenChgEndSOC (settings
+ * `+0xb1`) -- the low/high bytes of the `+0xb0` halfword. The **stop** requires the
+ * same DSP confirmation as the voltage gate (`bank+0xb6` bit 11 AND `bank+0xbc`
+ * bit 15), passed as `stop_ok`. Pure/latched like the voltage gate.
+ *   active     - previous latched verdict (false = generator-charge off)
+ *   soc        - battery state of charge, 0-100 (%)
+ *   start_soc  - turn-ON threshold  (HR 196 / settings +0xb0), charge when soc < start_soc
+ *   end_soc    - turn-OFF threshold (HR 197 / settings +0xb1), stop when soc >= end_soc
+ *   stop_ok    - the DSP confirmation for stopping; the gate will not turn off until true
+ */
+bool inv_gen_charge_soc_gate(bool active, uint8_t soc,
+                             uint8_t start_soc, uint8_t end_soc, bool stop_ok);
+
+/*
+ * Combined generator-charge controller (T16): selects the by-voltage or by-SOC gate
+ * per GenChargeType (HR 120 bit 7, settings `+0x33` bit 7) and returns whether the
+ * generator should be charging the battery now. Both gates are stepped every call so
+ * their latches stay warm across a mode change; the returned verdict is:
+ *   charge_type 0 (by voltage) -> the voltage gate's verdict (0x2000dbc0)
+ *   charge_type 1 (by SOC)     -> the SOC gate's verdict     (0x2000dbc1)
+ * Mirrors the mode select in the factory `sub_08035050` (HR 120 bit 7). Each
+ * underlying gate is factory-verified (above); stepping both latches every call is
+ * ours' composition (the factory evaluates only the selected path, and force-clears
+ * the voltage verdict while in SOC mode) and is not itself separately oracle-pinned.
+ */
+typedef struct {
+    bool v_active;   /* latched by-voltage verdict (0x2000dbc0) */
+    bool s_active;   /* latched by-SOC verdict     (0x2000dbc1) */
+} inv_gen_charge_state_t;
+
+bool inv_gen_charge_permit(inv_gen_charge_state_t *st, bool charge_by_soc,
+                           uint16_t vbat_bank, uint16_t v_start, uint16_t v_end,
+                           uint8_t soc, uint8_t s_start, uint8_t s_end,
+                           bool stop_ok);
+
 #endif /* INV_GEN_CHARGE_H */

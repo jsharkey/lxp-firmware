@@ -594,7 +594,7 @@ the inert/DSP-gated paths.
   implement it beyond the existing round-trip unless that verdict changes.
 
 ### T16 — Generator: charge start/stop, quick start, warm-up/cool-down (HR 194-198 + 07-series)
-**Status:** 🚧 `[~] claude 2026-11-07` — **gen-charge-by-voltage start/stop gate cracked + reimplemented + factory-verified**; SOC path, quick-start / warm-up-cool-down timers, time scheduling and the other 07-series gen features remain · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
+**Status:** 🚧 `[~] claude 2026-11-08` — **gen-charge start/stop gate cracked + reimplemented + factory-verified, BOTH by-voltage *and* by-SOC**; quick-start shadow gates, warm-up/cool-down timers, time scheduling and the other 07-series gen features remain · **Layer:** micro (thresholds/timers) + sim · **Soft-depends:** T14 (gen relay)
 
 **Done (gen-charge-by-voltage gate, 2026-11-07).** The generator charge
 **start/stop decision is ARM-evaluated** (not purely DSP-gated, contra the initial
@@ -614,8 +614,20 @@ wired into `make test` / `make test-sim`. Settings provenance pinned dynamically
 (HR 194→`+0xac`, HR 195→`+0xae`, HR 196/197→`+0xb0`). Write-up in
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md).
 
-**Remaining.** SOC-path gate (GenChargeType=1, verdict `0x2000dbc1`, HR 196/197);
-the 07-series additions below.
+**Done (gen-charge-by-SOC gate, 2026-11-08).** The SOC sibling (GenChargeType=1):
+factory block `0x08035198…0x080351de`, verdict byte `0x2000dbc1`. Structurally
+identical to the voltage gate on the **battery SOC byte** (`0x2000d7b0`, unsigned):
+start when `soc < start_soc` (HR 196 / settings `+0xb0`), stop when `soc >= end_soc`
+(HR 197 / `+0xb1`) **and** the same `stop_ok` DSP confirm. Reimplemented as
+`inv_gen_charge_soc_gate()` + a combined `inv_gen_charge_permit()` selecting on HR 120
+bit 7; factory-verified (`test_factory_soc_matches_spec`) and host-tested on the same
+shared `SOC_VECTORS`. (In SOC mode the evaluator force-clears the voltage verdict; in
+voltage mode the SOC verdict is left untouched.)
+
+**Remaining.** Two **shadow** verdict bytes `0x2000dbbe` (voltage) / `0x2000dbbf`
+(SOC) evaluated right after each primary gate with a widened start band (`+0x1e`/`+2`)
+gated by `bank+0xbc` bit 31 — most likely the 07-series **quick-start** early-trigger;
+decoded in outline only. Plus the 07-series additions below.
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions

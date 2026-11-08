@@ -62,6 +62,41 @@ def predict(prev, vbat, stop_ok):
     return not (vbat >= END and stop_ok)
 
 
+# --- SOC sibling (GenChargeType = 1) --------------------------------------------
+# Same charge-direction hysteresis on the battery SOC byte: start when SOC is low,
+# stop when SOC is high AND stop_ok. Factory block 0x08035198 … 0x080351de, verdict
+# byte 0x2000dbc1; SOC byte at relayed struct 0x2000d7b0; thresholds are 1-byte,
+# HR196 GenChgStartSOC @ settings+0xb0, HR197 GenChgEndSOC @ settings+0xb1.
+SOC_BASE   = 0x2000d7b0        # relayed battery-SOC struct (byte 0 = SOC %)
+SOC_BLOCK  = 0x08035198        # gen-charge-by-SOC block entry
+SOC_STOP   = 0x080351de        # block exit (verdict written by here)
+SOC_VERD   = 0x2000dbc1        # generator-charge-by-SOC "active now" byte
+OFF_SSTART = 0xb0             # settings: HR 196 GenChgStartSOC (byte)
+OFF_SEND   = 0xb1             # settings: HR 197 GenChgEndSOC   (byte)
+
+SSTART, SEND = 20, 100       # HR196 20 %, HR197 100 % (manual defaults)
+
+# (label, prev_active, soc, stop_ok, expected_active).
+SOC_VECTORS = [
+    ("off 10 < start -> on",     False, 10,  True,  True),
+    ("off 19 < start -> on",     False, 19,  True,  True),
+    ("off 20 == start stays",    False, 20,  True,  False),
+    ("off 50 > start off",       False, 50,  True,  False),
+    ("on 10 stays",              True,  10,  True,  True),
+    ("on 99 < end stays",        True,  99,  True,  True),
+    ("on 100 == end +ok -> off", True,  100, True,  False),
+    ("on 50 in band stays",      True,  50,  True,  True),
+    ("on 100 no-confirm stays",  True,  100, False, True),
+]
+
+
+def predict_soc(prev, soc, stop_ok):
+    """The pure SOC-hysteresis spec both sides must satisfy."""
+    if not prev:
+        return soc < SSTART
+    return not (soc >= SEND and stop_ok)
+
+
 class Skip(Exception):
     pass
 
@@ -97,3 +132,21 @@ class FactoryBackend:
         with contextlib.redirect_stdout(io.StringIO()):
             e.call(BLOCK, args=(0, SETTINGS))             # r1 = settings base
         return e.rbytes(VERDICT, 1)[0] != 0
+
+    def verdict_soc(self, prev, soc, stop_ok, start=SSTART, end=SEND):
+        """Drive the gen-charge-by-SOC block once; return its latched verdict."""
+        from emu import Emu
+        e = Emu(self.image, self.symbols)
+        e.uc.mem_write(SETTINGS + OFF_SSTART, bytes([start & 0xFF]))
+        e.uc.mem_write(SETTINGS + OFF_SEND, bytes([end & 0xFF]))
+        e.uc.mem_write(SOC_BASE, bytes([soc & 0xFF]))
+        if stop_ok:                                       # same two DSP stop-confirm bits
+            e.uc.mem_write(BANK + 0xb6, struct.pack("<H", 1 << 11))
+            e.uc.mem_write(BANK + 0xbc, struct.pack("<I", 1 << 15))
+        e.uc.mem_write(SOC_VERD, bytes([1 if prev else 0]))
+        e.stop_at.add(SOC_STOP)
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            e.call(SOC_BLOCK, args=(0, SETTINGS, SOC_BASE))  # r1 = settings, r2 = SOC base
+        return e.rbytes(SOC_VERD, 1)[0] != 0

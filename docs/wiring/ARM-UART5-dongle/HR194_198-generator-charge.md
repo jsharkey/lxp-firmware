@@ -44,19 +44,46 @@ else         active = !(v >= end_v && stop_ok)             # stop only when HIGH
   `bank+0xb6` **bit 11** AND `bank+0xbc` **bit 15**. Without the confirmation the
   gate stays latched ON even above `end_v`.
 - **Mode select:** HR 120 **bit 7** GenChargeType (settings `+0x33` bit 7). `0` = by
-  voltage (this gate); `1` = by SOC — the SOC sibling path (HR 196/197, settings
-  `+0xb0` packed), a separate verdict byte `0x2000dbc1`. (SOC path RE is a hand-off.)
+  voltage (this gate, verdict `0x2000dbc0`); `1` = by SOC (the SOC sibling below,
+  verdict `0x2000dbc1`). In SOC mode the evaluator force-clears the voltage verdict;
+  in voltage mode the SOC verdict is left untouched.
+
+### The SOC sibling (GenChargeType = 1)
+
+Structurally identical, on the battery **SOC byte** instead of voltage — factory
+block `0x08035198 … 0x080351de`, verdict byte `0x2000dbc1`:
+
+```
+soc = battery SOC byte @ 0x2000d7b0                       # relayed struct, %
+if (!active) active = (soc <  start_soc)                   # start charging when LOW
+else         active = !(soc >= end_soc && stop_ok)         # stop only when HIGH *and* confirmed
+```
+
+- `start_soc` = **HR 196** GenChgStartSOC, settings `+0xb0` (low byte of the `+0xb0`
+  halfword); `end_soc` = **HR 197** GenChgEndSOC, settings `+0xb1` (high byte).
+- The SOC is read as a **1-byte** value and compared **unsigned** (`blo`/`bhs`).
+- The turn-OFF uses the **same** `stop_ok` DSP confirmation as the voltage gate
+  (`bank+0xb6` bit 11 AND `bank+0xbc` bit 15).
 
 Settings provenance pinned dynamically (ModbusDsp boot + dongle writes): HR 194 →
-`+0xac`, HR 195 → `+0xae`, HR 196/197 → `+0xb0` (packed). The same thresholds are
-*also* pushed to the DSP config (block 6, see Test coverage) — that is the DSP's copy
-for its own limiting, distinct from this ARM start/stop latch.
+`+0xac`, HR 195 → `+0xae`, HR 196 → `+0xb0`, HR 197 → `+0xb1` (the two SOC bytes share
+the `+0xb0` halfword). The same thresholds are *also* pushed to the DSP config
+(block 6, see Test coverage) — that is the DSP's copy for its own limiting, distinct
+from this ARM start/stop latch.
 
-Our firmware reimplements the decision as the pure, host-testable
-[`inv_gen_charge_volt_gate()`](../../../include/inv/gen_charge.h)
-([`src/sched/gen_charge.c`](../../../src/sched/gen_charge.c)); the caller holds the
-latch and supplies the bank voltage, the two thresholds and the `stop_ok`
+Our firmware reimplements both decisions as pure, host-testable functions in
+[`src/sched/gen_charge.c`](../../../src/sched/gen_charge.c)
+([`inv/gen_charge.h`](../../../include/inv/gen_charge.h)):
+`inv_gen_charge_volt_gate()`, `inv_gen_charge_soc_gate()`, and
+`inv_gen_charge_permit()` which selects between them on HR 120 bit 7. The caller holds
+the latch and supplies the bank voltage / SOC, the thresholds and the `stop_ok`
 confirmation.
+
+> **Not yet cracked (T16 hand-off):** two *shadow* verdict bytes `0x2000dbbe`
+> (voltage) and `0x2000dbbf` (SOC) are evaluated right after each primary gate
+> (`0x080350dc…`, `0x080351de…`) with a widened start band (`+0x1e`/`+2`) gated by
+> `bank+0xbc` **bit 31** — most likely the 07-series **quick-start** early-trigger.
+> Decoded in outline, not yet reimplemented or oracle-pinned.
 
 ## On the LCD (EG4 12000XP manual)
 
@@ -68,14 +95,17 @@ _Tests that exercise these registers. **Keep this list current when you add or c
 
 - **Generator-charge start/stop gate (T16):** the voltage hysteresis above (HR 194
   start-V → settings `+0xac`, HR 195 end-V → `+0xae`; start when `v < start_v`, stop
-  when `v >= end_v` **and** `stop_ok`). The factory block `0x08035086…0x080350dc`
-  (verdict `0x2000dbc0`) is driven in isolation on the canonical 07 image and checked
-  against the shared spec in [`test_gen_charge.py`](../../../tests/test_gen_charge.py)
-  `test_factory_matches_spec` / `test_factory_stop_needs_confirm` (`VECTORS` + the
-  `stop_ok` DSP-confirm bits in [`gen_charge_contract.py`](../../../tests/gen_charge_contract.py)).
-  Our pure `inv_gen_charge_volt_gate()` is held to the **same** vectors by the
-  toolchain-free host test [`test_gen_charge.c`](../../../tests/test_gen_charge.c)
-  (parity by contract).
+  when `v >= end_v` **and** `stop_ok`) **and** its SOC sibling (HR 196 start-SOC →
+  `+0xb0`, HR 197 end-SOC → `+0xb1`). The factory blocks `0x08035086…0x080350dc`
+  (verdict `0x2000dbc0`) and `0x08035198…0x080351de` (verdict `0x2000dbc1`) are driven
+  in isolation on the canonical 07 image and checked against the shared spec in
+  [`test_gen_charge.py`](../../../tests/test_gen_charge.py) `test_factory_matches_spec`
+  / `test_factory_soc_matches_spec` / `test_factory_stop_needs_confirm` (`VECTORS`,
+  `SOC_VECTORS` + the `stop_ok` DSP-confirm bits in
+  [`gen_charge_contract.py`](../../../tests/gen_charge_contract.py)). Our pure
+  `inv_gen_charge_volt_gate()` / `inv_gen_charge_soc_gate()` / `inv_gen_charge_permit()`
+  are held to the **same** vectors by the toolchain-free host test
+  [`test_gen_charge.c`](../../../tests/test_gen_charge.c) (parity by contract).
 - **DSP config-push (T10/T25):** the generator-charge parameters are packed into the ARM→DSP config frame, **block 6**: HR 194 start-V → `0x1d` (BE16, 0.1 V, clamped < end-V), HR 195 end-V → `0x1f` (BE16, 0.1 V), HR 196 start-SOC → `0x21` (u8 %), HR 197 end-SOC → `0x22` (u8 %), HR 198 max-charge-curr → `0x23` (BE16, A→0.1 A). Differentially pinned (single-write, fresh captures) and reproduced byte-for-byte by our firmware, verified ours==factory in [`test_dsp_push.py`](../../../tests/test_dsp_push.py) `test_{factory,ours}_grid_push_matches_spec` (`GRID_PUSH` in [`dsppush_contract.py`](../../../tests/dsppush_contract.py)); see the [HR→push matrix](../ARM-USART3-DSP/hr-push-matrix.md) and [block-03_06](../ARM-USART3-DSP/block-03_06-gridcharge-slots.md).
 - **Write validation (T24/T24b):** the whole-HR sweep
   ([`test_wrsem_sweep.py`](../../../tests/test_wrsem_sweep.py) /
