@@ -727,7 +727,7 @@ active). First locate the backing registers/settings for the 07-only features
 then oracle the start/stop thresholds and timers at their boundaries.
 
 ### T17 — Remaining 07-series features: Smart Load, Resume SOC, Quick Charge, buzzer
-**Status:** ⬜ `[ ]` · **Layer:** RE + micro + sim · **Independent**
+**Status:** 🚧 `[~] claude/019chjb 2026-11-08` — driving the whole bundle across passes, one feature per commit (starting #7 discharge-resume) · **Layer:** RE + micro + sim · **Independent**
 
 From [`docs/11`](11-12000xp-revisions.md): #6 Quick Charge (start, system
 charge SOC/V limit), #7 discharge-resume threshold (+5 % / +2 V hysteresis,
