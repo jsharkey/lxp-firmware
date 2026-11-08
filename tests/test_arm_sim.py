@@ -279,6 +279,28 @@ def test_usart2_safety_frame_reaches_modbus():
         assert rd == [exp], "fed USART2 frame -> IR %d = %r, expected [%d]" % (ir, rd, exp)
 
 
+def test_gen_volt_mirrors_grid_s():
+    """IR 121 (GenVolt) is served from the SAME safety-bank word as IR 13 (grid
+    voltage S, +0x28): the generator input shares the S-phase sense on this image,
+    so Vgen == VacS (T26, docs/33 / IR121_126-generator.md). Black box on both
+    images: feed a USART2 tag-2 frame carrying grid_s at +0x23 and assert IR 121,
+    IR 13 both read it. Factory-oracled on ceaa-07xx (IR 121 = IR 13 = 2402); our
+    firmware serves the same mirror (safety_cpu.c PUT(IR_GEN_VOLT, +0x28)). This is
+    the externally observable source for IR 121 -- IR 123/124/125 (gen power/energy)
+    are ARM-computed/accumulated and are not exercised by telemetry ingest alone."""
+    from arm_sim_usart2 import Usart2SafetyWire, build_frame
+    GRID_S = 2398
+    sim = _sim()
+    mb = _mb(sim)
+    wire = Usart2SafetyWire(sim, boot=False)
+    frame = build_frame({0x14: (2, 1), 0x23: (GRID_S, 2)})
+    got = wire.feed(frame)
+    assert got == len(frame), "only %d/%d USART2 bytes received" % (got, len(frame))
+    assert mb.read_input(13) == [GRID_S], "IR 13 (grid_s) did not take the fed value"
+    assert mb.read_input(121) == [GRID_S], \
+        "IR 121 (GenVolt) = %r, expected the grid_s mirror [%d]" % (mb.read_input(121), GRID_S)
+
+
 def test_bms_charge_volt_ref_clamps_to_setting():
     """Working charge-V derivation (docs/39 T11a): the inverter serves IR 83 =
     min(0x351 charge-V limit, HR 99 ChargeVoltRef), not the pack's limit raw.

@@ -737,7 +737,17 @@ Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
 
 ### T26 — Document + test the spec-only (`idx`) registers
-**Status:** 🚧 `[~] claude 2026-11-08` (generator-telemetry IR group 121-126) — other groups still open, one agent per group · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
+**Status:** 🚧 `[~] claude 2026-11-08` — generator-telemetry IR group **121-126 done** (IR 121 cracked + served + tested this round; 122/126-bit8 already had tests; 123/124/125 characterized hand-off); other register groups still open, one agent per group · **Layer:** RE + sim · **Independent** (split by group; one agent per group is fine)
+
+**Generator-telemetry IR group (2026-11-08).** Empirically characterized IR 121-126 on
+the canonical 07 image (boot RTOS + USART2 tag-2 feed, read IRs). Key finding: **IR 121
+(GenVolt) is a live mirror of IR 13 (VacS)** — both served from safety bank `+0x28`
+(the gen input shares the grid S-phase sense), *proving* the doc's prior inference.
+Added the mirror to our firmware (`safety_cpu.c` `PUT(IR_GEN_VOLT, +0x28)`) and a
+both-images test `test_gen_volt_mirrors_grid_s`. IR 123/124/125 (gen power/energy) are
+ARM-computed/accumulated — read 0 / persisted on a quiescent image, so a parity test
+needs the gen-charge path + energy accumulator active (characterized in
+[`IR121_126-generator.md`](wiring/ARM-UART5-dongle/IR121_126-generator.md), hand-off).
 
 These spec registers have **no file** in `ARM-UART5-dongle/` and no test:
 **HR** 63, 92-97, 104, 106-109, 114-119, 121-125, 132-144, 149-151, 158-193;

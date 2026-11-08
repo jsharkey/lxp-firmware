@@ -81,6 +81,11 @@ void safety_cpu_publish(uint16_t *input_reg, uint16_t n)
     PUT(IR_VBUS2, bank_u16(SAFETY_OFF_VBUS2));
     PUT(IR_VBUS_P, bank_u16(SAFETY_OFF_VBUS_P));
     PUT(IR_GEN_FREQ, bank_u16(SAFETY_OFF_GEN_FREQ));
+    /* Generator voltage (IR 121) is served from the SAME bank word as VacS
+     * (grid S-phase, +0x28): the generator input shares the S-phase sense on this
+     * image, so IR 121 == IR 13. Empirically confirmed on ceaa-07xx -- feeding a
+     * USART2 tag-2 frame makes both read the fed grid_s value (T26, docs/33). */
+    PUT(IR_GEN_VOLT, bank_u16(SAFETY_OFF_VAC_S));
 
     /* Inverter current RMS: the factory getter scales the bank field x10. */
     PUT(IR_IINV_RMS, (uint16_t)(bank_u16(SAFETY_OFF_IINV) * 10u));
