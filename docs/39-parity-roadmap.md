@@ -767,23 +767,38 @@ register/setting located, a factory oracle, then ours.
   buzzer GPIO (docs/16) + the warning trigger. GPIO is RTOS-driven (harder oracle).
 
 ### T27 — Input registers that still have no test
-**Status:** 🚧 `[~] claude 2026-11-08` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
+**Status:** 🚧 `[~] claude 2026-11-08` — **live-telemetry items done** (IR 6, 108, 127/128, all energy channels; IR 77 source cracked); the ARM-computed **power/energy** group (IR 123-125 gen + 129-138 EPS) is the remaining hand-off, shared with T16 · **Layer:** sim (extend the bank/CAN contracts) · **Independent**
 
-As of the audit, these input registers have no test at all:
-- **IR 6 InternalFault**: T06 publishes it (classifier output), but no
-  register-level serve test exists. Add it to the classifier e2e test.
-- **IR 77 ACInputType** (grid vs generator): find the source (a bank field? a
-  HR 146 LineMode derivation?), then factory-oracle it.
-- **IR 127-138 EPS split-phase** (L1N/L2N V, P, S, E): [`docs/33`](33-usart2-telemetry-bank.md)
-  says IR 127/128 come from the bank, so extend `SAFETY_TELEMETRY`. The P/S/E
-  entries are probably ARM-computed, so extend the T07 telemetry contract. The
-  E (energy) entries belong with the energy channels below.
-- **Energy counters beyond Epv1**: `test_energy.py` covers only the PV1
-  channel. Cover all ten channels (IR 28-37 day, 40-59 all), the 32-bit
-  low/high carry at `0xFFFF → 0x10000`, and gating per state. The
-  boundary-heavy parts (carry, rollover) suit a micro-test.
-- **IR 108 T1** (12K BT temperature): live or dormant on `ceaa-07xx`?
+As of the audit, these input registers had no test at all — status after this round:
+- **IR 6 InternalFault — ✅ (2026-11-08).** Not the classifier output; it is a **live
+  safety-bank mirror** (`+0xc8`), OR'd with an ARM-local DTC byte (`STATUS+0x91`, 0 in
+  the normal state → IR 6 == the bank word, verified on `ceaa-07xx`). Served in ours
+  (`safety_cpu.c`) + added to `SAFETY_TELEMETRY` (ours==factory). [`IR006`](wiring/ARM-UART5-dongle/IR006-InternalFault.md)
+- **IR 77 ACInputType — ✅ source cracked (2026-11-08).** Reads `0x20` at rest and is
+  **unchanged by HR 146 LineMode** — the LineMode-derivation candidate is **ruled
+  out**; it is a factory-populated status word (T23 "ours-unpopulated IR"). Doc
+  corrected. **Open hand-off:** the grid/gen detection that sets its bits (not reachable
+  in the bare harness). [`IR077`](wiring/ARM-UART5-dongle/IR077-ACInputType.md)
+- **IR 127-138 EPS split-phase — 127/128 ✅, 129-138 hand-off.** IR 127/128 (L1N/L2N
+  voltage) are **live bank mirrors** (`+0x30`/`+0x32`), served in ours + in
+  `SAFETY_TELEMETRY` (ours==factory, verified). The P/S/E entries (129-138) are
+  ARM-computed/accumulated per leg — like gen power/energy, they read 0 on a quiescent
+  image, so they go with the power/energy hand-off below. [`IR127_138`](wiring/ARM-UART5-dongle/IR127_138-EPS-split-phase.md)
+- **Energy counters beyond Epv1 — ✅ (2026-11-08).** `test_energy.c` now drives **all
+  ten channels**: each maps to its daily reg (IR 28+ch) and its 32-bit L/H cumulative
+  pair (IR 40+2·ch) with the **high word carried past `0xFFFF`**, distinct value per
+  channel (swapped index caught), undriven channels stay 0, and gating per state.
+  `reg_coverage` now credits IR 28-37 / 40-59. [`IR028_059`](wiring/ARM-UART5-dongle/IR028_059-energy-counters.md)
+- **IR 108 T1 — ✅ dormant (done under T26).** Reads 0 on both images, no source wired;
+  pinned by `test_aux_temp_regs_dormant`. [`IR108_112`](wiring/ARM-UART5-dongle/IR108_112-aux-temps-dormant.md)
 - IR 71-75 (AutoTest) and IR 113 (ParallelInfo) stay with **T19**.
+
+**Remaining (→ T27a, with T16):** the **ARM-computed power/energy group** — gen power
+IR 123, gen energy IR 124/125, and EPS per-leg IR 129-138 (Peps/Seps/Eeps L1N/L2N).
+These read 0 on a quiescent image and need the ARM power-computation + per-leg energy
+accumulator exercised (the power-source `STATUS` offsets located, the computation and
+accumulation reproduced). A coherent follow-on shared with the T16 gen power/energy
+hand-off, not reachable by telemetry ingest alone.
 
 ---
 
