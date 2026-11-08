@@ -104,6 +104,8 @@ free (untouched)  : 60532 B (59.1 KB)
   is even less of one.
 - **The factory runs near full (~9 KB free).** Useful context: it explains the
   tight stack placement, and means any factory-side behaviour we emulate should
-  not assume spare RAM there.
+  not assume spare RAM there. **Where its ~55 KB of static actually goes — and
+  whether any of our buffers are under-sized against it — is the open question;
+  [`docs/46`](46-factory-ram-breakdown-plan.md) is the plan to break it down.**
 - Re-run `tools/ramfootprint.py` after a feature lands to track the budget; the
   `static` figure from `build/firmware.map` moves one-for-one with new globals.
