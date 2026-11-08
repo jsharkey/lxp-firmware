@@ -727,7 +727,7 @@ active). First locate the backing registers/settings for the 07-only features
 then oracle the start/stop thresholds and timers at their boundaries.
 
 ### T17 — Remaining 07-series features: Smart Load, Resume SOC, Quick Charge, buzzer
-**Status:** 🚧 `[~] claude/019chjb 2026-11-08` — driving the whole bundle across passes, one feature per commit (starting #7 discharge-resume) · **Layer:** RE + micro + sim · **Independent**
+**Status:** 🚧 `[~] claude/019chjb 2026-11-08` — **#7 discharge-resume registers landed**; #6/#9/#11 still open · **Layer:** RE + micro + sim · **Independent**
 
 From [`docs/11`](11-12000xp-revisions.md): #6 Quick Charge (start, system
 charge SOC/V limit), #7 discharge-resume threshold (+5 % / +2 V hysteresis,
@@ -735,6 +735,24 @@ which is a natural micro-test), #9 battery warning buzzer (find the GPIO via
 [`docs/16`](16-arm-io-map.md)), #11 Smart Load power display (Psmart / Peps_port /
 Pgrid_side: which IRs?). One agent can take each feature. Each needs the
 register/setting located, a factory oracle, then ours.
+
+**Progress (one feature per commit):**
+- **#7 discharge-resume — ✅ register layer (2026-11-08).** The `Recovery Threshold`
+  settings are the EG4 **BatLow/BatLowBack** HRs: **162** BatLowVoltage (cut-off V),
+  **163** BatLowBackVoltage (recovery V), **164** BatLowSOC (cut-off SOC), **165**
+  BatLowBackSOC (recovery SOC). Pinned on the dongle vs `ceaa-07xx`: 162/164 writable
+  (factory bounds `[420,560]`/`[15,100]`, wider than spec); **163/165 reject every
+  value with exc 2** in all DischgCtrlType modes — the resume thresholds are HMI-only
+  on the dongle. Added to `modbus_map.h`, the wrsem sweep (factory oracle + ours
+  parity), `settings_validate`, host `test_settings_validate.c`, and documented in
+  [`HR162_165`](wiring/ARM-UART5-dongle/HR162_165-BatLow-discharge-cutoff.md) +
+  [`docs/11`](11-12000xp-revisions.md). **Open:** config-flash persistence for 162/164,
+  and the RTOS resume *control* path that reads them (reuses `dischg_gate`, T15).
+- **#11 Smart Load display** — the `Psmart`/`Peps_port`/`Pgrid_side` strings are a
+  **debug-trace** table (with `Fgrid`/`Vgen`/`Pinv`/`Run_Trace`…), not clean Modbus
+  registers, so the monitoring IRs for them still need a separate source hunt. Lower
+  priority than the register features.
+- **#6 Quick Charge**, **#9 buzzer** — not started.
 
 ### T27 — Input registers that still have no test
 **Status:** 🚧 `[~] claude 2026-11-08` · **Layer:** sim (extend the bank/CAN contracts) · **Independent**

@@ -40,6 +40,8 @@ static const sv_range_t RANGES[] = {
     { HR_EOD,             11, NO_MAX },   /* HR 105: factory rejects 10; lower only  */
     { HR_LINE_MODE,        0,   1    },   /* HR 146: rejects 2 (GEN) in cold state   */
     { HR_BAT_NOMINAL_VOLT,400, 590   },   /* HR 148                                  */
+    { HR_BAT_LOW_VOLT,    420, 560   },   /* HR 162: discharge cut-off V (T17; dongle 420-560, wider than spec) */
+    { HR_BAT_LOW_SOC,      15, 100   },   /* HR 164: discharge cut-off SOC (T17; dongle 15-100) */
     { HR_GEN_CHG_START_V, 384, 519   },   /* HR 194: rejects 520 (spec max)          */
     { HR_GEN_CHG_END_V,   480, 590   },   /* HR 195                                  */
     { HR_GEN_CHG_START_SOC, 1,  90   },   /* HR 196: rejects 0                       */
@@ -49,7 +51,10 @@ static const sv_range_t RANGES[] = {
 
 /* Registers the factory refuses to write at all (exception 2). These are the
  * charge-priority / forced-discharge power+SOC slots (inert in the DSP push too)
- * plus StartPVVolt (Q7) and OutputPrioConfig. */
+ * plus StartPVVolt (Q7), OutputPrioConfig, and the two discharge *recovery* points
+ * (HR 163/165, "BatLowBack*") which answer ILLEGAL_ADDRESS on the dongle for every
+ * value -- HMI-only there (T17; docs/11 #7). Their cut-off siblings (HR 162/164)
+ * ARE dongle-writable (ranges above). */
 static const uint16_t NOT_WRITABLE[] = {
     HR_START_PV_VOLT,    /* HR 22  (docs/31 Q7)   */
     HR_ACCHG_SOC_LIMIT,  /* HR 67                 */
@@ -57,6 +62,8 @@ static const uint16_t NOT_WRITABLE[] = {
     HR_FDISCHG_POWER,    /* HR 82                 */
     HR_FDISCHG_SOC,      /* HR 83                 */
     HR_OUTPUT_PRIO_CFG,  /* HR 145                */
+    HR_BAT_LOW_BACK_VOLT,/* HR 163: discharge recovery V -- dongle rejects every value (T17) */
+    HR_BAT_LOW_BACK_SOC, /* HR 165: discharge recovery SOC -- dongle rejects every value (T17) */
 };
 
 /* Read-only: writes are answered with an exception (FW-version words are reported,

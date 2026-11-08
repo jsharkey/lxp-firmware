@@ -51,6 +51,10 @@ RANGES = {
     145: (0, 2),       # OutputPrioCfg
     146: (0, 2),       # LineMode
     148: (400, 590),   # BatNominalVolt (0.1 V)
+    162: (420, 560),   # BatLowVoltage: discharge cut-off V (0.1 V, dongle bounds, T17)
+    163: (420, 520),   # BatLowBackVoltage: recovery V -- dongle rejects ALL (exc 2), T17
+    164: (15, 100),    # BatLowSOC: discharge cut-off SOC (%, dongle bounds, T17)
+    165: (20, 100),    # BatLowBackSOC: recovery SOC -- dongle rejects ALL (exc 2), T17
     194: (384, 520),   # GenChgStartV (0.1 V)
     195: (480, 590),   # GenChgEndV (0.1 V)
     196: (0, 90),      # GenChgStartSoc (%)

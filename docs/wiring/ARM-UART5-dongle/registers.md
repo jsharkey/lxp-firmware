@@ -176,7 +176,9 @@ RE-traced; `rsvd` = reserved/unused.
 | 147-148 | Battery capacity / nominal voltage | Ah / 0.1 V | unmatched batteries | [→](HR147_148-battery-capacity.md) |
 | 149-151 | Equalization volt/interval/time | — | lead-acid equalization | [→](HR149_151-equalization.md) |
 | 152-157 | AC-First load time windows | hour\|min | 3 AC-First windows | [→](HR152_157-ACFirst-windows.md) |
-| 158-169 | ACChg by V/SOC, bat-low protection, OngridEOD | — | battery/AC-charge thresholds | idx |
+| 158-161 | ACChg start/end by V/SOC | 0.1V / % | AC-charge thresholds | idx |
+| 162-165 | BatLow/BatLowBack V+SOC | 0.1V / % | discharge cut-off + recovery | [→](HR162_165-BatLow-discharge-cutoff.md) |
+| 166-169 | BatLowtoUtility V/SOC, OngridEOD | — | battery/grid thresholds | idx |
 | 170-193 | SOCCurve, grid/gen power caps, FunctionEn2, VoltWatt/QV/QP | — | advanced curves | idx |
 | 194-198 | GenChg start/end V/SOC, MaxGenChgCurr | 0.1V / % / A | generator charge | [→](HR194_198-generator-charge.md) |
 

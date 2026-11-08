@@ -288,6 +288,15 @@ enum mb_hold_reg {
     HR_ACFIRST_END_1    = 155,
     HR_ACFIRST_START_2  = 156,
     HR_ACFIRST_END_2    = 157,
+    /* Battery-undervoltage (discharge) cut-off + recovery points (07-series,
+       docs/11 #7 "Configurable Discharge Resume", T17). The two cut-off points are
+       dongle-writable; the two "Back" recovery points answer ILLEGAL_ADDRESS (exc 2)
+       on the dongle for every value in the bare-boot state (HMI-only there). Factory
+       dongle bounds are wider than the published spec (pinned black-box, T17). */
+    HR_BAT_LOW_VOLT      = 162, /* 0.1 V  BatLowVoltage: discharge cut-off V (factory 420-560) */
+    HR_BAT_LOW_BACK_VOLT = 163, /* 0.1 V  BatLowBackVoltage: discharge recovery V (dongle: exc 2) */
+    HR_BAT_LOW_SOC       = 164, /* %      BatLowSOC: discharge cut-off SOC (factory 15-100)      */
+    HR_BAT_LOW_BACK_SOC  = 165, /* %      BatLowBackSOC: discharge recovery SOC (dongle: exc 2)  */
     HR_GEN_CHG_START_V  = 194, /* 0.1 V (384-520)                                */
     HR_GEN_CHG_END_V    = 195, /* 0.1 V (480-590)                                */
     HR_GEN_CHG_START_SOC= 196, /* % (0-90)                                       */

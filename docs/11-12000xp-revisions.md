@@ -110,6 +110,29 @@ per-HR dispatch is a binary search, so the final disambiguation needs either tha
 dispatch unwound or the per-field default values read from the factory-reset template.
 (`sub_080161ee`'s `#0x32` arg is a shared validator constant, not a per-field max.)
 
+### Located: the discharge cut-off + recovery registers (#7, T17, 2026-11-08)
+
+Feature **#7 "Configurable Discharge Resume SOC (+5 % / +2 V)"** (`Recovery Threshold
+SOC:` / `Recovery Threshold Volt:`) is backed by the EG4-spec **BatLow / BatLowBack**
+holding registers, now pinned on the dongle against `ceaa-07xx_vE_260214`:
+
+| HR | name | meaning | factory dongle |
+|---|---|---|---|
+| 162 | BatLowVoltage | discharge cut-off voltage | **writable**, `[420,560]` 0.1 V → settings `+0x7e` |
+| 163 | BatLowBackVoltage | discharge **recovery** voltage | **exc 2** (not dongle-writable) |
+| 164 | BatLowSOC | discharge cut-off SOC | **writable**, `[15,100] %` → settings `+0x86` |
+| 165 | BatLowBackSOC | discharge **recovery** SOC | **exc 2** (not dongle-writable) |
+
+The cut-off pair (even regs) is dongle-writable; the **recovery** pair (the actual
+"configurable resume" setting) answers `ILLEGAL_ADDRESS` for every value in every
+DischgCtrlType mode — **HMI-only on the dongle**. Full write-up, store offsets and the
+spec-vs-actual bounds in
+[`HR162_165-BatLow-discharge-cutoff`](wiring/ARM-UART5-dongle/HR162_165-BatLow-discharge-cutoff.md);
+verdicts pinned by the T24 write-semantics sweep. The discharge hysteresis *mechanism*
+is already generic in `src/sched/dischg_gate.c` (T15); the ARM resume *control* path
+that reads these HRs runs in the RTOS loop (not harness-reachable) — the remaining
+open piece of #7.
+
 Changelog items with **no new LCD string** (they are telemetry-export, range, or
 control-logic changes — tracked here as follow-ups to confirm by disassembly):
 

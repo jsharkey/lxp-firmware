@@ -92,6 +92,22 @@ FACTORY = {
     '148:400'  : 'accept'    ,  # HR148 min
     '148:590'  : 'accept'    ,  # HR148 max
     '148:591'  : 'reject:3'  ,  # HR148 max+1
+    '162:419'  : 'reject:3'  ,  # HR162 BatLowVoltage min-1 (cut-off V, T17)
+    '162:420'  : 'accept'    ,  # HR162 min (factory low bound, wider than spec 400)
+    '162:560'  : 'accept'    ,  # HR162 max (factory high bound, above spec 500)
+    '162:561'  : 'reject:3'  ,  # HR162 max+1
+    '163:419'  : 'reject:2'  ,  # HR163 BatLowBackVoltage -- recovery V, not dongle-writable
+    '163:420'  : 'reject:2'  ,  # HR163 (exc 2 for every value, all modes, T17)
+    '163:520'  : 'reject:2'  ,  # HR163
+    '163:521'  : 'reject:2'  ,  # HR163
+    '164:14'   : 'reject:3'  ,  # HR164 BatLowSOC min-1 (cut-off SOC, T17)
+    '164:15'   : 'accept'    ,  # HR164 min (factory low bound)
+    '164:100'  : 'accept'    ,  # HR164 max
+    '164:101'  : 'reject:3'  ,  # HR164 max+1
+    '165:19'   : 'reject:2'  ,  # HR165 BatLowBackSOC -- recovery SOC, not dongle-writable
+    '165:20'   : 'reject:2'  ,  # HR165 (exc 2 for every value, all modes, T17)
+    '165:100'  : 'reject:2'  ,  # HR165
+    '165:101'  : 'reject:2'  ,  # HR165
     '194:383'  : 'reject:3'  ,  # HR194 min-1
     '194:384'  : 'accept'    ,  # HR194 min
     '194:520'  : 'reject:3'  ,  # HR194 max
