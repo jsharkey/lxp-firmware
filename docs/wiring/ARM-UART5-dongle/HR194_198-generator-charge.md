@@ -102,10 +102,21 @@ second, more eager request than the `d9ca` bit 3 primary.
 > [`docs/18`](../../18-power-path-relays.md) — the AC-transfer enable asserts because
 > the generator is charging.
 
-> **Not yet reimplemented (T16 hand-off):** the shadow gates / `da3a` bit 13 and the
-> meaning of `bank+0xbc` bit 31 (a DSP "allow wider band" flag) are decoded in outline
-> but not yet given a pure function + oracle. Likely tied to a 07-series gen feature
-> (quick-start / warm-up); confirm the consumer of `da3a` bit 13 before naming it.
+**What `da3a` bit 13 is (T16 follow-up).** `0x2000da3a` is the **generator-charge
+status/command word**: its bits are assembled across `sub_08035050` (bit 3 → `d9ca`
+bit 3 primary; bit 13 shadow) and `sub_08035474` (bits 4 and 6, `orr #0x10`/`#0x40`),
+and the word is **mirrored to the Modbus input registers** — [`docs/25`](../../25-modbus-register-spaces.md)
+traces `da3a` bit 4 → telemetry → **IR 126 bit 8**. So the shadow gate's `da3a`
+bit 13 is a *reported* "secondary (more-eager) gen-charge request" status bit exposed
+to the monitoring portal, **not** a quick-start timer. (The 07-series quick-start /
+warm-up / cool-down **timers** are separate — their menu strings and settings-menu
+slots are pinned in [`docs/11`](../../11-12000xp-revisions.md) §"Located: the
+generator-timer strings".)
+
+> **Not yet reimplemented (T16 hand-off):** the shadow gate (`dbbe`/`dbbf` → `da3a`
+> bit 13) and the meaning of `bank+0xbc` bit 31 (the DSP "allow wider band" flag) are
+> decoded but not yet given a pure function + oracle; and which IR bit `da3a` bit 13
+> lands on is not yet pinned (it is in the `da3a`→telemetry mirror, like bit 4).
 
 ## On the LCD (EG4 12000XP manual)
 

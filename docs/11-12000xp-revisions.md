@@ -76,6 +76,29 @@ changelog feature it implements:
 | #9 Battery Warning Buzzer | `Buzzer On ExCfg Enable:` |
 | #11 Smart Load Power Display | `Psmart:`, `Peps_port:`, `Pgrid_side:` |
 
+### Located: the generator-timer strings (#1/#2/#3) in the settings menu (T16, 2026-11-08)
+
+The three generator-timer features sit together at the end of the **Generator**
+settings submenu. Their label strings and the slots they occupy in the HMI
+settings-menu label-pointer table (base `0x08005fec`, one 4-byte string pointer per
+item) are pinned:
+
+| # | feature | string (addr) | label-table slot |
+|---|---|---|---|
+| #3 | Warm-Up & Cool-Down | `Gen Cool Time: ` @ `0x0802aa60` | `0x08006154` (idx 90) |
+| #1 | Charge Time Scheduling | `Gen Charge Time: ` @ `0x0802aa70` | `0x08006158` (idx 91) |
+| #2 | Quick Start (20-min cycle) | `Gen Quick Charge Start: ` @ `0x0802aa84` | `0x0800615c` (idx 92) |
+
+They follow the known gen items in the same table (idx 83-89: `Gen Charge Bat
+Current`, `… Start/End SOC`, `Generator Charge Type`, `… Start/End Volt`, `Max. Gen
+Input Power`, `Generator Boost Enable`). **Next step (hand-off):** the backing
+settings offset / HR number for each is not yet pinned — the label table at
+`0x08005fec` is reached by offset from a master menu descriptor (no direct literal or
+MOVW/MOVT references it), so resolving the item→setting binding needs the HMI menu
+dispatch cracked (relate to [`docs/06`](06-hmi.md) / [`docs/28`](28-factory-hmi.md)).
+These are 07-new settings, so they are *not* in the published Modbus map's gen block
+(HR 194-198) and likely live at fresh settings offsets past `+0xb6`.
+
 Changelog items with **no new LCD string** (they are telemetry-export, range, or
 control-logic changes — tracked here as follow-ups to confirm by disassembly):
 

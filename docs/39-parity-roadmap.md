@@ -673,11 +673,21 @@ gates into **two** output request flags (dynamically verified): the **primary** 
 flag (sub_08035050 is its sole functional writer), so the AC-transfer enable asserts
 because the generator is charging — closed in [`docs/18`](18-power-path-relays.md).
 
-**Remaining.** The **shadow** gates (`0x2000dbbe`/`0x2000dbbf` → `da3a` bit 13) run
-the same hysteresis with a widened start band (`+0x1e`/`+2`) gated by `bank+0xbc`
-bit 31 and a plain (unconfirmed) stop — decoded in outline, not yet a pure
-function + oracle; confirm what consumes `da3a` bit 13 before naming it (quick-start?
-warm-up?). Plus the 07-series additions below.
+**Shadow gate characterized + timer features located (2026-11-08).** The **shadow**
+gates (`0x2000dbbe`/`0x2000dbbf` → `da3a` bit 13) run the same hysteresis with a
+widened start band (`+0x1e`/`+2`) gated by `bank+0xbc` bit 31 and a plain stop. `da3a`
+is the **gen-charge status/command word** (bits assembled by `sub_08035050` +
+`sub_08035474`) and is **mirrored to Modbus IRs** (docs/25: bit 4 → IR 126 bit 8), so
+`da3a` bit 13 is a *reported* secondary (more-eager) gen-charge request — **not** the
+quick-start timer. The actual 07-series gen **timers** (#1 Gen Charge Time, #2 Quick
+Start 20-min, #3 Warm-Up/Cool-Down) are located as HMI strings + settings-menu slots
+(idx 90/91/92, base `0x08005fec`) in [`docs/11`](11-12000xp-revisions.md); pinning
+their settings offsets / HRs needs the HMI menu dispatch cracked (relate docs/06,
+docs/28).
+
+**Remaining.** (a) shadow gate → pure function + oracle, and which IR bit `da3a`
+bit 13 maps to; (b) the three gen timers' settings offsets (HMI-dispatch crack); then
+the behaviors below.
 
 [`HR194_198`](wiring/ARM-UART5-dongle/HR194_198-generator-charge.md) start/end V/SOC and
 max gen charge current, plus the 07-series additions
