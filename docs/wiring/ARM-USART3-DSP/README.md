@@ -147,3 +147,10 @@ bootloader demux, **not** a `0x49` parser.
   `DSP_CONFIG_NBLOCKS 8` (ids 0–7). Reconcile.
 - The struct-field → register-number leg for the DSP RAM slot targets (regs
   64–89 group), still partly open (docs/10, docs/17).
+
+## Factory RX buffer (ceaa-07xx)
+
+Per-frame linear RX buffer **800 B** at `0x2000a304` (`sub_0801b6be`, guard
+`cmp #0x320`), inside a ~1113 B struct. Our `src/uart/uart3.c` uses a 256 B ring
+— ample for the ~54 B config frames while streaming, but it can't hold an
+800 B frame whole. Sizing + verdict: [`docs/47`](../../47-factory-ram-static-breakdown.md).

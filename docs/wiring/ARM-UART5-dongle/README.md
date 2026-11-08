@@ -126,3 +126,9 @@ sequencing around TX is pinned by `test_modbus_de_toggles_around_tx`
 - Firmware confirmation of PA15 as the UART5 DE pin.
 - `IR 126` labelled `IR_EGEN_ALL_H` in the map but used as a status word in
   ceaa-07xx — do not assume `IR 126 = energy` for this image.
+
+## Factory RX buffer (ceaa-07xx)
+
+Per-frame linear RX buffer **200 B** at `0x2000bb80` (`sub_0801bf6a`, guard
+`cmp #0xc8`), ISR `0x0801c0b0`. Our `src/uart/uart5.c` uses a 256 B ring (≥ the
+factory's). See [`docs/47`](../../47-factory-ram-static-breakdown.md).

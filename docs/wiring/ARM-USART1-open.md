@@ -33,3 +33,8 @@
   [`docs/05`](../05-dsp-link.md) / [`docs/12`](../12-6000xp.md) state "only
   USART3 is NVIC-vectored; the others are polled." Different analysis
   rounds/images; docs/25 (ceaa-07xx) is the later, most specific. Unreconciled.
+
+## Factory RX buffer (ceaa-07xx)
+
+**None** — the USART1 vector handler is a bare `bx lr`; the link carries no RX
+ring. (Confirms the "unused" reading.) See [`docs/47`](../47-factory-ram-static-breakdown.md).

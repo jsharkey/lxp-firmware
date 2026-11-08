@@ -33,3 +33,9 @@ specifically decoded. Master/slave role not established.
 ## Reimplementation
 
 None — only the USART3 driver exists under `src/uart/`. No binding yet.
+
+## Factory RX buffer (ceaa-07xx)
+
+Per-frame linear RX buffer **200 B** at `0x2000bd84` (`sub_0801c20c`, guard
+`cmp #0xc8`; SOF byte `0x01`), ISR `0x0801c450`. Not implemented in ours. See
+[`docs/47`](../47-factory-ram-static-breakdown.md).

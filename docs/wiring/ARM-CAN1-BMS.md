@@ -123,3 +123,11 @@ the value is a documented default; the bit and behaviour follow the spec. Oracle
   FIFO0 each loop regardless.)
 - CAN bit-rate (decode HC32 `SBT`).
 - Which `Pnn` preset / endianness the attached pack is configured for.
+
+## Factory RX buffering (ceaa-07xx)
+
+The factory keeps a **200-frame × 20 B = 4000 B software RX log/queue** at
+`0x20008020` (`sub_080055c8`: `muls #0x14` slot × `cmp #0xc8` cap), filled from
+CAN1 FIFO0. Ours (`src/can/can_port.c`) drains the 3-deep bxCAN hardware FIFO
+immediately with **no software queue** — fine for liveness if polled often, but
+no burst headroom or frame history. Sizing + verdict: [`docs/47`](../47-factory-ram-static-breakdown.md).

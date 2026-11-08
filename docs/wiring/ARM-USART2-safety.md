@@ -98,3 +98,9 @@ It is a safety interlock, not a passive monitor.
 - 12000XP (`ceaa`) leaves the redundant-CPU version field at 0 and may fold
   redundancy differently from the 18kPV (`fAAB`); the 12000XP external-safety-CPU
   arrangement is not fully resolved.
+
+## Factory RX buffer (ceaa-07xx)
+
+Per-frame linear RX buffer **64 B** at `0x2000af60` (`sub_0801bb0e`, guard
+`cmp #0x40`; SOF byte `0x49` 'I'), inside a ~875 B struct with the decoded
+telemetry. Ours `src/uart/uart2.c` uses a 256 B ring. See [`docs/47`](../47-factory-ram-static-breakdown.md).
