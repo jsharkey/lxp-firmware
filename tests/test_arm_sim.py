@@ -436,6 +436,24 @@ def test_settings_persist_across_cold_boot():
         "after a cold boot, ChargeCurr read back as %r, not [%d]" % (got, value)
 
 
+def test_sn_write_read_back():
+    """The device serial number (HR 2-6, 10 ASCII bytes) is set with a Modbus
+    write-multiple (func 0x10) -- one of only two blocks that accept 0x10 (the
+    other is the time, docs/wiring HR002_006) -- and reads back over 0x03. Black
+    box, both images: set a distinctive SN and read it straight back.
+
+    (Read immediately after the write: on the factory image the USART3 fallback
+    slave stops answering a little after a settings write -- the same harness limit
+    the T23/T24 sweeps note -- so this pins the write+read-back; cold-boot
+    persistence is covered factory-side by test_persists_sn_across_cold_boot.)"""
+    SN = b"AB12345678"
+    sim = _sim()
+    mb = _mb(sim)
+    assert mb.write_sn(SN) == 5, "0x10 SN write (HR 2-6) was not acknowledged"
+    got = mb.read_sn()
+    assert got == SN, "SN did not read back: got %r" % (got,)
+
+
 def test_modbus_time_set_reads_back():
     """Set the wall clock from the dongle and confirm the device's internal RTC
     took it. The EG4 time registers are HR 12-14 (docs/04): HR 12 =

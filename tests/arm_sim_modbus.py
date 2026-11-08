@@ -63,6 +63,7 @@ DEFAULT_SN   = b"0000000000"
 FC_READ_HOLDING = 0x03
 FC_READ_INPUT   = 0x04
 FC_WRITE_SINGLE = 0x06
+FC_WRITE_MULTI  = 0x10
 _SN_LEN   = 10
 _HDR      = 2 + _SN_LEN             # addr + func + SN, before the body
 _CRC      = 2
@@ -221,6 +222,36 @@ class _ModbusMaster:
 
         resp = self._txn(req, _HDR + 4 + _CRC, match)
         return None if resp is None else struct.unpack_from("<H", resp, _HDR + 2)[0]
+
+    def write_multiple(self, start, values):
+        """Function 0x10 (write-multiple). `values` is a list of u16. Per the EG4
+        spec this is only valid for the SN (HR 2-6) and time (HR 12-14) blocks.
+        Returns the register count the device echoed, or None if no valid echo."""
+        n = len(values)
+        body = struct.pack("<HHB", start, n, 2 * n) + b"".join(struct.pack("<H", v) for v in values)
+        req = _frame(self.addr, FC_WRITE_MULTI, body, self.sn)
+
+        def match(w):   # echo frame: addr func SN start count CRC
+            return (w[0] == self.addr and w[1] == FC_WRITE_MULTI and _crc_ok(w)
+                    and struct.unpack_from("<H", w, _HDR)[0] == start)
+
+        resp = self._txn(req, _HDR + 4 + _CRC, match)
+        return None if resp is None else struct.unpack_from("<H", resp, _HDR + 2)[0]
+
+    def write_sn(self, sn10):
+        """Set the 10-byte device serial number via a 0x10 write to HR 2-6
+        (2 ASCII bytes per register, little-endian within each)."""
+        sn10 = bytes(sn10)
+        assert len(sn10) == 10
+        regs = [sn10[2 * i] | (sn10[2 * i + 1] << 8) for i in range(5)]
+        return self.write_multiple(2, regs)
+
+    def read_sn(self):
+        """Read the 10-byte SN back from HR 2-6; returns bytes or None."""
+        regs = self.read_holding(2, 5)
+        if regs is None:
+            return None
+        return bytes(b for r in regs for b in (r & 0xFF, (r >> 8) & 0xFF))
 
     def read_holding(self, reg, n=1):
         """Function 0x03 (holding registers). Returns a list of n register

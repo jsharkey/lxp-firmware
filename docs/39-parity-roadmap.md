@@ -362,11 +362,22 @@ rejected; `make test` + common sim green.
   still needs a write-multiple (`0x10`) master the harness lacks; carried below.
 
 #### T24c — SN (HR 2-6) write-multiple round-trip
-**Status:** 🟡 `[~] claude/019chjb 2026-11-08` · **Layer:** sim · **Depends:** a `0x10` (write-multiple) harness master
+**Status:** 🟢 `[x] claude/019chjb 2026-11-08` ([`arm_sim_modbus.py`](../tests/arm_sim_modbus.py) `write_multiple`/`write_sn`/`read_sn`, [`test_arm_sim.py`](../tests/test_arm_sim.py), [`test_arm_sim_factory_only.py`](../tests/test_arm_sim_factory_only.py)) · **Layer:** sim · **Depends:** T24
 
-Add a write-multiple master to `arm_sim_modbus.py`, then a test that sets the SN via
-`0x10`, reads it back (HR 2-6), cold-boots, and confirms it persists — the identity
-gap [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) still lists as uncovered.
+**Done.** Added a **write-multiple (`0x10`)** master to the harness (`write_multiple`,
+plus `write_sn`/`read_sn` for the 10-byte SN). New tests close the
+[`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md) gap:
+- `test_sn_write_read_back` (common) — set the SN via `0x10`, read it back over
+  `0x03`; green on **both** images.
+- `test_persists_sn_across_cold_boot` (factory-only) — the factory journals the SN
+  to config flash and restores it after a cold boot; green. Oracle for the loop.
+- **Follow-up (T24d): ours does not yet persist the SN.** HR 2-6 are not in the
+  pinned `SETTINGS_MAP`; the factory stores the SN in a slot-0 record at payload
+  offset ~`0x1` (`docs/23`), which overlaps ComAddr (off `0x0`, width 2) and needs
+  careful layout pinning before adding it cross-image-compatibly — recorded in
+  [`HR002_006`](wiring/ARM-UART5-dongle/HR002_006-SN.md). (The USART3 fallback slave
+  goes silent shortly after a settings write, so the exact on-flash offset must be
+  pinned by flash-diff, not a factory read-back.)
 
 ### T25 — HR write → DSP push matrix (the side-effect half of every setting)
 **Status:** 🚧 `[~] claude 2026-11-07 · claude-opus/019chjbE 2026-11-07` · **Layer:** sim (USART3 capture diff) · **Pairs with:** T10
